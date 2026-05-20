@@ -1,0 +1,58 @@
+
+
+# KR2EN={
+#     '콜라': 'coke',
+#     '사이다': 'green drink',
+#     '커피': 'black drink',
+#     '거실': 'living room',
+#     '테이블': 'table',
+#     '침대 옆 테이블': 'bed table',
+#     '쇼파 옆 테이블': 'sopha table',
+#     '안방': 'bedroom',
+#     '수건': 'towel',
+#     '닦는수건': 'cleaning towel',
+#     '화장실': 'restroom',
+#     '주방': 'kitchen',
+#     '휴지': 'blue tissue',
+#     '치약': 'toothpaste',
+#     '식탁': 'dining table',
+#     '컵': 'cup',
+#     '쏟은 음료': 'spill',
+#     '리모컨': 'controller',
+#     '캔': 'can',
+#     '선반': 'shelf', 
+#     '불': 'light',
+#     '폰': 'phone',
+#     '분리수거함': 'can trash',
+#     '싱크대': 'sink',
+#     '서랍': 'drawer'
+# }
+KR2EN={
+    '콜라': 'coke',
+    '사이다': 'green drink',
+    '커피': 'black drink',
+    '거실': 'living room',
+    '테이블': 'table',
+    '침대 옆 서랍장': 'bed table',
+    '쇼파 옆 테이블': 'sopha table',
+    '안방': 'bedroom',
+    '수건': 'towel',
+    '닦는수건': 'cleaning towel',
+    '화장실': 'restroom',
+    '주방': 'kitchen',
+    '휴지': 'blue tissue',
+    '치약': 'toothpaste',
+    '식탁': 'dining table',
+    '컵': 'cup',
+    '쏟은 음료': 'spill',
+    '리모컨': 'controller',
+    '캔': 'can',
+    '선반': 'shelf', 
+    '불': 'light',
+    '폰': 'phone',
+    '분리수거함': 'can trash',
+    '싱크볼': 'sink',
+    '서랍장': 'drawer'
+}
+
+EN2KR = {v:k for k,v in KR2EN.items()}

@@ -1,0 +1,6 @@
+.env
+logs/
+*.bak
+*.tmp
+*.json.bak
+*.json.tmp

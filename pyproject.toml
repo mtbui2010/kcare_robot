@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kcare_robot"
+version = "0.1.0"
+dependencies = [
+    "robot_agent",
+]
+# Robot-specific skills and configs for the KCare mobile manipulator.
+# Requires robot_agent, ROS2, pyconnect in the environment.
+# Install with: pip install -e .
+
+[project.scripts]
+kcare_robot = "kcare_robot.__main__:cli"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["kcare_robot*"]
