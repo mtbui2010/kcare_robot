@@ -460,16 +460,5 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {}
-  },
-  {
-    "name": "new_skill",
-    "type": "internal",
-    "description": "from kcare_robot.skills.new_skill:new_skill",
-    "module_path": "kcare_robot.skills.new_skill",
-    "func_name": "new_skill",
-    "url": "",
-    "timeout": 30.0,
-    "method": "POST",
-    "headers": {}
   }
 ]

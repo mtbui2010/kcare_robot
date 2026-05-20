@@ -12,7 +12,7 @@ ROS_SETUP ?= /opt/ros/humble/setup.bash
 # Server port — override on the command line: make run PORT=8002
 PORT ?= 8001
 
-.PHONY: install install-deps run cli terminate doctor skill-generic skill-detect run-external test clean help
+.PHONY: install install-deps run cli terminate doctor skill-generic skill-detect delete-skill run-external test clean help
 
 help:
 	@echo "kcare_robot -- robot skills + entry points (UI / CLI / Python API) that use robot_agent"
@@ -31,6 +31,10 @@ help:
 	@echo "                                        Scaffold a generic skill stub (creates/appends file + updates skills_config)"
 	@echo "  make skill-detect  SKILL=<name> [FILE=<file>]"
 	@echo "                                        Scaffold a detect-style skill (mock _fetch_data + detector client call)"
+	@echo "  make delete-skill  SKILL=<name> [YES=1]"
+	@echo "                                        Remove a skill from skills_config and from its file."
+	@echo "                                        If that file holds only this skill, the whole file is deleted."
+	@echo "                                        Prompts for confirmation unless YES=1."
 	@echo "  make run-external                     Start the example external-skill server (template_skills/grip_external.py)"
 	@echo "  make test                             Smoke test: list skills via curl"
 	@echo "  make clean                            Remove __pycache__ and *.egg-info"
@@ -117,6 +121,22 @@ skill-detect:
 		exit 2; \
 	fi
 	python3 -m robot_agent.new_skill kcare_robot $(SKILL) $(FILE) --template detect
+
+# Remove a skill. Prompts for confirmation; pass YES=1 to skip the prompt.
+#   make delete-skill SKILL=wave
+#   make delete-skill SKILL=wave YES=1
+# If the target file holds only this skill, the entire file is deleted.
+# Otherwise only `def <skill>` is spliced out.
+delete-skill:
+	@if [ -z "$(SKILL)" ]; then \
+		echo "Usage: make delete-skill SKILL=<skill_name> [YES=1]"; \
+		exit 2; \
+	fi
+	@if [ "$(YES)" = "1" ]; then \
+		python3 -m robot_agent.delete_skill kcare_robot $(SKILL) --yes; \
+	else \
+		python3 -m robot_agent.delete_skill kcare_robot $(SKILL); \
+	fi
 
 run-external:
 	source $(ROS_SETUP) && \

@@ -32,7 +32,15 @@ make run              # uvicorn kcare_robot.main:app, port 8001
 ```
 
 `make run` sources `/opt/ros/humble/setup.bash`. Override with
-`ROS_SETUP=/opt/ros/iron/setup.bash make run`. Browse the API at
+`ROS_SETUP=/opt/ros/iron/setup.bash make run`.
+
+Once the agent is up, open the hosted dashboard at
+<https://robot.aistations.org> and click the **Guide** button in the
+top-right corner — it walks you through registering this agent's URL
+(`http://<host>:8001`), connecting an LLM, ROS endpoints, cameras, and
+sending your first command.
+
+Swagger API browser (if you prefer raw HTTP) is at
 <http://localhost:8001/docs>.
 
 ## CLI mode

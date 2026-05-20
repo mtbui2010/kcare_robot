@@ -47,6 +47,4 @@ SKILL_CONFIGS: dict[str, tuple[str, str]] = {
     'select_response':  (f'{_PKG}.select',      'select_response'),
     'get3d':            (f'{_PKG}.pointcloud',  'get3d'),
     'llm':              (f'{_PKG}.vlm',         'llm'),
-    'new_skill': (f'{_PKG}.new_skill', 'new_skill'),
-    'find_object': (f'{_PKG}.find_object', 'find_object'),
 }
