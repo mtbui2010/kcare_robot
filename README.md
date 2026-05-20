@@ -1,245 +1,251 @@
-# kcare_robot
+# kcare_robot — Assistive Mobile Manipulator
 
-Skill + config package for the **KCare** mobile manipulator. Plugs into
-[`robot_agent`](../../robot_agent) as the source of `SKILL_CONFIGS` and concrete
-skill implementations.
+> **23 production skills** on a 6-DOF cobot with a RealSense D405 wrist camera
+> and Femto Bolt head stereo. Open-vocabulary grasping, drawer manipulation,
+> Nav2-driven mobile base, head-to-base calibrated 3D perception. Three ways
+> to drive it: web dashboard, CLI, or Python API.
 
-## Three ways to drive the robot
+A reference implementation for the
+[`robot_agent`](../robot_agent) runtime, controllable from the
+[`robotapp`](../robotapp) dashboard
+([live: robot.aistations.org](https://robot.aistations.org)).
 
-| Mode | Use case | Needs `make run` |
+---
+
+## The robot
+
+| Subsystem | Hardware | ROS2 interface |
 |---|---|---|
-| **UI / HTTP** (`make run`) | Web dashboard, multi-user, REST clients | yes (this IS the server) |
-| **CLI** (`kcare_robot find::apple`) | One-off ops, shell scripting | no |
-| **Python API** (`from kcare_robot.skills.recognition import find`) | Scripts, notebooks, tests | no |
+| **Manipulator** | 6-DOF KAAIR cobot arm | `/kaair_worker/arm_moveJ`, `/arm_moveT` (actions) |
+| **End-effector** | Two-finger gripper + suction | `/body/tool_controller/gripper_cmd` |
+| **Wrist camera** | Intel RealSense **D405** | `/hand/d405/color/image_raw/compressed`, `/depth/image_rect_raw` |
+| **Head cameras** | Orbbec **Femto Bolt** RGB-D | `/femto/color/...`, `/femto/depth/.../compressedDepth` |
+| **Mobile base** | 2-wheel diff-drive, LiDAR | Nav2 `/navigate_to_pose` |
+| **Lift** | Vertical linear actuator | `/kaair_worker/lift_move` |
+| **Head** | 2-DOF pan-tilt | `/kaair_worker/head_move` (rz, ry) |
+| **Proprioception** | Joint states, tool pose, mobile odom | `/joint_states`, `/robot_pose/...` |
+| **Perception backend** | TCP VLM service (GroundingDINO / GroundedSAM / mask2grasps) | `tcp://192.168.1.11:8805` |
 
-All three share the same `bootstrap()` core in `robot_agent.runtime`; only the
-outer shell differs. **Do not run two modes against the same robot at the same
-time** — two clients steering one arm is a safety hazard.
+All device registrations live in
+[`kcare_robot/data/connections.json`](kcare_robot/data/connections.json) and
+are managed at runtime via `robot_agent`'s `POST /connects` API.
 
-## Install
+---
 
-```bash
-make install          # editable-install pyconnect, robot_agent, kcare_robot
+## The 23 skills
+
+Declared in
+[`kcare_robot/configs/skills_config.py`](kcare_robot/configs/skills_config.py),
+implemented in [`kcare_robot/skills/`](kcare_robot/skills/).
+
+| Group | Skills |
+|---|---|
+| **Perception** | `find`, `detect`, `find_arm`, `grasp_succeed`, `get3d`, `inform` |
+| **Manipulation** | `pick`, `pick_no_sound`, `pick_card`, `fine_move`, `place`, `placeat`, `placep`, `open_drawer`, `close_drawer`, `collect_card`, `return_card`, `stack`, `wipe` |
+| **Arm motion** | `arm_joints`, `arm_pose`, `movel`, `movej`, `movet`, `movelf` |
+| **Mobile base** | `move`, `forward`, `turn`, `rotate`, `moveb`, `mobile_pose` |
+| **Head / lift / gripper** | `moveh`, `head_state`, `lift`, `lift_state`, `dlift`, `grip` |
+| **Interaction** | `select_response`, `llm` |
+
+Every skill follows the contract:
+
+```python
+def skill(node, **params) -> dict:
+    return {'isdone': bool, 'msg': str, ...}   # planner-readable
 ```
 
-This also registers the `kcare_robot` console-script (CLI) via
-`[project.scripts]` in `pyproject.toml`.
+Wrapping (`auto_wrap_skills`) injects the ROS node on first call so Python-API
+users can write `find('apple')` without touching rclpy.
 
-## UI / HTTP mode
+---
 
-```bash
-make run              # uvicorn kcare_robot.main:app, port 8001
+## What's interesting under the hood
+
+### Open-vocabulary 3D perception
+
+[`skills/recognition.py`](kcare_robot/skills/recognition.py) — 415 lines — runs
+the full pipeline:
+
+1. **Fetch** RGB-D from wrist or head camera (D405 or Femto Bolt)
+2. **Detect** via TCP to the VLM service (`GroundingDINO` for text queries,
+   `GroundedSAM` for masks)
+3. **Lift to 3D** — `attach_3d_features()` reconstructs per-cluster normals,
+   min/median/max depth, 3D centroids via inverse projection `Ixy2xyz()`
+4. **Classify pose** — detects lying objects from normal-vector dispersion;
+   estimates mass-center percentages for handle-equipped items
+5. **Grasp** — `mask2grasps` returns 2D pixel endpoints; the skill lifts them
+   to a 6-DOF grasp pose using depth + camera intrinsics + wrist-offset
+   geometry
+
+### Head-to-base calibration
+
+[`skills/calibrattion.py`](kcare_robot/skills/calibrattion.py) ships a
+`Head2BaseCalibration` class with:
+- Intrinsic camera parameters (fx, fy, ppx, ppy) per stream
+- 4×4 link-to-base and base-to-lift transforms
+- Per-mode (front / left / right) error-linear corrections
+
+This is what makes "the apple your wrist camera sees" turn into "an XYZ in the
+base frame the arm can actually move to."
+
+### Closed-loop grasping with self-correction
+
+[`skills/pick.py`](kcare_robot/skills/pick.py) — 422 lines — orchestrates the
+full pick:
+
+1. `find_arm()` — wrist-camera detection
+2. `fine_move()` — wrist-guided approach with **up to 2 self-correction trials**
+   if the object drifts out of frame
+3. `grip()` — close gripper
+4. `grasp_succeed()` — verify by re-imaging the gripper ROI and checking depth
+   in a ±0.27 m window
+
+Place is the mirror: `placeat()` / `placep()` plus retraction choreography.
+Drawer skills detect the handle as a separate class and run open/close as
+a constrained Cartesian movement.
+
+### Parallel actuator coordination
+
+```python
+# Common pattern: lift + arm + head move simultaneously
+run_parallel_check([
+    ('lift', {'height': 0.4}),
+    ('movej', {'joints': ARM_PRE_PICK}),
+    ('moveh', {'rz': -30, 'ry': 20}),
+])
 ```
 
-`make run` sources `/opt/ros/humble/setup.bash`. Override with
-`ROS_SETUP=/opt/ros/iron/setup.bash make run`.
+`run_parallel_check()` (from `pyconnect`) fires ROS actions in parallel and
+waits for all to converge before continuing — drops a typical pick from
+~7 s sequential to ~3 s.
 
-Once the agent is up, open the hosted dashboard at
-<https://robot.aistations.org> and click the **Guide** button in the
-top-right corner — it walks you through registering this agent's URL
-(`http://<host>:8001`), connecting an LLM, ROS endpoints, cameras, and
-sending your first command.
+### Three ways to drive the same skills
 
-Swagger API browser (if you prefer raw HTTP) is at
-<http://localhost:8001/docs>.
+| Mode | Use case | Latency |
+|---|---|---|
+| **UI / HTTP** — `make run` | dashboard, multi-user, REST clients | ~10 ms / call |
+| **CLI** — `kcare_robot pick::apple` | scripting, demos, CI | ~3 s first call (bootstrap), <100 ms after |
+| **Python API** — `from kcare_robot.skills.pick import pick` | notebooks, tests | same |
 
-## CLI mode
+All three share `robot_agent.runtime.bootstrap()`.
+**Do not run two modes against the same physical robot simultaneously** — no
+arbitration layer.
+
+---
+
+## Quick start
 
 ```bash
-# After sourcing ROS (or via `make cli` which sources for you):
-kcare_robot find::apple
-kcare_robot find::apple estimate_grasp=true camera=arm
+make install           # editable-install pyconnect, robot_agent, kcare_robot
+make run               # uvicorn kcare_robot.main:app --port 8001
+                       # auto-sources /opt/ros/humble/setup.bash
+```
+
+Open <https://robot.aistations.org>, click **Guide**, paste
+`http://<robot-host>:8001`, connect — you're driving the robot from a browser.
+
+Or raw HTTP:
+
+```bash
+curl -X POST http://localhost:8001/skill/find -d '{"inputs":"apple"}'
+curl -X POST http://localhost:8001/skill/pick -d '{"inputs":"apple"}'
+```
+
+Or CLI:
+
+```bash
+kcare_robot --list
+kcare_robot find::apple                                  # inputs=apple
+kcare_robot find::apple estimate_grasp=true camera=arm   # mixed args
 kcare_robot pick::apple
-kcare_robot --list                # show all registered skills
-kcare_robot --help
-
-# Or via Makefile (auto-sources ROS):
-make cli ARGS="find::apple"
-make cli ARGS="pick::apple"
 ```
 
-Argument syntax:
-- `name::value` — the part after `::` becomes `inputs=value`.
-- `key=value` pairs (space-separated) — coerced to bool / int / float / JSON
-  when possible, otherwise kept as string.
-- `name` alone — only kwargs, e.g. `find inputs=apple camera=arm`.
-
-Output is JSON on stdout. Exit code 0 if `isdone: true`, 1 otherwise.
-
-## Python API mode
+Or Python:
 
 ```python
 from kcare_robot.skills.recognition import find
 from kcare_robot.skills.pick        import pick
 
-ret = find(inputs='apple')       # first call: ~3s bootstrap (rclpy + devices)
+ret = find(inputs='apple')           # bootstraps rclpy + devices on first call
 if ret['isdone']:
-    pick(inputs='apple')         # subsequent calls: reuse the same ROS node
-
-# Short form — first positional becomes `inputs`:
-find('apple')
+    pick(inputs='apple')
 ```
 
-How it works: [kcare_robot/skills/__init__.py](kcare_robot/skills/__init__.py)
-calls `robot_agent.skills.auto_wrap_skills(SKILL_CONFIGS, pkg='kcare_robot')`
-on import. Each public skill function gets wrapped so that:
-- if `node` is not provided, `bootstrap('kcare_robot')` runs (idempotent) and
-  `state.dm._ros_node` is injected;
-- if the first positional argument is a string, it's mapped to `inputs=`.
+---
 
-Skills called via SkillRegistry (UI/CLI) already pass `node=` explicitly so
-the wrapper is a no-op for them.
-
-## Folder layout
+## Layout
 
 ```
 kcare_robot/
-├── Makefile
-├── README.md                # this file
-├── pyproject.toml
+├── Makefile                  install · run · cli · doctor · terminate
+├── pyproject.toml            [project.scripts] kcare_robot = kcare_robot.__main__:cli
 └── kcare_robot/
-    ├── configs/             # SKILL_CONFIGS + per-skill defaults
-    ├── skills/              # production skill implementations
-    └── template_skills/     # reference templates (NOT auto-registered)
-        ├── grip_pyconnect.py    # Pattern 1
-        ├── grip_pure_ros2.py    # Pattern 2
-        └── grip_external.py    # Pattern 3
+    ├── main.py               create_app('kcare_robot', data_dir=...)
+    ├── __main__.py           CLI entry — from robot_agent.cli import main
+    ├── configs/
+    │   ├── skills_config.py  SKILL_CONFIGS (23 entries)
+    │   ├── tasks.py          ARM_CONFIGS, ENV (locations)
+    │   └── guide.py          LLM planner guide
+    ├── data/
+    │   └── connections.json  device registrations (cameras, arms, base, TCP)
+    ├── skills/               production implementations
+    │   ├── recognition.py    perception + 3D + grasp pose
+    │   ├── pick.py           pick / fine_move / drawer / verification
+    │   ├── _pick_helpers.py  workspace checks, retraction choreography
+    │   ├── approach.py       object-guided arm pre-positioning
+    │   ├── mobile.py         Nav2 + parallel lift coordination
+    │   ├── grip.py · lift.py · arm.py · head.py · place.py · vlm.py …
+    └── template_skills/      three reference patterns (NOT auto-registered)
+        ├── grip_pyconnect.py     Pattern 1 — pyconnect NodeAgent (90 % of skills)
+        ├── grip_pure_ros2.py     Pattern 2 — raw rclpy + custom QoS / feedback
+        └── grip_external.py     Pattern 3 — separate process, registered by URL
 ```
 
-## How `robot_agent` discovers skills
-
-On startup, `robot_agent` reads two env vars (auto-loaded from
-`robot_agent/robot_agent/.env`):
-
-| Var | Purpose |
-|---|---|
-| `ROBOT_SKILLS_PKG`  | Python package name (e.g. `kcare_robot`) used for `importlib.import_module(f'{pkg}.configs.skills_config')` |
-| `ROBOT_SKILLS_PATH` | Optional `sys.path` fallback if the package is not pip-installed |
-
-`kcare_robot/configs/skills_config.py` exports a flat dict
-`SKILL_CONFIGS: dict[str, tuple[module_path, func_name]]` -- this is the entire
-contract between `robot_agent` and the skill package.
+---
 
 ## Adding a new skill
 
-Three steps, regardless of which pattern you pick.
-
-### Step 1 -- pick a pattern
-
-| Pattern | When to use | Where to look |
-|---|---|---|
-| **1. pyconnect**  | 90% of skills. Device is already registered via `POST /devices`. | [template_skills/grip_pyconnect.py](kcare_robot/template_skills/grip_pyconnect.py) |
-| **2. pure ROS2**  | Need custom QoS, action feedback, timeout, or non-`SendStringData` interfaces but still want shared executor. | [template_skills/grip_pure_ros2.py](kcare_robot/template_skills/grip_pure_ros2.py) |
-| **3. external**   | Skill is a separate process / language / host. | [template_skills/grip_external.py](kcare_robot/template_skills/grip_external.py) |
-
-All three are interchangeable from the caller's point of view --
-`POST /skill/<name>` dispatches identically.
-
-### Step 2 -- write the function
-
-Function signature is fixed:
-
 ```python
-def my_skill(node, **params) -> dict:
-    ...
-    return {'isdone': True, 'msg': 'ok', ...}     # contract
+# kcare_robot/skills/wave.py
+def wave(node, **params) -> dict:
+    arm = node.agents['movej']
+    arm.send({'joints': [0, -1.2, 1.5, 0, 0.8, 0]})
+    return {'isdone': True, 'msg': 'waved'}
 ```
 
-The return MUST be a dict; `isdone` is required by the planner. Anything else
-is free-form. Skills are imported lazily by `SkillRegistry.execute()`, so heavy
-imports at module level are fine but will slow first-call latency.
-
-For Pattern 1, drop the file in `kcare_robot/skills/`. For Pattern 2, same
-location. For Pattern 3, run the FastAPI server separately and only register
-the URL with `POST /skills`.
-
-### Step 3 -- register it
-
-For Pattern 1 & 2, add an entry to
-[`kcare_robot/configs/skills_config.py`](kcare_robot/configs/skills_config.py):
-
 ```python
+# kcare_robot/configs/skills_config.py
 SKILL_CONFIGS = {
     ...
-    'my_skill': (f'{_PKG}.my_module', 'my_skill'),
+    'wave': (f'{_PKG}.wave', 'wave'),
 }
 ```
 
-Then either reload via `POST /skills/reload`, or restart `make run`.
+Then `POST /skills/reload` — no robot restart.
 
-For Pattern 3, register via the API:
+For external skills (GPU box, separate language, microservice) register via
+HTTP: `POST /skills {"type":"external", "url":"http://gpu:9000/wave"}`.
 
-```bash
-curl -X POST http://localhost:8001/skills \
-     -H 'Content-Type: application/json' \
-     -d '{"name":"my_skill","type":"external",
-          "url":"http://localhost:9000/my_skill",
-          "timeout":15}'
-```
-
-## Testing a skill
-
-UI / HTTP:
-```bash
-# list all registered skills
-curl http://localhost:8001/skills | python3 -m json.tool
-
-# call one
-curl -X POST http://localhost:8001/skill/grip \
-     -H 'Content-Type: application/json' \
-     -d '{"inputs":"open"}'
-```
-
-CLI (no `make run` required):
-```bash
-kcare_robot --list
-kcare_robot grip::open
-```
-
-Python:
-```python
-from kcare_robot.skills.grip import grip
-grip(inputs='open')
-```
-
-## Devices
-
-Skills that use Pattern 1 or 2 expect specific devices to be registered in
-`robot_agent`. Add them via `POST /devices`:
-
-```bash
-curl -X POST http://localhost:8001/devices \
-     -H 'Content-Type: application/json' \
-     -d '{"type":"ros_service",
-          "name":"grip",
-          "config":{"conn_name":"grip","is_client":true}}'
-```
-
-Devices persist in `robot_agent/robot_agent/devices.json` and are reconnected
-on next start.
+---
 
 ## Debugging
 
 ```bash
-make doctor                     # pre-flight: env, ROS2, every skill import
-make doctor ARGS=--verbose      # list every skill, OK and FAIL alike
+make doctor                          # env + ROS + import every skill
+make doctor ARGS=--verbose           # show OK + FAIL
+ROBOT_AGENT_DEBUG_RESPONSE=1 make run   # full tracebacks on errors
+ROBOT_AGENT_LOG_LEVEL=DEBUG make run
+curl http://localhost:8001/diagnostics/boot | python3 -m json.tool
 ```
 
-Live (after `make run`):
+Logs at `robot_agent/logs/robot_agent.log` (rotating 5 × 10 MB).
 
-```bash
-curl http://localhost:8001/diagnostics       | python3 -m json.tool
-curl http://localhost:8001/diagnostics/boot  | python3 -m json.tool
-```
+---
 
-Set `ROBOT_AGENT_DEBUG_RESPONSE=1` before `make run` to attach full tracebacks
-to every `{'isdone': False}` skill response. Set `ROBOT_AGENT_LOG_LEVEL=DEBUG`
-for verbose dispatch logs. Both can be combined.
+## Related
 
-Logs: `robot_agent/logs/robot_agent.log` (rotating, 5 x 10 MB).
-
-## Starting from scratch on a new robot
-
-Use [`../robot_template`](../robot_template) — a cookiecutter scaffold that
-emits the same layout (skills, configs, Makefile, `__main__.py`, CLI script)
-ready to edit. See its README for prompts.
+- [`robot_agent`](../robot_agent) — FastAPI runtime, skill registry, device
+  manager, streaming agent
+- [`robotapp`](../robotapp) — Next.js 14 ops dashboard
+- [`robot_template`](../robot_template) — cookiecutter to bootstrap your own
+  robot package on the same contract

@@ -1,0 +1,82 @@
+[
+  {
+    "id": "142fde8ae366",
+    "label": "enable",
+    "plan": "arm_enable::"
+  },
+  {
+    "id": "0df8ca4b2014",
+    "label": "head front",
+    "plan": "moveh::front"
+  },
+  {
+    "id": "6bf1e18609e6",
+    "label": "head left",
+    "plan": "moveh::left"
+  },
+  {
+    "id": "6c21ed77ec0e",
+    "label": "head right",
+    "plan": "moveh::right"
+  },
+  {
+    "id": "1cdf25218173",
+    "label": "grip open",
+    "plan": "grip::open"
+  },
+  {
+    "id": "70c38f807ba9",
+    "label": "grip close",
+    "plan": "grip::close"
+  },
+  {
+    "id": "831050d0f984",
+    "label": "lift up",
+    "plan": "dlift::0.2"
+  },
+  {
+    "id": "243b13f6235c",
+    "label": "lift down",
+    "plan": "dlift::-0.2"
+  },
+  {
+    "id": "781ee55d5d99",
+    "label": "init arm",
+    "plan": "init_arm::"
+  },
+  {
+    "id": "c3611e59f9da",
+    "label": "fold",
+    "plan": "movej::fold"
+  },
+  {
+    "id": "f2597e5a7c58",
+    "label": "give",
+    "plan": "movej::give"
+  },
+  {
+    "id": "e1cf11b68697",
+    "label": "approach lying",
+    "plan": "movej::approach_lying"
+  },
+  {
+    "id": "98320337eec8",
+    "label": "forward",
+    "plan": "forward::0.3"
+  },
+  {
+    "id": "d49d6db4825f",
+    "label": "backward",
+    "plan": "forward::-0.3"
+  },
+  {
+    "id": "112dfa73fd54",
+    "label": "turn left",
+    "plan": "turn::90"
+  },
+  {
+    "id": "ae87f83da80c",
+    "label": "turn right",
+    "plan": "turn::-90"
+  }
+]  
