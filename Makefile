@@ -12,7 +12,7 @@ ROS_SETUP ?= /opt/ros/humble/setup.bash
 # Server port — override on the command line: make run PORT=8002
 PORT ?= 8001
 
-.PHONY: install install-deps run cli terminate doctor skill-generic skill-detect delete-skill run-external test clean help
+.PHONY: install install-deps run cli terminate doctor skill-generic skill-detect skill-external delete-skill run-external test clean help
 
 help:
 	@echo "kcare_robot -- robot skills + entry points (UI / CLI / Python API) that use robot_agent"
@@ -31,6 +31,9 @@ help:
 	@echo "                                        Scaffold a generic skill stub (creates/appends file + updates skills_config)"
 	@echo "  make skill-detect  SKILL=<name> [FILE=<file>]"
 	@echo "                                        Scaffold a detect-style skill (mock _fetch_data + detector client call)"
+	@echo "  make skill-external SKILL=<name>"
+	@echo "                                        Scaffold a standalone HTTP-service skill (own rclpy node + FastAPI app)"
+	@echo "                                        in template_skills/<skill>_external.py"
 	@echo "  make delete-skill  SKILL=<name> [YES=1]"
 	@echo "                                        Remove a skill from skills_config and from its file."
 	@echo "                                        If that file holds only this skill, the whole file is deleted."
@@ -121,6 +124,17 @@ skill-detect:
 		exit 2; \
 	fi
 	python3 -m robot_agent.new_skill kcare_robot $(SKILL) $(FILE) --template detect
+
+# Scaffold a standalone HTTP-service skill (own rclpy node + FastAPI app).
+# Written to kcare_robot/template_skills/<skill>_external.py — NOT added to
+# skills_config (external skills register with robot_agent via URL).
+#   make skill-external SKILL=grip
+skill-external:
+	@if [ -z "$(SKILL)" ]; then \
+		echo "Usage: make skill-external SKILL=<skill_name>"; \
+		exit 2; \
+	fi
+	python3 -m robot_agent.new_skill kcare_robot $(SKILL) --template external
 
 # Remove a skill. Prompts for confirmation; pass YES=1 to skip the prompt.
 #   make delete-skill SKILL=wave

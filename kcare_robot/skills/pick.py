@@ -13,6 +13,9 @@ orchestration only — flow matches the original module 1:1.
 """
 
 import time
+import math
+
+import numpy as np
 
 from robot_agent.skill_configs import ENV, ARM_CONFIGS, NO_ACTION
 from robot_agent.utils import (
@@ -25,7 +28,7 @@ from robot_agent.utils import (
 
 from kcare_robot.skills.approach import approach_close, __TURN_ANGLE, placeat, placep  # noqa: F401
 from kcare_robot.skills.arm import movet, movej, arm_exception_handler, movel, movelf
-from kcare_robot.skills.lift import lift, dlift
+from kcare_robot.skills.lift import lift, dlift, lift_state
 from kcare_robot.skills.grip import grip
 from kcare_robot.skills.head import get_robot_mode
 from kcare_robot.skills.mobile import move, forward
@@ -45,14 +48,51 @@ __DRAWER_RANGE = _h.DRAWER_RANGE
 
 @arm_exception_handler
 def fine_move(**kwargs):
-    """Grasp using the wrist-camera grasppose. Up to 2 trials: open gripper,
-    detect, pre-open to detected width, align, descend, close, pull back. Each
-    trial re-detects so a mis-grasp can self-correct."""
-    node = kwargs.pop('node', None)
-    obj_name = kwargs.pop('inputs')
-    dpull = kwargs.pop('dpull', None)
+    """Grasp using the wrist-camera grasppose.
 
-    for _ in range(2):
+    Flow:
+      1. Coarse detect (estimate_grasp=False) to read pose_3d[0]; pre-move the
+         wrist `dx` so the second detect sees the object closer to the centre
+         of the wrist FOV (mirrors carerobotapp behaviour). Skipped silently
+         if the coarse step fails.
+      2. Up to `num_trials` attempts: open gripper, re-detect with grasp pose,
+         align, descend, close, pull back. Each trial re-detects so a mis-grasp
+         can self-correct.
+
+    Kwargs:
+        num_trials  (int):  number of grasp attempts. Default 2.
+        pull_speed  (float): retraction speed (m/s-ish; passed to movet).
+                              Default 1.0.
+        dpull       (float | None): explicit pull distance (m). When None,
+                                     uses min(dz, 0.3).
+        Remaining kwargs forwarded to find_arm.
+    """
+    node       = kwargs.pop('node', None)
+    obj_name   = kwargs.pop('inputs')
+    dpull      = kwargs.pop('dpull', None)
+    num_trials = int(kwargs.pop('num_trials', 2))
+    pull_speed = float(kwargs.pop('pull_speed', 1.0))
+
+    # Step 1: coarse detect + dx nudge. Failure here is non-fatal — we just
+    # fall through to the per-trial loop without nudging.
+    try:
+        coarse = find_arm(node=node, inputs=obj_name,
+                          detector='groundingdino', estimate_grasp=False)
+        if coarse.get('isdone'):
+            pose = coarse['ins'][obj_name].get('pose_3d') \
+                or coarse['ins'][obj_name].get('loc_3d')
+            if pose is not None:
+                # pose components are in mm (from Ixy2xyz / camera frame);
+                # movet expects metres → divide by 1000. ±0.2 m matches the
+                # ±200 mm carerobotapp clamp.
+                dx_pre = float(np.clip(pose[0], -0.2, 0.2))
+                if abs(dx_pre) > 1e-4:
+                    movet(node=node, dx=dx_pre, wait=True)
+    except Exception:
+        pass
+
+    dx = dy = dz = None
+    for _ in range(num_trials):
         ret = grip(node=node, inputs='open', wait=False)
         if not ret['isdone']:
             return ret
@@ -66,7 +106,8 @@ def fine_move(**kwargs):
             continue
         dx, dy, dz, angle, width, eff_dpull = grasp
 
-        ret = _h.execute_fine_grasp(node, dx, dy, dz, angle, width, eff_dpull)
+        ret = _h.execute_fine_grasp(node, dx, dy, dz, angle, width, eff_dpull,
+                                    pull_speed=pull_speed)
         if not ret['isdone']:
             return ret
 
@@ -88,7 +129,9 @@ def open_drawer(**kwargs):
     inp = kwargs.pop('inputs', None)
     handle_name = __DEFAULT_HANDLE
     height = __DRAWER_HEIGHT
-    lift_height = node.agents['lm_state'].get()['current_position']
+    lift_height = lift_state(node=node)['current_position']
+
+    stay_here = kwargs.pop('stay_here', False)
 
     if inp is not None:
         env = get_env_specs(inp, ENV)
@@ -96,10 +139,11 @@ def open_drawer(**kwargs):
         if handle_name is None:
             print(f'No handle at {inp}')
             return {'isdone': False}
-        ret = move(node=node, inputs=inp, wait=True)
-        if not ret['isdone']:
-            return ret
-        height = env.get('height', __DRAWER_HEIGHT)
+        if not stay_here:
+            ret = move(node=node, inputs=inp, wait=True)
+            if not ret['isdone']:
+                return ret
+        height = env.get('handle_height', __DRAWER_HEIGHT)
 
     robot_mode = get_robot_mode(node=node)
 
@@ -110,7 +154,7 @@ def open_drawer(**kwargs):
     if not ret['isdone']:
         return ret
 
-    ret = movel(node=node, dz=-0.2, rx=-90, wait=True)
+    ret = movel(node=node, z=height-abs(ARM_CONFIGS['wrist_cam_offset']), ry=-90, wait=True)
     if not ret['isdone']:
         return ret
 
@@ -121,13 +165,25 @@ def open_drawer(**kwargs):
     if not ret['isdone']:
         return ret
 
-    ret = movel(node=node, dz=-0.1, wait=True)
+    # ret = movel(node=node, dz=-0.1, wait=True)
+    # if not ret['isdone']:
+    #     return ret
+
+    # Mirror carerobotapp: pull slowly and bias the grasp depth shallow so the
+    # handle isn't crushed. `deep_ratio=0.4` favours obj_median over bound.
+    ret = fine_move(node=node, inputs=handle_name, keep_orientation=True,
+                    dpull=__DPULL, deep_ratio=0.4, pull_speed=0.5, **kwargs)
     if not ret['isdone']:
         return ret
 
-    ret = fine_move(node=node, inputs=handle_name, keep_orientation=True, dpull=__DPULL, **kwargs)
-    if not ret['isdone']:
-        return ret
+    # Capture state right after the pull so callers (e.g. drawer-aware
+    # planners) can later restore the arm/base/lift configuration.
+    try:
+        pose_after_open = float(node.agents['robot_pose'].get()['pose'][3] * 180 / math.pi)
+    except Exception:
+        pose_after_open = None
+    lift_after_open    = lift_state(node=node).get('current_position')
+    forward_after_open = mforward
 
     ret = grip(node=node, inputs='open', wait=True)
     if not ret['isdone']:
@@ -147,7 +203,15 @@ def open_drawer(**kwargs):
 
     # NOTE: matches original — `movej('fold')` here has no `mode` argument,
     # unlike close_drawer below.
-    return _h.retract_from_drawer(node, lift_height, mforward, robot_mode=None)
+    ret = _h.retract_from_drawer(node, lift_height, mforward, robot_mode=None)
+    if not ret.get('isdone'):
+        return ret
+    return {
+        'isdone':             True,
+        'pose_after_open':    pose_after_open,
+        'lift_after_open':    lift_after_open,
+        'forward_after_open': forward_after_open,
+    }
 
 
 @arm_exception_handler
@@ -158,7 +222,7 @@ def close_drawer(**kwargs):
     inp = kwargs.pop('inputs', None)
     handle_name = __DEFAULT_HANDLE
     target_height = __DRAWER_HEIGHT
-    lift_height = node.agents['lm_state'].get()['current_position']
+    lift_height = lift_state(node=node)['current_position']
     env = {}
 
     if inp is not None:
@@ -245,6 +309,18 @@ def pick_no_sound(**kwargs):
     loc_name = kwargs.pop('inputs', None)
     caption, loc = _h.split_loc(loc_name)
 
+    # `caption|N` lets the caller override the per-grasp trial count, e.g.
+    # `pick::apple|3`. Matches carerobotapp's syntax.
+    splits = caption.split('|')
+    if len(splits) >= 2:
+        caption = splits[0]
+        try:
+            num_trials = int(splits[-1])
+        except ValueError:
+            num_trials = 2
+    else:
+        num_trials = kwargs.pop('num_trials', 2)
+
     env = get_env_specs(loc, ENV)
     robot_mode = get_robot_mode(node=node, env=env)
     lift_height = get_lift_height(env, robot_mode)
@@ -283,9 +359,9 @@ def pick_no_sound(**kwargs):
             return ret
     elif move_type == 'fine_move':
         time.sleep(0.5)
-        obj_name = loc_name.split('@')[0]
-        ret = fine_move(node=node, inputs=obj_name, mode=robot_mode,
-                        wrist_angle=kwargs['wrist_angle'])
+        ret = fine_move(node=node, inputs=caption, mode=robot_mode,
+                        wrist_angle=kwargs.get('wrist_angle'),
+                        num_trials=num_trials)
         if not ret['isdone']:
             return ret
     else:
@@ -313,6 +389,7 @@ def pick_no_sound(**kwargs):
     # Step 7: report success based on actual grasp state.
     kwargs['isdone'] = grasp_succeed(node=node)['isdone']
     kwargs.pop('wrist_angle', None)
+    kwargs.pop('inputs', None)
     return kwargs
 
 
@@ -411,11 +488,68 @@ def pick(**kwargs):
     loc_name = kwargs.get('inputs', None)
     caption, _loc = _h.split_loc(loc_name)
 
-    ret = run_parallel_check(funcs=[
-        lambda: announce_picking(caption),
-        lambda: {'isdone': True} if NO_ACTION else pick_no_sound(**kwargs),
-    ])
-    ret = ret['rets'][-1]
-    if ret['isdone']:
+    announce_picking(caption)
+    if not NO_ACTION:
+        ret = pick_no_sound(**kwargs)
         announce_picked()
-    return ret
+        return ret
+
+    # ret = run_parallel_check(funcs=[
+    #     lambda: announce_picking(caption),
+    #     lambda: {'isdone': True} if NO_ACTION else pick_no_sound(**kwargs),
+    # ])
+    # ret = ret['rets'][-1]
+    # if ret['isdone']:
+    #     announce_picked()
+    return {'isdone': True}
+
+
+@arm_exception_handler
+def pushing(**kwargs):
+    """Push (rather than pick) a target along the detected grasp axis.
+
+    Flow:
+      1. find_arm to get a grasppose for `inputs` (object name).
+      2. Close the gripper (no grasp; we use the closed fingers as a pusher).
+      3. Translate to (dx, dy), rotate wrist to `angle`, descend `dz`.
+      4. Open the gripper, retract `-dz`.
+
+    Units: grasppose dx/dy/dz come from kcare_robot's recognition in metres
+    (after the per-skill /1000 conversion in `estimate_grasp`), so they're
+    passed straight to `movet`. `angle` is in degrees, width in mm.
+
+    Not registered in skills_config — call as a Python function.
+    """
+    node = kwargs.pop('node', None)
+    obj_name = kwargs.get('inputs')
+
+    ret = find_arm(node=node, **kwargs)
+    if not ret['isdone']:
+        return ret
+    ins = ret['ins'][obj_name]
+
+    dx, dy, dz, angle, width = ins['grasppose']
+    angle = fix_angle(angle)
+    dz = abs(dz)
+
+    ret = grip(node=node, inputs='close', wait=False)
+    if not ret['isdone']:
+        return ret
+
+    ret = movet(node=node, dx=dx, dy=dy, wait=True)
+    if not ret['isdone']:
+        return ret
+
+    ret = movej(node=node, dr6=angle, wait=True)
+    if not ret['isdone']:
+        return ret
+
+    ret = movet(node=node, dz=dz, speed=0.5, wait=True)
+    if not ret['isdone']:
+        return ret
+
+    ret = grip(node=node, inputs='open', wait=True)
+    if not ret['isdone']:
+        return ret
+
+    return movet(node=node, dz=-dz)

@@ -63,16 +63,16 @@ def compute_drawer_mforward(node, handle_name, robot_mode):
     ret = find_arm(node=node, inputs=handle_name, estimate_grasp=False, detector='groundingdino')
     if not ret['isdone']:
         return ret, 0
-    x0 = ret['ins'][handle_name]['loc_3d'][0]
+    x0 = ret['ins'][handle_name]['loc_3d'][0]/1000.
     xmin = DRAWER_RANGE[0] if robot_mode == 'right' else -DRAWER_RANGE[1]
     xmax = DRAWER_RANGE[1] if robot_mode == 'right' else -DRAWER_RANGE[0]
     mforward = np.clip(x0, xmin, xmax) - x0
-    return None, (0 if abs(mforward) < 50 else mforward)
+    return None, (0 if abs(mforward) < 0.05 else mforward)
 
 
 def drive_forward_if_needed(node, mforward):
     """Drive forward by `mforward` mm if it exceeds the 50 mm dead zone."""
-    if abs(mforward) > 50:
+    if abs(mforward) > 0.05:
         return forward(node=node, inputs=mforward, wait=True)
     return {'isdone': True}
 
@@ -155,10 +155,13 @@ def grasp_pose_from_ins(ins, dpull):
     return dx, dy, dz, angle, width, effective_dpull
 
 
-def execute_fine_grasp(node, dx, dy, dz, angle, width, dpull):
+def execute_fine_grasp(node, dx, dy, dz, angle, width, dpull, pull_speed=1.0):
     """Open gripper to `width+200`, move to (dx, dy), rotate to `angle`,
     descend `dz`, close, then pull back `dpull` while keeping the gripper
-    closed. Returns the final ret (may be a failure or success dict)."""
+    closed. Returns the final ret (may be a failure or success dict).
+
+    `pull_speed` controls the dz=-dpull retraction speed (default 1.0).
+    """
     ret = grip(node=node, inputs=width + 0.02, wait=False)
     if not ret['isdone']:
         return ret
@@ -176,5 +179,5 @@ def execute_fine_grasp(node, dx, dy, dz, angle, width, dpull):
         return ret
     return run_parallel_check(funcs=[
         lambda: grip(node=node, inputs='close', wait=False),
-        lambda: movet(node=node, dz=-dpull, wait=True),
+        lambda: movet(node=node, dz=-dpull, speed=pull_speed, wait=True),
     ])

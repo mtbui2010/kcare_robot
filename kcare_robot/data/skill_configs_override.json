@@ -13,8 +13,8 @@
     ],
     "home": {
       "front": 0.7,
-      "left": 0.9,
-      "right": 0.9
+      "left": 0.8,
+      "right": 0.8
     }
   },
   "HEAD_CONFIGS": {
@@ -35,7 +35,7 @@
   },
   "MOBILE_CONFIGS": {
     "dforward": 0.2,
-    "dshift": -0.4415,
+    "dshift": -0.2,
     "height": 0.405,
     "max_shift": 0.6
   },
@@ -43,15 +43,31 @@
     "table@living room": {
       "default_mode": "right",
       "placepose": {
-        "dx": 0
+        "dy": -0.05
       },
-      "height": 0.77,
+      "height": 0.72,
       "loc": {
-        "x": 1,
-        "y": -1.74,
+        "x": 0.9,
+        "y": -1.67,
         "rz": 0
       },
-      "dforward": 0.1
+      "dforward": 0
+    },
+    "drawer@living room": {
+      "default_mode": "left",
+      "placepose": {
+        "dy": 0
+      },
+      "handle": "gray handle",
+      "handle_height": 0.415,
+      "height": 0.565,
+      "loc": {
+        "x": 0.763,
+        "y": -1.913,
+        "rz": -90
+      },
+      "dshift": -0.1,
+      "dforward": -0.1
     }
   },
   "HOME_LOC": {

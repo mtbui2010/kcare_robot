@@ -9,8 +9,10 @@ from robot_agent.utils import quaternion2deg, deg2quaternion
 
 def check_current_loc(node, loc):
     try:
-        loc0 = node.agents['mobile_pose'].get()
-        return np.linalg.norm([loc['x'] - loc0['x'], loc['y'] - loc0['y']]) < 50
+        x0, y0 = mobile_pose(node=node)['pose'][:2]
+        x, y = loc['x'], loc['y']
+
+        return np.linalg.norm([x-x0, y-y0]) < 0.1
     except Exception as e:
         print(e)
         return False
@@ -29,40 +31,44 @@ def mobile_pose(node, **kwargs):
 
 @exception_handler
 def moveb(node, **kwargs):
-
+    wait = kwargs.pop('wait', True)
 
     x0, y0, rz0 = mobile_pose(node=node)['pose']
     x, y, rz = kwargs.pop('x', x0), kwargs.pop('y', y0), kwargs.pop('rz', rz0)
     qx, qy, qz, qw = deg2quaternion(0,0, rz)
     
-    return node.agents['mobile_move'].send({'x': x, 'y':y, 'z':0., 'qx': qx, 'qy':qy, 'qz': qz, 'qw': qw})
+    return node.agents['mobile_move'].send({'x': x, 'y':y, 'z':0., 'qx': qx, 'qy':qy, 'qz': qz, 'qw': qw, 'wait': wait})
     
     
 
 @exception_handler
 def forward(node, **kwargs):
     inp = float(kwargs.pop("inputs"))
+    wait = kwargs.pop('wait', True)
     if abs(inp)<0.02:
         return {'isdone': True}
     
     
-    return node.agents['mobile_forward'].send({'distance': inp})
+    
+    return node.agents['mobile_forward'].send({'distance': inp, 'wait':wait})
     # return node.agents['mobile_forward'].send({'x': inp})
 
 
 @exception_handler
 def turn(node, **kwargs):
     inp = float(kwargs.pop("inputs"))
+    wait = kwargs.pop('wait', True)
     if abs(inp)<5:
         return {'isdone': True}
     
-    return node.agents['mobile_turn'].send({'theta': inp*np.pi/180.})
+    return node.agents['mobile_turn'].send({'theta': inp*np.pi/180., 'wait': wait})
 
 @exception_handler
 def rotate(node, **kwargs):
     inp = float(kwargs.pop("inputs"))
+    wait = kwargs.pop('wait', True)
     
-    return node.agents['mobile_rotate'].send({'theta': inp*np.pi/180.})
+    return node.agents['mobile_rotate'].send({'theta': inp*np.pi/180., 'wait': wait})
     # return node.agents['mobile_rotate'].send({'target_yaw': inp*np.pi/180.})
 
 
@@ -91,8 +97,8 @@ def move(node, **kwargs):
     # approach to new location
     env_loc = env.get('loc', None)
     robot_mode = env.get('default_mode', 'front') 
-    dforward = env.get('dforward', MOBILE_CONFIGS['dforward']) 
-    dshift = env.get('dshift',  MOBILE_CONFIGS['dshift']) 
+    dforward = MOBILE_CONFIGS['dforward'] + env.get('dforward', 0) 
+    dshift = MOBILE_CONFIGS['dshift'] + env.get('dshift',  0) 
     robot_mode = kwargs.get('mode', robot_mode) 
     lift_height = get_lift_height(env, robot_mode)
 
@@ -118,7 +124,8 @@ def move(node, **kwargs):
     
     if is_current_loc:
         return run_parallel_check(funcs=[
-            lambda : agents['turn'].send({'inputs':env_loc['rz'] + turn_deg -agents['mobile_pose'].get()['rz'], 'wait':True}),
+            # lambda : agents['turn'].send({'inputs':env_loc['rz'] + turn_deg -agents['mobile_pose'].get()['rz'], 'wait':True}),
+            lambda : turn(node=node, inputs=env_loc['rz'] + turn_deg -mobile_pose(node=node)['pose'][-1]),
             lambda : moveh(node=node, ry='straight', rz=robot_mode, wait=True)
         ])
 
@@ -126,8 +133,8 @@ def move(node, **kwargs):
     if prev_robot_mode!='front':
         ret = run_parallel_check(funcs=[
             lambda : moveh(node=node, inputs='straight,front', wait=True),
-            lambda : node.agents['turn'].send({'inputs': back_turn_deg, 'wait': True}),
-            # lambda : movej(node=node, inputs='fold', mode='front'),
+            # lambda : node.agents['turn'].send({'inputs': back_turn_deg, 'wait': True}),
+            lambda : turn(node=node, inputs=back_turn_deg),
         ])
         if not ret['isdone']:
             return ret
@@ -147,27 +154,18 @@ def move(node, **kwargs):
     ]) ['isdone']:
         raise  Exception('moveh/lift/moveb failed ...')
     
-    ret = run_parallel_check(funcs=[
-        # lambda : lift(node=node, inputs=lift_height, mode=robot_mode, wait=True),
-        lambda : lift(node=node, inputs=lift_height, mode=robot_mode, wait=True),
-        # lambda : movej(node=node, inputs='fold', mode=robot_mode, wait=True),
-    ])
-    if not ret['isdone']:
-        return ret
+    ret = lift(node=node, inputs=lift_height, mode=robot_mode, wait=True)
+    assert ret['isdone'], f'{ret}'
 
-    # forward
-    ret = run_parallel_check(funcs=[
-        # lambda : lift(node=node, inputs=lift_height, mode=robot_mode, wait=True),
-        lambda : forward(node=node, inputs=dforward, wait=True),
-    ])
-    if not ret['isdone']:
-        return ret
+    ret = forward(node=node, inputs=dforward, wait=True)
+    assert ret['isdone'], f'{ret}'
     
     # text2voice(translate(f'I am arrived at {loc2text(env_name)}', to_language='korean'))
     announce_arrived()
     
+
     return run_parallel_check(funcs=[
-        lambda : turn(node=node, inputs=turn_deg),
+        lambda: turn(node=node, inputs=turn_deg),
         lambda : moveh(node=node, ry='straight', rz=robot_mode, wait=True),
         lambda : movej(node=node, inputs='fold', mode=robot_mode, wait=True),
     ])

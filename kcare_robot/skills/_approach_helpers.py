@@ -10,7 +10,7 @@ from robot_agent.utils import get_env_specs, run_parallel_check
 from kcare_robot.skills.arm import movel, movej, get_wrist_angle, arm_pose
 from kcare_robot.skills.lift import lift, dlift, lift_state
 from kcare_robot.skills.grip import grip
-from kcare_robot.skills.recognition import find, find_arm
+from kcare_robot.skills.recognition import find, find_arm, get_side_pose_3d
 from kcare_robot.skills.mobile import move, forward
 
 
@@ -61,17 +61,22 @@ def get_dmove_approach(d_approach, wrist_angle, robot_mode, moveback=True):
     return (dx, dy, dz) if moveback else (-dx, dy, dz)
 
 
-def get_placepose(placepose, target_height, robot_mode):
-    """Resolve a placepose dict + target height into a [x, y, z, wrist_angle] list."""
+def get_placepose(placepose, target_height, robot_mode, islying=False):
+    """Resolve a placepose dict + target height into a [x, y, z, wrist_angle] list.
+
+    `islying` is forwarded by callers that have detected the object's posture
+    (mirrors carerobotapp's signature) so future overrides can lean shallower
+    for lying objects. Currently unused in the body but accepted for parity.
+    """
     assert placepose is not None or target_height is not None, \
         f'placepose: {placepose}, target height: {target_height}'
     # x, y, z, dx, dy = ARM_CONFIGS['base_x'], 0.7, target_height, 0, 0
-    x, y, z, dx, dy = -MOBILE_CONFIGS['dshift'], 0.7, target_height, 0, 0
+    x, y, z, dx, dy, dz = ARM_CONFIGS['base_x']-MOBILE_CONFIGS['dshift'], 0.7, target_height, 0, 0, 0.05
     wrist_angle = 15 if z > 0.45 else 30 if z > 0.2 else 45
     if placepose is not None:
         x = placepose.get('x', x) + placepose.get('dx', dx)
         y = abs(placepose.get('y', y)) + placepose.get('dy', dy)
-        z = placepose.get('z', z)
+        z = placepose.get('z', z) + placepose.get('dz', dz)
         wrist_angle = placepose.get('wrist_angle', wrist_angle)
     y = y if robot_mode == 'right' else -y
     return [x, y, z, wrist_angle]
@@ -88,10 +93,19 @@ def resolve_pose_3d(node, inputs, not_move, kwargs):
     Returns `(err, pose_3d, env, obj_name, ins_obj)`. If `err` is not None it is
     a result dict the caller should `return` immediately. `ins_obj` is the
     per-object info dict (empty unless inputs is an object spec).
+
+    Reads `side` from `kwargs` (without popping — caller may still need it):
+      - On the ENV-location branch, calls `get_side_pose_3d(node, pose_3d=...)`
+        so the arm targets a free spot adjacent to the configured placepose
+        rather than the placepose itself.
+      - On the object-spec branch, when `side` is set, prefers
+        `ins_obj['side_pose']` over `ins_obj['pose_3d']` (both populated by
+        `recognition.detect` when `side=` is forwarded).
     """
     if not isinstance(inputs, str):
         return None, inputs, {}, None, {}
 
+    side = kwargs.get('side', None)
     loc_name = inputs
     env = get_env_specs(loc_name, ENV)
 
@@ -103,9 +117,21 @@ def resolve_pose_3d(node, inputs, not_move, kwargs):
                 return ret, None, env, None, {}
         target_height = env.get('height', 0.75)
         robot_mode = env['default_mode']
-        pose_3d = get_placepose(env.get('placepose', None), target_height, robot_mode)
+        placepose = dict(env.get('placepose', None) or {})
+        placepose.update(kwargs.pop('placepose', {}) or {})
+        pose_3d = get_placepose(
+            placepose or None, target_height, robot_mode,
+            islying=kwargs.get('islying', False),
+        )
         if pose_3d is None:
             raise Exception(f'No grasppose in {loc_name}')
+        # Snap to a free spot beside the placepose so we don't collide with
+        # whatever already sits at the configured drop point.
+        try:
+            side_ret = get_side_pose_3d(node=node, pose_3d=pose_3d)
+            pose_3d = side_ret.get('pose_3d', pose_3d)
+        except Exception as exc:
+            print(f'[resolve_pose_3d] get_side_pose_3d failed, using base placepose: {exc}')
         return None, pose_3d, env, None, {}
 
     # Object spec: retry find() up to 2 times to populate ins.
@@ -121,7 +147,14 @@ def resolve_pose_3d(node, inputs, not_move, kwargs):
         find_trial += 1
     if len(ins_obj) == 0:
         raise Exception(f'Find and refind 2 times failed. Terminated ...')
-    return None, ins_obj['pose_3d'], {}, obj_name, ins_obj
+
+    # When the caller asked for a side approach, prefer the side_pose that
+    # recognition.detect computed alongside pose_3d.
+    if side is not None and ins_obj.get('side_pose') is not None:
+        target_pose = ins_obj['side_pose']
+    else:
+        target_pose = ins_obj['pose_3d']
+    return None, target_pose, {}, obj_name, ins_obj
 
 
 # ---------------------------------------------------------------------------
@@ -169,14 +202,14 @@ def init_pose_lift_and_unfold(node, robot_mode, z):
     return None, lift_to_limit
 
 
-def init_pose_detect_posture(node, obj_name, lift_to_limit):
+def init_pose_detect_posture(node, obj_name, lift_to_limit, **kwargs):
     """Detect whether the target object is lying down and which side carries
     its mass. Skipped (returns defaults) when the lift couldn't reach target.
 
     Returns `(err_or_none, islying, left_mass_percent, wrist_angle)`.
     """
-    islying, left_mass_percent = False, 50
-    if lift_to_limit < 50:
+    islying, left_mass_percent = kwargs.pop('islying', False), 50
+    if lift_to_limit < 0.05:
         ret = {'isdone': False}
         num_trial = 0
         while not ret['isdone'] and num_trial < 2:
@@ -199,8 +232,8 @@ def init_pose_handle_lying(node, robot_mode, y, agents):
     if not ret['isdone']:
         return ret
     current_pose = arm_pose(node=node)['pose']
-    dy = y - (0.1 if robot_mode == 'right' else -0.1) - current_pose[1]
-    return movel(node=node, dy=np.clip(dy, -0.1, 0.1), wait=True, acc=0.5, speed=0.5)
+    dy = y - (0.15 if robot_mode == 'right' else -0.15) - current_pose[1]
+    return movel(node=node, dy=np.clip(dy, -0.15, 0.15), wait=True, acc=0.5, speed=0.5)
 
 
 def init_pose_handle_standing(node, robot_mode, wrist_angle, lift_to_limit,
@@ -216,12 +249,15 @@ def init_pose_handle_standing(node, robot_mode, wrist_angle, lift_to_limit,
     dz = -0.15 + lift_to_limit
     turn_angle = 35 if robot_mode == 'right' else -35
     ret = run_parallel_check(funcs=[
-        lambda: lift_dz(node=node, dz=dz),
-        lambda: movel(node=node, wait=True, dx=dx),
+        lambda: dlift(node=node, inputs=dz),
+        # lambda: movel(node=node, wait=True, dx=dx),
         lambda: movej(node=node, dr0=turn_angle, wait=True) if not islying else {'isdone': True},
     ])
     if not ret['isdone']:
         return ret
+    
+    ret = movel(node=node, wait=True, dx=dx)
+    assert ret['isdone'], f'init_pose_handle_standing failed : {ret}'
 
     # NOTE: the final `if not ret['isdone']` in the original is intentionally
     # outside the elif (see approach.py history); preserved verbatim.
@@ -266,15 +302,18 @@ def resolve_wrist_angle_for_motion(node, action_type, wrist_angle, ins_obj, z):
     return wrist_angle
 
 
-def compute_shift_values(node, wrist_angle, robot_mode, dlift_up):
+def compute_shift_values(node, wrist_angle, robot_mode, dlift_up, islying):
     """Build the dict of (dx, dy, dz) shifts that map the target pose to an
     arm-frame command: approach offset, base+lift compensation, calibration
     correction, and any pre-place lift-up the caller requested."""
-    dx, dy, dz = get_dmove_approach(
-        d_approach=ARM_CONFIGS['approach_d'],
-        wrist_angle=wrist_angle,
-        robot_mode=robot_mode,
-    )
+    if islying:
+        dx, dy, dz = 0,0, ARM_CONFIGS['approach_d']
+    else:
+        dx, dy, dz = get_dmove_approach(
+            d_approach=ARM_CONFIGS['approach_d'],
+            wrist_angle=wrist_angle,
+            robot_mode=robot_mode,
+        )
     return {
         'approach_close': [dx, dy, dz],
         'calib_offset': ARM_CONFIGS['calib_offset'],
@@ -295,7 +334,7 @@ def compute_target_and_lift(x, y, z, shift_values, lm_state):
     return (dx, dy, dz), (target_x, target_y, target_z), lift_to
 
 
-def execute_approach_motion(node, robot_mode, lift_to, wrist_angle, target_xyz):
+def execute_approach_motion(node, robot_mode, lift_to, wrist_angle, target_xyz, islying):
     """Run the standard approach sequence: lift → give → rotate wrist →
     swing arm sideways → set z → set (x, y). Returns the first failing ret,
     or `{'isdone': True}` on success."""
@@ -304,6 +343,13 @@ def execute_approach_motion(node, robot_mode, lift_to, wrist_angle, target_xyz):
     ret = lift(node=node, inputs=lift_to)
     if not ret['isdone']:
         return ret
+    
+    if islying:
+        ret = movej(node=node, inputs='approach_lying')
+        assert ret['isdone'], f'execute_approach_motion failed: {ret}'
+        
+        return movel(node=node, x=target_x, y=target_y, z=target_z)
+
     ret = movej(node=node, inputs='give', mode=robot_mode)
     if not ret['isdone']:
         return ret

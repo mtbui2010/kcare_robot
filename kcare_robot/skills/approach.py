@@ -47,7 +47,7 @@ def _run_init_pose_fixed(node, agents, robot_mode, y, z, obj_name, kwargs):
         return err
 
     err, islying, left_mass_percent, wrist_angle = _h.init_pose_detect_posture(
-        node, obj_name, lift_to_limit,
+        node, obj_name, lift_to_limit, **kwargs
     )
     if err is not None:
         return err
@@ -65,6 +65,7 @@ def _run_init_pose_fixed(node, agents, robot_mode, y, z, obj_name, kwargs):
 
     kwargs['wrist_angle'] = wrist_angle
     kwargs['isdone'] = True
+    kwargs['islying']  =islying
     return kwargs
 
 
@@ -87,7 +88,9 @@ def approach_close(**kwargs):
     # Pop 'ins' from kwargs (matches original ordering — resolve_pose_3d reads
     # via kwargs.get(), which then yields {} for the object-finding branch).
     kwargs.pop('ins', {})
-    not_move = kwargs.pop('not_move', False)
+    # `stay_here` is the carerobotapp name; treat it as a synonym for our
+    # existing `not_move` kwarg. Either suppresses the drive-to-location step.
+    not_move = kwargs.pop('not_move', False) or kwargs.pop('stay_here', False)
     inputs = kwargs.pop('inputs', None)
 
     # Step 1: resolve target pose.
@@ -116,19 +119,21 @@ def approach_close(**kwargs):
 
     # Step 4b: normal branch.
     print(f'Approaching to : {x, y, z}')
+
     wrist_angle = _h.resolve_wrist_angle_for_motion(node, action_type, wrist_angle, ins_obj, z)
     kwargs['wrist_angle'] = wrist_angle
 
     shift_values = _h.compute_shift_values(
         node, wrist_angle, robot_mode,
         dlift_up=kwargs.pop('dlift_up', [0, 0, 0]),
+        islying=kwargs.get('islying', False)
     )
     lm_state = lift_state(node=node)['current_position']
     dmove, target_xyz, lift_to = _h.compute_target_and_lift(
-        x, y, z, shift_values, lm_state,
+        x, y, z, shift_values, lm_state
     )
 
-    ret = _h.execute_approach_motion(node, robot_mode, lift_to, wrist_angle, target_xyz)
+    ret = _h.execute_approach_motion(node, robot_mode, lift_to, wrist_angle, target_xyz, kwargs.get('islying', False))
     if not ret['isdone']:
         return ret
 
@@ -198,14 +203,19 @@ def placeat(**kwargs):
     to_wipe = kwargs.get('to_wipe', False)
     inp = kwargs.get('inputs')
 
-    ret = run_parallel_check(funcs=[
-        lambda: announce_placing(inp, to_wipe=to_wipe),
-        lambda: {'isdone': True} if NO_ACTION else placeat_no_sound(**kwargs),
-    ])
-    ret = ret['rets'][-1]
-    if ret['isdone']:
+    announce_placing(inp, to_wipe=to_wipe)
+    if not NO_ACTION:
+        ret = placeat_no_sound(**kwargs)
         announce_placed(inp, to_wipe=to_wipe)
-    return ret
+        return ret
+    # ret = run_parallel_check(funcs=[
+    #     lambda: announce_placing(inp, to_wipe=to_wipe),
+    #     lambda: {'isdone': True} if NO_ACTION else placeat_no_sound(**kwargs),
+    # ])
+    # ret = ret['rets'][-1]
+    # if ret['isdone']:
+    #     announce_placed(inp, to_wipe=to_wipe)
+    return {'isdone': True}
 
 
 @arm_exception_handler
