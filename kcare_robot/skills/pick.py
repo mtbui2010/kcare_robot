@@ -243,6 +243,7 @@ def close_drawer(**kwargs):
     target_height = __DRAWER_HEIGHT
     lift_height = lift_state(node=node)['current_position']
     env = {}
+    stay_here = kwargs.pop('stay_here', True)
 
     if inp is not None:
         env = get_env_specs(inp, ENV)
@@ -250,9 +251,10 @@ def close_drawer(**kwargs):
         if handle_name is None:
             print(f'No handle at {inp}')
             return {'isdone': False}
-        ret = move(node=node, inputs=inp, wait=True)
-        if not ret['isdone']:
-            return ret
+        if not stay_here:
+            ret = move(node=node, inputs=inp, wait=True)
+            if not ret['isdone']:
+                return ret
         target_height = env.get('height', __DRAWER_HEIGHT)
     pose_after_open = kwargs.pop('pose_after_open', None)
     lift_after_open = kwargs.pop('lift_after_open', None)
@@ -284,9 +286,9 @@ def close_drawer(**kwargs):
         ret = _h.drive_forward_if_needed(node, mforward)
         if not ret['isdone']:
             return ret
-    else:
-        ret = forward(node=node, inputs=-forward_after_open)
-        assert ret['isdone'], f'{ret}'
+    # else:
+    #     ret = forward(node=node, inputs=-forward_after_open)
+    #     assert ret['isdone'], f'{ret}'
 
     if pose_after_open is None:
         ret = movel(node=node, dz=-0.1, wait=True)
