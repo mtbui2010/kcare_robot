@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls /home/keti-kcare-3/workdir/)",
+      "Read(//home/keti-kcare-3/workdir/**)",
+      "Bash(python3 -c \"import pyconnect.ros.custom_node as m; print\\(m.__file__\\)\")",
+      "Read(//home/keti-kcare-3/docker_ws/kcare_carerobotapp/src/pyconnect/pyconnect/ros/**)"
+    ],
+    "additionalDirectories": [
+      "/home/keti-kcare-3/workdir/pyconnect/pyconnect/ros"
+    ]
+  }
+}

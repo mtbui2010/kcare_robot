@@ -466,9 +466,9 @@ def _head_calib_func_factory(robot_mode, head_state):
     #     return calib.convert_head_to_base_point(
     #         robot_mode, xc, yc, obj_depth,
     #         head_state['current_ry'], head_state['current_rz'])
-    def f(xc, yc, **kwargs):
+    def f(x, y, **kwargs):
         node = kwargs.get('node')
-        return get3d(node=node, x=xc, y=yc)['pose']
+        return get3d(node=node, x=x, y=y)['pose']
     return f
 
 
@@ -641,15 +641,16 @@ def _detect_one(node, *, ins, cam, obj_name, camera, workspace, calib_func,
     #                                 cam_params=cam.cam_params,
     #                                 robot_mode=robot_mode,
     #                                 head_state=cam.head_state)).reshape(-1, 3)
-    
+    poses = [calib_func(node=node, x=x, y=y, obj_depth=dd, cam_params=cam.cam_params) for x,y,dd in zip(Xc, Yc,obj_depths)]
+    poses_arr = np.array(poses)
 
     
 
     # 3. workspace filter
-    # inside = is_inside_workspace_box(
-    #     x=poses_arr[:, 0], y=poses_arr[:, 1], z=poses_arr[:, 2], workspace=workspace)
-    # inds = [i for i, ok in enumerate(np.atleast_1d(inside)) if ok]
-    # assert len(inds) > 0, f'pose_3d: {poses_arr.tolist()} out of workspace'
+    inside = is_inside_workspace_box(
+        x=poses_arr[:, 0], y=poses_arr[:, 1], z=poses_arr[:, 2], workspace=workspace)
+    inds = [i for i, ok in enumerate(np.atleast_1d(inside)) if ok]
+    assert len(inds) > 0, f'pose_3d: {poses_arr.tolist()} out of workspace'
     cluster_ins = cluster_ins.select(inds=inds, issorted=True)
     valid_locs  = [valid_locs[i] for i in inds]
     obj_depths  = [obj_depths[i] for i in inds]

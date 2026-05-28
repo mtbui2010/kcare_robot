@@ -8,11 +8,11 @@
   "LIFT_CONFIGS": {
     "mobile_height": 0.43,
     "range": [
-      0.54,
+      0.56,
       1.1
     ],
     "home": {
-      "front": 0.7,
+      "front": 0.8,
       "left": 0.8,
       "right": 0.8
     }
@@ -24,8 +24,8 @@
     ],
     "rz": {
       "front": 0,
-      "left": -80,
-      "right": 80
+      "left": -70,
+      "right": 70
     },
     "ry": {
       "up": 10,
@@ -40,34 +40,134 @@
     "max_shift": 0.6
   },
   "ENV": {
-    "table@living room": {
-      "default_mode": "right",
-      "placepose": {
-        "dy": -0.05
-      },
-      "height": 0.72,
-      "loc": {
-        "x": 0.9,
-        "y": -1.67,
-        "rz": 0
-      },
-      "dforward": 0
-    },
-    "drawer@living room": {
+    "default_loc@main room": "table",
+    "table@main room": {
+      "label": "\uc548\ubc29 \ud14c\uc774\ube14",
       "default_mode": "left",
-      "placepose": {
-        "dy": 0
-      },
-      "handle": "gray handle",
-      "handle_height": 0.415,
-      "height": 0.565,
+      "height": 0.762,
       "loc": {
-        "x": 0.763,
-        "y": -1.913,
+        "x": 1.979,
+        "y": -0.809,
         "rz": -90
       },
-      "dshift": -0.1,
-      "dforward": -0.1
+      "dforward": 0.15
+    },
+    "drawer@main room": {
+      "label": "\uc11c\ub78d",
+      "default_mode": "left",
+      "handle": "gray handle",
+      "handle_height": 0.415,
+      "height": 0.566,
+      "loc": {
+        "x": 1.322,
+        "y": -0.809,
+        "rz": -90
+      },
+      "dforward": 0.15,
+      "dshift": -0.2
+    },
+    "bed@main room": {
+      "label": "\uc548\ubc29 \uce68\ub300",
+      "default_mode": "right",
+      "placepose": {
+        "dy ": -0.05
+      },
+      "height": 0.32,
+      "loc": {
+        "x": 2.305,
+        "y": 0.28,
+        "rz": 90
+      },
+      "dforward": 0.15
+    },
+    "table@living room": {
+      "label": "\uac70\uc2e4 \ud14c\uc774\ube14",
+      "default_mode": "left",
+      "placepose": {
+        "dx": 0
+      },
+      "height": 0.456,
+      "loc": {
+        "x": 1.5,
+        "y": -4.4,
+        "rz": -90
+      },
+      "dshift": -0.1
+    },
+    "wait@living room": {
+      "label": "living_room_wait",
+      "default_mode": "front",
+      "height": 0.456,
+      "loc": {
+        "x": 1.673,
+        "y": -3.6,
+        "rz": -90
+      },
+      "dforward": 0,
+      "dshift": 0
+    },
+    "trash@living room": {
+      "label": "\uc2a4\ub808\uae30\ud1b5",
+      "default_mode": "left",
+      "grasppose": {
+        "dy": 0.2
+      },
+      "height": 0.17,
+      "loc": {
+        "x": -0.79,
+        "y": -4.75,
+        "rz": -150
+      },
+      "dforward": 0.15,
+      "dshift": 0.1
+    },
+    "counter@kitchen": {
+      "label": "\uc8fc\ubc29 \uc120\ubc18",
+      "default_mode": "left",
+      "height": 0.85,
+      "loc": {
+        "x": -4.137,
+        "y": -2.278,
+        "rz": 90
+      },
+      "dforward": 0,
+      "dshift": 0
+    },
+    "sink@kitchen": {
+      "label": "\uc2f1\ud06c\ub300",
+      "default_mode": "right",
+      "height": 0.85,
+      "loc": {
+        "x": -4.959,
+        "y": -2.355,
+        "rz": 180
+      },
+      "dforward": 0.15
+    },
+    "table@kitchen": {
+      "label": "\uc2dd\ud0c1",
+      "default_mode": "right",
+      "height": 0.755,
+      "loc": {
+        "x": -2.838,
+        "y": -2.145,
+        "rz": -90
+      },
+      "dforward": 0.2
+    },
+    "drawer@kitchen": {
+      "label": "\uc11c\ub78d",
+      "default_mode": "left",
+      "handle": "gray handle",
+      "handle_height": 0.415,
+      "height": 0.566,
+      "loc": {
+        "x": -3.628,
+        "y": -2.278,
+        "rz": 90
+      },
+      "dshift": -0.4,
+      "dforward": 0.1
     }
   },
   "HOME_LOC": {

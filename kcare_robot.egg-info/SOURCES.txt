@@ -31,7 +31,6 @@ kcare_robot/skills/head.py
 kcare_robot/skills/inform.py
 kcare_robot/skills/lift.py
 kcare_robot/skills/mobile.py
-kcare_robot/skills/new_skill.py
 kcare_robot/skills/pick.py
 kcare_robot/skills/place.py
 kcare_robot/skills/pointcloud.py

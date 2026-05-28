@@ -6,7 +6,7 @@ import numpy as np
 from robot_agent.skill_configs import ARM_CONFIGS
 from robot_agent.utils import run_parallel_check
 
-from kcare_robot.skills.arm import movet, movel, movelf, movej
+from kcare_robot.skills.arm import movet, movel, movelf, movej, arm_pose
 from kcare_robot.skills.lift import lift, dlift
 from kcare_robot.skills.grip import grip
 from kcare_robot.skills.mobile import forward
@@ -30,6 +30,10 @@ def is_inside_workspace(dx, dy, dz):
     return (r['x'][0] <= dx <= r['x'][1] and
             r['y'][0] <= dy <= r['y'][1] and
             r['z'][0] <= dz <= r['z'][1])
+
+def is_vertical_gripper(node):
+    gripper_angle = arm_pose(node=node)['pose'][-2]
+    return abs(gripper_angle)<20
 
 
 def fix_angle(angle):
@@ -63,7 +67,7 @@ def compute_drawer_mforward(node, handle_name, robot_mode):
     ret = find_arm(node=node, inputs=handle_name, estimate_grasp=False, detector='groundingdino')
     if not ret['isdone']:
         return ret, 0
-    x0 = ret['ins'][handle_name]['loc_3d'][0]/1000.
+    x0 = ret['ins'][handle_name]['loc_3d'][0]
     xmin = DRAWER_RANGE[0] if robot_mode == 'right' else -DRAWER_RANGE[1]
     xmax = DRAWER_RANGE[1] if robot_mode == 'right' else -DRAWER_RANGE[0]
     mforward = np.clip(x0, xmin, xmax) - x0
@@ -77,16 +81,22 @@ def drive_forward_if_needed(node, mforward):
     return {'isdone': True}
 
 
-def retract_from_drawer(node, lift_height, mforward, robot_mode=None):
+def retract_from_drawer(node, lift_height, mforward,  robot_mode=None):
     """Lift back to `lift_height`, fold the arm, and undo the forward drive."""
     funcs = [
-        lambda: lift(node=node, inputs=lift_height, wait=True),
+        # lambda: lift(node=node, inputs=lift_height, wait=True),
         (lambda: movej(node=node, inputs='fold', mode=robot_mode))
         if robot_mode is not None else
         (lambda: movej(node=node, inputs='fold')),
-        lambda: forward(node=node, inputs=-mforward, wait=True) if abs(mforward) > 50 else {'isdone': True},
+        # lambda: forward(node=node, inputs=-mforward, wait=True) if abs(mforward) > 0.5 else {'isdone': True},
     ]
-    return run_parallel_check(funcs=funcs)
+    ret =  run_parallel_check(funcs=funcs)
+    assert ret['isdone'], f'{ret}'
+
+    ret = forward(node=node, inputs=-mforward, wait=True) if abs(mforward) > 0.5 else {'isdone': True}
+    assert ret['isdone'], f'{ret}'
+
+    return lift(node=node, inputs=lift_height, wait=True)
 
 
 # ---------------------------------------------------------------------------

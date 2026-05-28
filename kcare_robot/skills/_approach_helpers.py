@@ -7,7 +7,7 @@ import numpy as np
 from robot_agent.skill_configs import ARM_CONFIGS, LIFT_CONFIGS, ENV, CALIB_PARAMS, MOBILE_CONFIGS
 from robot_agent.utils import get_env_specs, run_parallel_check
 
-from kcare_robot.skills.arm import movel, movej, get_wrist_angle, arm_pose
+from kcare_robot.skills.arm import movel, movej, movet, get_wrist_angle, arm_pose
 from kcare_robot.skills.lift import lift, dlift, lift_state
 from kcare_robot.skills.grip import grip
 from kcare_robot.skills.recognition import find, find_arm, get_side_pose_3d
@@ -74,10 +74,12 @@ def get_placepose(placepose, target_height, robot_mode, islying=False):
     x, y, z, dx, dy, dz = ARM_CONFIGS['base_x']-MOBILE_CONFIGS['dshift'], 0.7, target_height, 0, 0, 0.05
     wrist_angle = 15 if z > 0.45 else 30 if z > 0.2 else 45
     if placepose is not None:
-        x = placepose.get('x', x) + placepose.get('dx', dx)
-        y = abs(placepose.get('y', y)) + placepose.get('dy', dy)
-        z = placepose.get('z', z) + placepose.get('dz', dz)
+        x, dx = placepose.get('x', x), placepose.get('dx', dx)
+        y, dy = abs(placepose.get('y', y)), placepose.get('dy', dy)
+        z, dz = placepose.get('z', z), placepose.get('dz', dz)
         wrist_angle = placepose.get('wrist_angle', wrist_angle)
+
+    x, y, z = x+dx, y+dy, z+dz
     y = y if robot_mode == 'right' else -y
     return [x, y, z, wrist_angle]
 
@@ -85,8 +87,24 @@ def get_placepose(placepose, target_height, robot_mode, islying=False):
 # ---------------------------------------------------------------------------
 # Input resolution: `inputs` → pose_3d
 # ---------------------------------------------------------------------------
+def run_init_object_from_drawer(node, robot_mode, **kwargs):
+    # ret = dlift(node=node, inputs=0.1)
+    # assert ret['isdone'], f'{ret}'
 
-def resolve_pose_3d(node, inputs, not_move, kwargs):
+    ret = movej(node=node, inputs="approach_lying")
+    assert ret['isdone'], f'{ret}'
+    
+    
+    ret = movet(node=node, dx=-0.3, dy=0.15) if robot_mode=='left' else movet(node=node, dx=0.3, dy=-0.15)
+    assert ret['isdone'], f'{ret}'
+
+    kwargs['isdone'] = True
+    return kwargs
+
+
+
+
+def resolve_pose_3d(node, inputs, env, not_move, kwargs):
     """Resolve `inputs` (either an explicit pose, an ENV location name, or an
     object spec like 'cup@table') into a `pose_3d`.
 
@@ -106,8 +124,8 @@ def resolve_pose_3d(node, inputs, not_move, kwargs):
         return None, inputs, {}, None, {}
 
     side = kwargs.get('side', None)
+    islying = kwargs.get('islying', False)
     loc_name = inputs
-    env = get_env_specs(loc_name, ENV)
 
     if len(env) > 0:
         # Known location: optionally drive there, then build a placepose.
@@ -121,7 +139,7 @@ def resolve_pose_3d(node, inputs, not_move, kwargs):
         placepose.update(kwargs.pop('placepose', {}) or {})
         pose_3d = get_placepose(
             placepose or None, target_height, robot_mode,
-            islying=kwargs.get('islying', False),
+            islying,
         )
         if pose_3d is None:
             raise Exception(f'No grasppose in {loc_name}')
@@ -132,7 +150,7 @@ def resolve_pose_3d(node, inputs, not_move, kwargs):
             pose_3d = side_ret.get('pose_3d', pose_3d)
         except Exception as exc:
             print(f'[resolve_pose_3d] get_side_pose_3d failed, using base placepose: {exc}')
-        return None, pose_3d, env, None, {}
+        return None, pose_3d, env, None, {}, islying
 
     # Object spec: retry find() up to 2 times to populate ins.
     obj_name = loc_name.split('@')[0]
@@ -147,6 +165,7 @@ def resolve_pose_3d(node, inputs, not_move, kwargs):
         find_trial += 1
     if len(ins_obj) == 0:
         raise Exception(f'Find and refind 2 times failed. Terminated ...')
+    islying = ins_obj.get('islying', islying)
 
     # When the caller asked for a side approach, prefer the side_pose that
     # recognition.detect computed alongside pose_3d.
@@ -154,7 +173,7 @@ def resolve_pose_3d(node, inputs, not_move, kwargs):
         target_pose = ins_obj['side_pose']
     else:
         target_pose = ins_obj['pose_3d']
-    return None, target_pose, {}, obj_name, ins_obj
+    return None, target_pose, {}, obj_name, ins_obj, islying
 
 
 # ---------------------------------------------------------------------------
@@ -236,7 +255,7 @@ def init_pose_handle_lying(node, robot_mode, y, agents):
     return movel(node=node, dy=np.clip(dy, -0.15, 0.15), wait=True, acc=0.5, speed=0.5)
 
 
-def init_pose_handle_standing(node, robot_mode, wrist_angle, lift_to_limit,
+def init_pose_handle_standing(node, robot_mode, x, wrist_angle, lift_to_limit,
                               left_mass_percent, islying):
     """Standing-object path: rotate wrist, lower + step in + turn base, then
     bias left/right based on detected mass distribution."""
@@ -256,7 +275,7 @@ def init_pose_handle_standing(node, robot_mode, wrist_angle, lift_to_limit,
     if not ret['isdone']:
         return ret
     
-    ret = movel(node=node, wait=True, dx=dx)
+    ret = movel(node=node, wait=True, x=x)
     assert ret['isdone'], f'init_pose_handle_standing failed : {ret}'
 
     # NOTE: the final `if not ret['isdone']` in the original is intentionally

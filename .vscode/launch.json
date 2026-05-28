@@ -13,10 +13,10 @@
         "--reload"
       ],
       "cwd": "${workspaceFolder}",
-      "python": "${workspaceFolder}/../robot_agent/.vscode/python-with-ros.sh",
-      "envFile": "${workspaceFolder}/../robot_agent/.vscode/ros2.env",
-      "console": "integratedTerminal",
-      "justMyCode": false
+      // "python": "${workspaceFolder}/../robot_agent/.vscode/python-with-ros.sh",
+      // "envFile": "${workspaceFolder}/../robot_agent/.vscode/ros2.env",
+      // "console": "integratedTerminal",
+      // "justMyCode": false
     }
   ]
 }

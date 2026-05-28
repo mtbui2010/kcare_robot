@@ -39,7 +39,7 @@ from kcare_robot.skills._approach_helpers import (
 __TURN_ANGLE = 0
 
 
-def _run_init_pose_fixed(node, agents, robot_mode, y, z, obj_name, kwargs):
+def _run_init_pose_fixed(node, agents, robot_mode, x, y, z, obj_name, kwargs):
     """Drive the init_pose_fixed branch end-to-end and write results back into
     `kwargs`. Returns either an error dict or the mutated `kwargs`."""
     err, lift_to_limit = _h.init_pose_lift_and_unfold(node, robot_mode, z)
@@ -58,7 +58,7 @@ def _run_init_pose_fixed(node, agents, robot_mode, y, z, obj_name, kwargs):
             return ret
     else:
         ret = _h.init_pose_handle_standing(
-            node, robot_mode, wrist_angle, lift_to_limit, left_mass_percent, islying,
+            node, robot_mode, x, wrist_angle, lift_to_limit, left_mass_percent, islying,
         )
         if not ret['isdone']:
             return ret
@@ -89,15 +89,24 @@ def approach_close(**kwargs):
     # via kwargs.get(), which then yields {} for the object-finding branch).
     kwargs.pop('ins', {})
     # `stay_here` is the carerobotapp name; treat it as a synonym for our
-    # existing `not_move` kwarg. Either suppresses the drive-to-location step.
-    not_move = kwargs.pop('not_move', False) or kwargs.pop('stay_here', False)
+    # existing `stay_here` kwarg. Either suppresses the drive-to-location step.
+    stay_here = kwargs.pop('stay_here', False)
     inputs = kwargs.pop('inputs', None)
 
-    # Step 1: resolve target pose.
-    err, pose_3d, env, obj_name, ins_obj = _h.resolve_pose_3d(node, inputs, not_move, kwargs)
+    env = get_env_specs(inputs, ENV)
+    robot_mode = get_robot_mode(node=node, env=env)
+
+    # Step 1a: init_pose_fixed if object_from_drawer
+    if kwargs.pop("object_from_drawer", False):
+        return _h.run_init_object_from_drawer(node=node, robot_mode=robot_mode, **kwargs)
+    
+
+    # Step 1b: resolve target pose.
+    err, pose_3d, env, obj_name, ins_obj, islying = _h.resolve_pose_3d(node, inputs, env, stay_here, kwargs)
     if err is not None:
         return err
     x0, y, z = pose_3d[:3]
+    kwargs['islying'] =  islying
 
     # Step 2: early wrist angle (init_pose branch may overwrite).
     wrist_angle = _h.resolve_wrist_angle_early(kwargs.pop('wrist_angle', None), pose_3d)
@@ -106,16 +115,15 @@ def approach_close(**kwargs):
         raise Exception(f'Out of workspace: x,y,z = {(x0, y, z)}')
 
     # Step 3: pre-approach — clip x and drive base forward + fold arm.
-    x, mforward = _h.compute_forward_distance(x0, not_move)
+    x, mforward = _h.compute_forward_distance(x0, stay_here)
     kwargs['mforward'] = mforward
-    robot_mode = get_robot_mode(node=node, env=env)
     ret = _h.move_forward_and_fold(node, mforward, robot_mode)
     if not ret['isdone']:
         return ret
 
     # Step 4a: init_pose_fixed branch returns directly.
     if kwargs.pop('init_pose_fixed', False):
-        return _run_init_pose_fixed(node, agents, robot_mode, y, z, obj_name, kwargs)
+        return _run_init_pose_fixed(node, agents, robot_mode, x, y, z, obj_name, kwargs)
 
     # Step 4b: normal branch.
     print(f'Approaching to : {x, y, z}')
@@ -221,5 +229,5 @@ def placeat(**kwargs):
 @arm_exception_handler
 def placep(**kwargs):
     """`placeat` without driving the mobile base."""
-    kwargs['not_move'] = True
+    kwargs['stay_here'] = True
     return placeat(**kwargs)

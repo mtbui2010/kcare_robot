@@ -12,7 +12,7 @@ def check_current_loc(node, loc):
         x0, y0 = mobile_pose(node=node)['pose'][:2]
         x, y = loc['x'], loc['y']
 
-        return np.linalg.norm([x-x0, y-y0]) < 0.1
+        return np.linalg.norm([x-x0, y-y0]) < 0.15
     except Exception as e:
         print(e)
         return False
@@ -27,32 +27,17 @@ def mobile_pose(node, **kwargs):
     pos, ort = ret['pose'].position, ret['pose'].orientation
     rz= quaternion2deg(ort.x, ort.y,ort.z, ort.w)[-1]
     
-    return {'isdone': True, 'pose': [pos.x, pos.y, rz]}
+    return {'isdone': True, 'pose': [float(pos.x), float(pos.y), float(rz)]}
 
 @exception_handler
 def moveb(node, **kwargs):
     wait = kwargs.pop('wait', True)
 
     x0, y0, rz0 = mobile_pose(node=node)['pose']
-    x, y, rz = kwargs.pop('x', x0), kwargs.pop('y', y0), kwargs.pop('rz', rz0)
+    x, y, rz = float(kwargs.pop('x', x0)), float(kwargs.pop('y', y0)), float(kwargs.pop('rz', rz0))
     qx, qy, qz, qw = deg2quaternion(0,0, rz)
     
     return node.agents['mobile_move'].send({'x': x, 'y':y, 'z':0., 'qx': qx, 'qy':qy, 'qz': qz, 'qw': qw, 'wait': wait})
-    
-    
-
-@exception_handler
-def forward(node, **kwargs):
-    inp = float(kwargs.pop("inputs"))
-    wait = kwargs.pop('wait', True)
-    if abs(inp)<0.02:
-        return {'isdone': True}
-    
-    
-    
-    return node.agents['mobile_forward'].send({'distance': inp, 'wait':wait})
-    # return node.agents['mobile_forward'].send({'x': inp})
-
 
 @exception_handler
 def turn(node, **kwargs):
@@ -70,6 +55,26 @@ def rotate(node, **kwargs):
     
     return node.agents['mobile_rotate'].send({'theta': inp*np.pi/180., 'wait': wait})
     # return node.agents['mobile_rotate'].send({'target_yaw': inp*np.pi/180.})
+    
+    
+
+@exception_handler
+def forward(node, **kwargs):
+    inp = float(kwargs.pop("inputs"))
+    wait = kwargs.pop('wait', True)
+
+    if abs(inp)<0.02:
+        return {'isdone': True}
+    
+    prev_rz = mobile_pose(node=node)['pose'][-1]
+    
+    ret = node.agents['mobile_forward'].send({'distance': inp, 'wait':wait})
+    assert ret['isdone'], f'{ret}'
+
+    return rotate(node=node, inputs=prev_rz)
+
+
+
 
 
 @exception_handler
@@ -164,11 +169,16 @@ def move(node, **kwargs):
     announce_arrived()
     
 
-    return run_parallel_check(funcs=[
+    ret =  run_parallel_check(funcs=[
         lambda: turn(node=node, inputs=turn_deg),
         lambda : moveh(node=node, ry='straight', rz=robot_mode, wait=True),
         lambda : movej(node=node, inputs='fold', mode=robot_mode, wait=True),
     ])
+    assert ret['isdone'], f'{ret}'
+    
+    kwargs['isdone'] = True
+    return kwargs
+
     
 
 

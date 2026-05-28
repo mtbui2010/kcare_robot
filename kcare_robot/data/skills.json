@@ -44,6 +44,17 @@
     "headers": {}
   },
   {
+    "name": "get_side_pose_3d",
+    "type": "internal",
+    "description": "from kcare_robot.skills.recognition:get_side_pose_3d",
+    "module_path": "kcare_robot.skills.recognition",
+    "func_name": "get_side_pose_3d",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {}
+  },
+  {
     "name": "pick",
     "type": "internal",
     "description": "from kcare_robot.skills.pick:pick",

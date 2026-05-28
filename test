@@ -1,0 +1,2 @@
+mosquitto_pub -h $MQTT_SERVER_IP -t 'cotap/keti/task/plan' -m '{
+  "timestamp":"...","contents":{"data":{"plan":"find::banana"}}}'

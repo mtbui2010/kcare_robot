@@ -41,6 +41,8 @@ def place(**kwargs):
       - `rev_loc=='me'` is rewritten to the `ME` constant.
       - `to_wipe` is auto-set when `'spill'` appears in `rev_loc`.
     """
+    for k in ['object_from_drawer', 'pose_after_open', 'lift_after_open', 'forward_after_open', 'init_pose_fixed']:
+        kwargs.pop(k, None)
     node = kwargs.pop('node', None)
     inp = kwargs.pop('inputs', None)
 

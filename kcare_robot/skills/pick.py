@@ -27,7 +27,7 @@ from robot_agent.utils import (
 )
 
 from kcare_robot.skills.approach import approach_close, __TURN_ANGLE, placeat, placep  # noqa: F401
-from kcare_robot.skills.arm import movet, movej, arm_exception_handler, movel, movelf
+from kcare_robot.skills.arm import movet, movej, arm_exception_handler, movel, movelf, arm_joints
 from kcare_robot.skills.lift import lift, dlift, lift_state
 from kcare_robot.skills.grip import grip
 from kcare_robot.skills.head import get_robot_mode
@@ -87,7 +87,12 @@ def fine_move(**kwargs):
                 # ±200 mm carerobotapp clamp.
                 dx_pre = float(np.clip(pose[0], -0.2, 0.2))
                 if abs(dx_pre) > 1e-4:
-                    movet(node=node, dx=dx_pre, wait=True)
+                    ret = movet(node=node, dx=dx_pre, wait=True)
+                if _h.is_vertical_gripper(node=node):
+                    dz_pre = float(np.clip(0.3 - pose[-1], -0.2, 0.))
+                    if abs(dz_pre) > 1e-4:
+                        dlift(node=node, inputs=dz_pre, wait=True)
+
     except Exception:
         pass
 
@@ -153,10 +158,19 @@ def open_drawer(**kwargs):
     ])
     if not ret['isdone']:
         return ret
+    
 
-    ret = movel(node=node, z=height-abs(ARM_CONFIGS['wrist_cam_offset']), ry=-90, wait=True)
+
+    ret = movel(node=node, ry=-90, wait=True)
     if not ret['isdone']:
         return ret
+    
+    ret = movet(node=node, dz=-0.1)
+    assert ret['isdone'], f'{ret}'
+    
+    ret = movel(node=node, z=height-abs(ARM_CONFIGS['wrist_cam_offset'][1]) + 0.05)
+    assert ret['isdone'], f'{ret}'
+    
 
     err, mforward = _h.compute_drawer_mforward(node, handle_name, robot_mode)
     if err is not None:
@@ -178,10 +192,7 @@ def open_drawer(**kwargs):
 
     # Capture state right after the pull so callers (e.g. drawer-aware
     # planners) can later restore the arm/base/lift configuration.
-    try:
-        pose_after_open = float(node.agents['robot_pose'].get()['pose'][3] * 180 / math.pi)
-    except Exception:
-        pose_after_open = None
+    
     lift_after_open    = lift_state(node=node).get('current_position')
     forward_after_open = mforward
 
@@ -189,29 +200,37 @@ def open_drawer(**kwargs):
     if not ret['isdone']:
         return ret
 
-    ret = movet(node=node, dz=-0.1)
+    ret = movet(node=node, dz=-0.05)
     if not ret['isdone']:
         return ret
+    
+    try:
+        # pose_after_open = float(node.agents['robot_pose'].get()['pose'][3] * 180 / math.pi)
+        pose_after_open = arm_joints(node=node)['joints']
+    except Exception:
+        pose_after_open = None
 
-    ret = movel(node=node, dx=0.1)
-    if not ret['isdone']:
-        return ret
 
-    ret = movel(node=node, dz=0.2)
-    if not ret['isdone']:
-        return ret
+    # ret = movel(node=node, dz=0.2)
+    # if not ret['isdone']:
+    #     return ret
+    ret = dlift(node=node, inputs=0.2)
+    assert ret['isdone'], f'{ret}'
 
     # NOTE: matches original — `movej('fold')` here has no `mode` argument,
     # unlike close_drawer below.
     ret = _h.retract_from_drawer(node, lift_height, mforward, robot_mode=None)
     if not ret.get('isdone'):
         return ret
-    return {
+
+    kwargs.update({
         'isdone':             True,
+        'object_from_drawer': True,
         'pose_after_open':    pose_after_open,
         'lift_after_open':    lift_after_open,
         'forward_after_open': forward_after_open,
-    }
+    })
+    return kwargs
 
 
 @arm_exception_handler
@@ -235,59 +254,81 @@ def close_drawer(**kwargs):
         if not ret['isdone']:
             return ret
         target_height = env.get('height', __DRAWER_HEIGHT)
+    pose_after_open = kwargs.pop('pose_after_open', None)
+    lift_after_open = kwargs.pop('lift_after_open', None)
+    forward_after_open = kwargs.pop('forward_after_open', None)
+    
+    
 
     robot_mode = get_robot_mode(node=node, env=env)
 
     ret = movej(node=node, inputs='give', mode=robot_mode, wait=True)
     if not ret['isdone']:
         return ret
+    
+    ret = movel(node=node, ry = -90)
+    assert ret['isdone'], f'{ret}'
 
-    ret = movel(node=node, dy=0.3 if robot_mode == 'left' else -0.3, wait=True)
+    ret = movet(node=node, dz=-0.3)
+    assert ret['isdone'], f'{ret}'
+
+    
+
+    ret = lift(node=node, inputs=target_height if lift_after_open is None else lift_after_open, wait=True) 
+    assert ret['isdone'], f'{ret}'
+    
+    if forward_after_open is None:
+        err, mforward = _h.compute_drawer_mforward(node, handle_name, robot_mode)
+        if err is not None:
+            return err
+        ret = _h.drive_forward_if_needed(node, mforward)
+        if not ret['isdone']:
+            return ret
+    else:
+        ret = forward(node=node, inputs=-forward_after_open)
+        assert ret['isdone'], f'{ret}'
+
+    if pose_after_open is None:
+        ret = movel(node=node, dz=-0.1, wait=True)
+        if not ret['isdone']:
+            return ret
+
+        ret = find_arm(node=node, inputs=handle_name, keep_orientation=True, **kwargs)
+        if not ret['isdone']:
+            return ret
+
+        x, y, z = ret['ins'][handle_name]['grasppose'][:3]
+
+        dpush = kwargs.pop('dpush', __DPULL - 0.03)
+        ret = movet(node=node, dx=x, dy=y)
+        if not ret['isdone']:
+            return ret
+
+        ret = movet(node=node, dz=z + dpush, wait=True)
+        if not ret['isdone']:
+            return ret
+        
+    else:
+        ret = movej(node=node, inputs=pose_after_open)
+        assert ret['isdone'], f'{ret}'
+
+        ret = movet(node=node, dz=__DPULL+0.03)
+        assert ret['isdone'], f'{ret}'
+        
+
+    ret = movet(node=node, dz=-0.2, wait=False)
     if not ret['isdone']:
         return ret
 
-    ret = run_parallel_check(funcs=[
-        lambda: lift(node=node, inputs=target_height, wait=True),
-        lambda: movelf(node=node, dz=-0.25, rx=-90, wait=True),
-    ])
-    if not ret['isdone']:
-        return ret
+    # ret = movel(node=node, dz=0.1)
+    # if not ret['isdone']:
+    #     return ret
 
-    err, mforward = _h.compute_drawer_mforward(node, handle_name, robot_mode)
-    if err is not None:
-        return err
-    ret = _h.drive_forward_if_needed(node, mforward)
-    if not ret['isdone']:
-        return ret
+    ret = _h.retract_from_drawer(node, lift_height, mforward if forward_after_open is None else forward_after_open,  robot_mode=robot_mode)
+    assert ret['isdone'], f'{ret}'
 
-    ret = movelf(node=node, dz=-0.1, wait=True)
-    if not ret['isdone']:
-        return ret
-
-    ret = find_arm(node=node, inputs=handle_name, keep_orientation=True, **kwargs)
-    if not ret['isdone']:
-        return ret
-
-    x, y, z = ret['ins'][handle_name]['grasppose'][:3]
-
-    dpush = kwargs.pop('dpush', __DPULL - 30)
-    ret = movet(node=node, dx=x, dy=y)
-    if not ret['isdone']:
-        return ret
-
-    ret = movet(node=node, dz=z + dpush, wait=True)
-    if not ret['isdone']:
-        return ret
-
-    ret = movet(node=node, dz=-0.1, wait=False)
-    if not ret['isdone']:
-        return ret
-
-    ret = movel(node=node, dz=0.1)
-    if not ret['isdone']:
-        return ret
-
-    return _h.retract_from_drawer(node, lift_height, mforward, robot_mode=robot_mode)
+    kwargs['isdone']=True
+    return kwargs
 
 
 @arm_exception_handler
@@ -325,31 +366,32 @@ def pick_no_sound(**kwargs):
     robot_mode = get_robot_mode(node=node, env=env)
     lift_height = get_lift_height(env, robot_mode)
 
-    # Step 1: open drawer if a location is supplied.
-    drawer_opened = False
-    if loc is not None:
-        ret = open_drawer(node=node, inputs=loc, **kwargs)
-        kwargs['inputs'] = caption if ret['isdone'] else f'{caption}@{loc}'
-        drawer_opened = ret['isdone']
-    else:
-        kwargs['inputs'] = caption
+    # # Step 1: open drawer if a location is supplied.
+    # drawer_opened = False
+    # if loc is not None:
+    #     ret = open_drawer(node=node, inputs=loc, **kwargs)
+    #     kwargs['inputs'] = caption if ret['isdone'] else f'{caption}@{loc}'
+    #     drawer_opened = ret['isdone']
+    # else:
+    #     kwargs['inputs'] = caption
 
     # Step 2: open gripper.
     ret = grip(node=node, inputs='open', wait=False)
     if not ret['isdone']:
         return ret
 
-    # Step 3: get arm into pre-grasp pose.
-    if drawer_opened:
-        ret = _h.post_drawer_open_prep(node, robot_mode)
-        if not ret['isdone']:
-            return ret
-    else:
-        init_pose_fixed = kwargs.pop('init_pose_fixed', True)
-        kwargs.update(approach_close(**kwargs, node=node, init_pose_fixed=init_pose_fixed))
-        if not kwargs['isdone']:
-            movej(node=node, mode=robot_mode, inputs='fold')
-            return kwargs
+    # # Step 3: get arm into pre-grasp pose.
+    # if drawer_opened:
+    #     ret = _h.post_drawer_open_prep(node, robot_mode)
+    #     if not ret['isdone']:
+    #         return ret
+    # else:
+    init_pose_fixed = kwargs.pop('init_pose_fixed', True)
+    # kwargs.update(approach_close(**kwargs, node=node, init_pose_fixed=init_pose_fixed))
+    kwargs.update(approach_close(**kwargs, node=node, inputs=f'{caption}{"" if loc is None else f"@{loc}"}', init_pose_fixed=init_pose_fixed))
+    if not kwargs['isdone']:
+        movej(node=node, mode=robot_mode, inputs='fold')
+        return kwargs
 
     # Step 4: execute the grasp.
     dz = ARM_CONFIGS['approach_d']
@@ -373,23 +415,23 @@ def pick_no_sound(**kwargs):
     if not ret['isdone']:
         return ret
 
-    # Step 6: drawer-pick recovery — place inside, close drawer, re-pick.
-    if drawer_opened:
-        ret = placep(node=node, inputs=loc)
-        if not ret['isdone']:
-            return ret
-        if loc is not None:
-            ret = close_drawer(node=node, inputs=loc)
-            if not ret['isdone']:
-                return ret
-        ret = pick(node=node, inputs=caption)
-        if not ret['isdone']:
-            return ret
+    # # Step 6: drawer-pick recovery — place inside, close drawer, re-pick.
+    # if drawer_opened:
+    #     ret = placep(node=node, inputs=loc)
+    #     if not ret['isdone']:
+    #         return ret
+    #     if loc is not None:
+    #         ret = close_drawer(node=node, inputs=loc)
+    #         if not ret['isdone']:
+    #             return ret
+    #     ret = pick(node=node, inputs=caption)
+    #     if not ret['isdone']:
+    #         return ret
 
     # Step 7: report success based on actual grasp state.
     kwargs['isdone'] = grasp_succeed(node=node)['isdone']
-    kwargs.pop('wrist_angle', None)
-    kwargs.pop('inputs', None)
+    for k in ['wrist_angle', 'inputs']:
+        kwargs.pop(k, None)
     return kwargs
 
 
