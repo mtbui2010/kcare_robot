@@ -19,14 +19,44 @@ ROS node per process. One process = one mode. **Do not mix.**
 
 ```
 kcare_robot/kcare_robot/
-├── main.py                 # uvicorn entry: create_app('kcare_robot', data_dir)
+├── main.py                 # uvicorn entry: create_app('kcare_robot', config_dir=…/configs)
 ├── __main__.py             # CLI entry: from robot_agent.cli import main; cli()
 ├── skills/__init__.py      # calls auto_wrap_skills(SKILL_CONFIGS, pkg='kcare_robot')
 ├── skills/*.py             # concrete skills (find, pick, place, …)
-├── configs/skills_config.py    # SKILL_CONFIGS dict — the registry contract
-├── configs/tasks.py            # ARM_CONFIGS / ENV / LIFT_CONFIGS overrides
-└── data/                       # connections.json, skills.json, logs/
+├── configs/                          # ALL configs live here
+│   ├── skills_config.py              # SKILL_CONFIGS dict — the registry contract
+│   ├── tasks.py                      # ARM_CONFIGS / ENV / LIFT_CONFIGS overrides
+│   ├── guide*.py, word_mapping.py    # prompt/guide content (shared, code)
+│   ├── common/                       # shared across all sites
+│   │   ├── skills.json               # skill registry
+│   │   └── buttons.json              # shortcut buttons
+│   ├── locations/<site>/             # per-deployment-site config
+│   │   ├── connections.json          # device endpoints (IPs / ROS topics)
+│   │   ├── skill_configs_override.json   # global config overrides (HOME_LOC, LLM_SERVERS, …)
+│   │   └── .env                      # API keys (gitignored)
+│   ├── locations/default/            # fallback site (always present)
+│   └── active_location               # name of the active site (gitignored)
+└── data/logs/                        # rotating logs (not config)
 ```
+
+## Locations (per-site config profiles)
+
+The same robot deployed at different sites needs different **connections** and
+**global configs**. Each site is a folder under `configs/locations/<name>`; the
+active one is `configs/common/active_location` (defaults to `default`).
+
+The dashboard switches sites live via the `robot_agent` API (no restart):
+
+| Endpoint | Action |
+|---|---|
+| `GET    /config/locations` | list sites + active |
+| `POST   /config/locations` | create (`{name, copy_from?}`) |
+| `POST   /config/locations/<name>/activate` | hot-switch (reconnect devices) |
+| `PUT    /config/locations/<name>` | rename (`{new_name}`) |
+| `DELETE /config/locations/<name>` | delete (not `default`/active) |
+
+Switching tears down the current device connections (keeping the shared ROS
+node) and reconnects from the new site's `connections.json` + global configs.
 
 ## Skill contract
 
@@ -68,10 +98,11 @@ supply, so they never re-enter bootstrap.
 ## Devices
 
 Cameras, arm, gripper, mobile base, and the `vlms` TCP detector are
-registered in `data/connections.json` and reloaded by
-`DeviceManager.load_saved()` during `bootstrap()`. CLI mode blocks until
-all devices are (re)connected so the first skill call has them ready;
-UI mode loads in a background thread for fast uvicorn startup.
+registered in `configs/locations/<active-site>/connections.json` and reloaded
+by `DeviceManager.load_saved()` during `bootstrap()` (and again on every
+location switch via `DeviceManager.reload_from()`). CLI mode blocks until all
+devices are (re)connected so the first skill call has them ready; UI mode loads
+in a background thread for fast uvicorn startup.
 
 ## Debug entry points
 

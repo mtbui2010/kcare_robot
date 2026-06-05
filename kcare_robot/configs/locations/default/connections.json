@@ -257,7 +257,7 @@
     "type": "tcp",
     "name": "vlms",
     "config": {
-      "host": "192.168.1.200",
+      "host": "192.168.1.11",
       "port": 8805,
       "is_client": true,
       "agent_name": "vlms"

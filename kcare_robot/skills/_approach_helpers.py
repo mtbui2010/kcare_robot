@@ -99,6 +99,7 @@ def run_init_object_from_drawer(node, robot_mode, **kwargs):
     assert ret['isdone'], f'{ret}'
 
     kwargs['isdone'] = True
+    kwargs['islying'] = True
     return kwargs
 
 

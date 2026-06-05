@@ -152,8 +152,8 @@ def calc_obj_distance(obj_loc_3d, use_head_cam=True):
 
 def calc_distance_score(distance, target_distance=None):
     """Gaussian score: 1 at target_distance, decays with σ²=3e4."""
-    target = 0 if target_distance is None else np.array(distance)
-    return np.exp(-(np.asarray(distance) - target) ** 2 / 9e4)
+    target = 0.3 if target_distance is None else target_distance
+    return np.exp(-(np.asarray(distance) - target) ** 2 / 1e-1)
 
 
 # ── Image overlays ───────────────────────────────────────────────────────────
@@ -661,7 +661,8 @@ def _detect_one(node, *, ins, cam, obj_name, camera, workspace, calib_func,
     # 4. score by (det_score × distance_score) and pick target
     distances = calc_obj_distance(poses_3d, use_head_cam='head' in camera)
     d_scores  = calc_distance_score(distances, target_distance)
-    scores    = np.multiply(cluster_ins.scores.flatten(), d_scores)
+    # scores    = np.multiply(cluster_ins.scores.flatten(), d_scores)
+    scores    = d_scores
     cluster_ins.target_ind = int(np.argmax(scores))
     log_data({
         'obj_scores':      cluster_ins.scores.flatten().tolist(),

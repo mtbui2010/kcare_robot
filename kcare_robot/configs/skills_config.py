@@ -48,4 +48,5 @@ SKILL_CONFIGS: dict[str, tuple[str, str]] = {
     'select_response':  (f'{_PKG}.select',      'select_response'),
     'get3d':            (f'{_PKG}.pointcloud',  'get3d'),
     'llm':              (f'{_PKG}.vlm',         'llm'),
+    'rest_detect': (f'{_PKG}.rest_detect', 'rest_detect'),
 }

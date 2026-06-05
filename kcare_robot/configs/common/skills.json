@@ -471,5 +471,16 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {}
+  },
+  {
+    "name": "rest_detect",
+    "type": "internal",
+    "description": "from kcare_robot.skills.rest_detect:rest_detect",
+    "module_path": "kcare_robot.skills.rest_detect",
+    "func_name": "rest_detect",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {}
   }
 ]

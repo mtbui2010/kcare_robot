@@ -19,6 +19,11 @@ from pathlib import Path
 
 from robot_agent import create_app
 
-DATA_DIR = Path(__file__).parent / 'data'
+# Split config layout:
+#   configs/common/            skills.json, buttons.json (shared by all sites)
+#   configs/locations/<site>/  connections.json, skill_configs_override.json, .env
+# The active site is read from configs/common/active_location (defaults to
+# 'default') and can be hot-switched from the UI — see api/locations.py.
+CONFIG_DIR = Path(__file__).parent / 'configs'
 
-app = create_app(robot_pkg='kcare_robot', data_dir=DATA_DIR)
+app = create_app(robot_pkg='kcare_robot', config_dir=CONFIG_DIR)

@@ -17,7 +17,7 @@ from kcare_robot.skills.recognition import find_arm, grasp_succeed
 DPULL = 0.25
 DEFAULT_HANDLE = 'brown handle'
 DRAWER_HEIGHT = 0.75
-DRAWER_RANGE = [0.2, 0.3]
+DRAWER_RANGE = [0., 0.1]
 
 
 # ---------------------------------------------------------------------------

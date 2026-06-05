@@ -186,7 +186,7 @@ def open_drawer(**kwargs):
     # Mirror carerobotapp: pull slowly and bias the grasp depth shallow so the
     # handle isn't crushed. `deep_ratio=0.4` favours obj_median over bound.
     ret = fine_move(node=node, inputs=handle_name, keep_orientation=True,
-                    dpull=__DPULL, deep_ratio=0.4, pull_speed=0.5, **kwargs)
+                    dpull=__DPULL, deep_ratio=0.4, pull_speed=0.5, target_distance=0.4, **kwargs)
     if not ret['isdone']:
         return ret
 
@@ -271,7 +271,7 @@ def close_drawer(**kwargs):
     ret = movel(node=node, ry = -90)
     assert ret['isdone'], f'{ret}'
 
-    ret = movet(node=node, dz=-0.3)
+    ret = movet(node=node, dz=-0.1)
     assert ret['isdone'], f'{ret}'
 
     

@@ -1,0 +1,7 @@
+# Per-deployment runtime state — not checked in.
+.env
+active_location
+*.bak
+*.tmp
+*.json.bak
+*.json.tmp
