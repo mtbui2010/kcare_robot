@@ -1,0 +1,3 @@
+{"t": 1781074972.5816197, "kind": "task_start", "task": "give me a cup", "run_id": "20260610-160252-545", "world": {"arrived": "drawer@living room", "found": null, "holding": "remote", "opened": [], "on": [], "holding_since": 1781074306.5167253, "found_pose": null, "holding_pose": null}, "say": "Starting the task"}
+{"t": 1781074972.6099317, "kind": "status", "msg": "Generating task plan..."}
+{"kind": "snapshot", "record": {"run_id": "20260610-160252-545", "task": "give me a cup", "lang": "en", "obs": "Robot state: arrived=drawer@living room found=- holding=remote opened=[-] on=[-]", "visible": [], "planner": "grace", "plan_meta": {}, "warnings": [], "steps": [], "replans": [], "status": "aborted", "started_at": 1781074972.545308, "ended_at": 1781074972.8541362}}

@@ -192,7 +192,12 @@ code logic, not an explicit guard.
 
 ## 5. Checking / verification mechanisms
 
-The robot has **no symbolic world model** — verification is **per-skill, perception-based**:
+Verification is **per-skill, perception-based**. (There is now also a persistent
+symbolic **`WorldState`** — `arrived/found/holding/opened/on/holding_since/found_pose`
+— fed by `grace_namemap.apply_skill_effect` on each `isdone` success and surfaced
+in the dashboard "Robot State" panel; but it is a *belief* layer, not a physical
+post-condition. Only `arrived` is sensor-reconciled, so the per-skill checks below
+remain the source of truth for manipulation.)
 
 - **Grasp check** — `grasp_succeed` re-images the wrist camera and checks object
   depth inside a gripper ROI (`recognition.py`, depth window). The single most
@@ -229,6 +234,15 @@ Every target name below is a registered skill from §1.
 | `PutIn` | `placeat` | `_to_obj_or_loc(Cont)` | realized as place-into-open-container |
 | `Open` | `open_drawer` | `to_loc(Cont)` | **drawers only** — non-drawer `Open` is unsupported |
 | `Close` | `close_drawer` | `to_loc(Cont)` | drawers only; ActionMapper threads the matching `open_drawer`'s `pose_after_open` |
+
+The **inverse** mapping (skill → symbolic effect) is
+`grace_namemap.apply_skill_effect(world, skill, params, result, node)`, used by
+the open-loop / direct path to update `WorldState` from a raw skill that just
+ran (keyed on the kcare skill name, applied only on `isdone`): `find*` → `found`
++ `found_pose`; `pick`/`grasp` → `holding` (clears `found`/`found_pose`,
+stamps `holding_since`); `placeat`/`place`/`put`/`putin`/`give` → clears
+`holding`; `open_drawer`/`open` · `close_drawer`/`close` → `opened`. `move`'s
+`arrived` comes from sensor reconcile, not this hook.
 
 ### 6.2 No-op actions (`NOOP_ACTIONS`)
 

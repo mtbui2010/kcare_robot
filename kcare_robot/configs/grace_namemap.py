@@ -233,6 +233,112 @@ def build_params(action: str, obj_camel: str, world) -> dict:
     return {}
 
 
+def _arg_object(params, result):
+    """Best object name for a skill effect: prefer what was actually detected
+    (``result['ins']`` keys from find/find_arm), else the raw '::' arg's first
+    token. Returns None if nothing usable."""
+    if isinstance(result, dict):
+        ins = result.get("ins")
+        if isinstance(ins, dict) and ins:
+            return next(iter(ins.keys()))
+    if isinstance(params, dict):
+        params = params.get("inputs") or params.get("input")
+    if isinstance(params, str) and params.strip():
+        return params.strip().split()[0]
+    return None
+
+
+def _robot_pose_xyz(node):
+    """Best-effort base pose ``[x, y, rz]`` (None on failure)."""
+    try:
+        from kcare_robot.skills.mobile import mobile_pose
+        p = mobile_pose(node=node).get("pose")
+        return list(p) if p else None
+    except Exception:
+        return None
+
+
+def _found_pose_data(result, name, node):
+    """Extract the geometric memory for ``name`` from a find result:
+    ``{loc_3d, pose_3d, side_pose?, grasppose?, ts, robot_pose}``. The
+    ``robot_pose`` stamps where the base was at detection so staleness can be
+    judged after the robot moves. Returns None if no pose fields present."""
+    if not isinstance(result, dict):
+        return None
+    ins = result.get("ins")
+    entry = ins.get(name) if isinstance(ins, dict) else None
+    if not isinstance(entry, dict):
+        return None
+    data = {k: entry[k] for k in ("loc_3d", "pose_3d", "side_pose", "grasppose") if k in entry}
+    if not data:
+        return None
+    import time
+    data["ts"] = time.time()
+    rp = _robot_pose_xyz(node)
+    if rp:
+        data["robot_pose"] = rp
+    return data
+
+
+def apply_skill_effect(world, skill, params=None, result=None, node=None) -> None:
+    """Mirror a RAW (direct / open-loop) kcare skill onto the persistent
+    WorldState — the inverse of :func:`build_params`, keyed on kcare SKILL names
+    (not GRACE actions), since the direct path runs skills verbatim with no
+    ActionMapper to drive ``apply_effect``.
+
+    Called best-effort by ``robot_agent``'s open-loop / direct paths after each
+    step: ``world`` is the shared persistent state, ``params`` the raw '::' arg
+    string, ``result`` the skill's return dict. Only mutates on success.
+    ``arrived`` is intentionally left to the sensor reconcile (localization).
+    """
+    if world is None or not skill:
+        return
+    if isinstance(result, dict) and "isdone" in result and not result.get("isdone"):
+        return  # skill failed → leave the prior belief untouched
+
+    obj = _arg_object(params, result)
+    s = str(skill).strip().lower()
+
+    if s in ("find", "find_arm", "find_once"):
+        if obj:
+            world.found = obj
+            fp = _found_pose_data(result, obj, node)
+            if fp:
+                world.found_pose = fp
+    elif s in ("pick", "grasp"):
+        prior_fp = getattr(world, "found_pose", None)
+        world.holding = getattr(world, "found", None) or obj
+        world.found = None
+        world.found_pose = None          # consumed by the grasp
+        import time
+        world.holding_since = time.time()
+        # Record the grasp actually used (pick returns it), else fall back to the
+        # grasppose stashed at find time.
+        gp = None
+        if isinstance(result, dict) and result.get("grasppose") is not None:
+            gp = result["grasppose"]
+        elif isinstance(prior_fp, dict):
+            gp = prior_fp.get("grasppose")
+        if gp is not None:
+            hp = {"grasppose": gp, "ts": time.time()}
+            rp = _robot_pose_xyz(node)
+            if rp:
+                hp["robot_pose"] = rp
+            world.holding_pose = hp
+        else:
+            world.holding_pose = None
+    elif s in ("placeat", "place", "put", "putin", "put_in", "give"):
+        world.holding = None
+        world.holding_since = None
+        world.holding_pose = None        # released
+    elif s in ("open_drawer", "open"):
+        if obj:
+            world.opened.add(obj)
+    elif s in ("close_drawer", "close"):
+        world.opened.discard(obj)
+    # move -> 'arrived' handled by sensor reconcile; others: no symbolic effect
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 6. Perception pass for the planner  (the "Grounder")
 # ─────────────────────────────────────────────────────────────────────────────

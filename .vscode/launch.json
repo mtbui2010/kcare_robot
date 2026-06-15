@@ -10,7 +10,7 @@
         "kcare_robot.main:app",
         "--host", "0.0.0.0",
         "--port", "8001",
-        "--reload"
+        // "--reload"
       ],
       "cwd": "${workspaceFolder}",
       // "python": "${workspaceFolder}/../robot_agent/.vscode/python-with-ros.sh",

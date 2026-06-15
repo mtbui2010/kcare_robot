@@ -1,0 +1,83 @@
+{
+ "active": "guide",
+ "versions": {
+  "guide_struct": {
+   "guide": "\nThe robot is a mobile manipulator consisting of a 6-degree-of-freedom collaborative robot arm mounted on a 2-wheel mobile base. The arm is equipped with a wrist camera, a two-finger gripper with suction capability, an additional robotic arm, and a wide-area observation camera.\n\nThe robot's capabilities include:\n\nplace: Position a held object at a designated location.\n\nUsing these skills, develop a task plan to execute provided commands.\n\nFor example:\n\nCommand: give me pringles and cola\n\nProgram:\ntarget_objects: pringles, cola\ntarget_locations: None, None\ndestination_locations: me, me \n\n\n\nCommand: Put cup into wooden dish. \nProgram:\ntarget_objects: cup\ntarget_locations: None\ndestination_locations: wooden dish\n\n\nCommand: Place food on the dish  and give me drink\nProgram:\ntarget_objects: food, drink\ntarget_locations: None, None\ndestination_locations: dish, me\n\nCommand: Move cup on the shelf into wooden dish on the desk. \nProgram:\ntarget_objects: cup\ntarget_locations: shelf\ndestination_locations: wooden dish@desk\n\n\nCommand: Give me remote control on the bed\nProgram:\ntarget_objects: remote control\ntarget_locations: bed\ndestination_locations: me\n\nCommand: I am thirsty\nProgram:\ntarget_objects: drink\ntarget_locations: None\ndestination_locations: me\n\nCommand: I am thirsty. Drink in the fridge\nProgram:\ntarget_objects: drink\ntarget_locations: fridge\ndestination_locations: me\n\nCommand: I am hungry\nProgram:\ntarget_objects: food\ntarget_locations: None\ndestination_locations: me\n\nCommand: I am hungry. Food on the fridge\nProgram:\ntarget_objects: food\ntarget_locations: fridge\ndestination_locations: me\n\nCommand: I am hungry and thirsty\nProgram:\ntarget_objects: food, drink\ntarget_locations: None, None\ndestination_locations: me, me\n\nCommand: Set up the dinning table. Food and dink on the shelf. \nProgram:\ntarget_objects: food, drink\ntarget_locations: shelf, shelf\ndestination_locations: dinning table, dinning table\n\nCommand: place trash on table in living room  into trash bin in kitchen\nProgram:\ntarget_objects: trash\ntarget_locations: table@living room\ndestination_locations: trash bin@kitchen\n\nCommand: put bread and cheese in kitchen fridge on dining table\nProgram:\ntarget_objects: bread, cheese\ntarget_locations: kitchen fridge, kitchen fridge\ndestination_locations: dining table, dining table\n\nCommand: set up dinning table. Food and drink on the shelf\nProgram:\ntarget_objects: food, drink\ntarget_locations: shelf, shelf\ndestination_locations: table, table\n\nCommand: Bring me a towel. I'm in the bathroom.\nProgram:\ntarget_objects: towel\ntarget_locations: None\ndestination_locations: bathroom\n\nCommand: Bring me a towel. I'm in the bathroom.\nProgram:\ntarget_objects: towel\ntarget_locations: None\ndestination_locations: bathroom\n\nCommand: Wipe up the drink I spilled on the kitchen table.\ntarget_objects: towel\ntarget_locations: None\ndestination_locations: spill@kitchen table\n\n\n\n\nComplete the following without any explanation and note:\n\nCommand: COMMAND_HERE.\nProgram:\n\n",
+   "format": {
+    "properties": {
+     "target_objects": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Target Objects",
+      "type": "array"
+     },
+     "target_locations": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Target Locations",
+      "type": "array"
+     },
+     "destination_locations": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Destination Locations",
+      "type": "array"
+     }
+    },
+    "required": [
+     "target_objects",
+     "target_locations",
+     "destination_locations"
+    ],
+    "title": "TaskPlan",
+    "type": "object"
+   }
+  },
+  "guide": {
+   "guide": "\nThe robot is a mobile manipulator consisting of a 6-degree-of-freedom collaborative robot arm mounted on a 2-wheel mobile base. The arm is equipped with a wrist camera, a two-finger gripper with suction capability, an additional robotic arm, and a wide-area observation camera.\n\nThe robot's capabilities include:\n\npick: Grasp an object using the robot arm and gripper.\nplace: Position a held object at a designated location.\nmove: Navigate the mobile base to the location of an object or a target destination.\nfind: Use the camera to locate an object at a specified place, returning its location if found or None if not.\n\nKnown Information:\n\nShelf: Primarily contains necessary items.\n\nUsing these skills, develop a task plan to execute provided commands.\n\nFor example:\n\nCommand: give me pringles and cola\n\nProgram:\nmove::shelf\nfind::Pringles\npick::Pringles\nmove::desk\nplace::me\nmove::shelf\nfind::cola\npick::cola\nmove::desk\nplace::me\n\n\nCommand: give me food and drink\n\nProgram:\nmove::shelf\nfind::food\npick::food\nmove::desk\nplace::me\nmove::shelf\nfind::drink\npick::drink\nmove::desk\nplace::me\n\nCommand: Put cup into wooden dish. \nProgram:\nmove::shelf\nfind::cup\npick::cup\nmove::desk\nfind::wooden dish\nplace::wooden dish\n\nCommand: Place food on the dish \nProgram:\nmove::shelf\nfind::food\npick::food\nmove::desk\nfind::dish\nplace::dish\n\nCommand: Place food on the dish  and give me drink\nProgram:\nmove::shelf\nfind::food\npick::food\nmove::desk\nfind::dish\nplace::dish\nmove::shelf\nfind::drink\npick::drink\nmove::desk\nplace::me\n\nCommand: Put cup into wooden dish on the desk. \nProgram:\nmove::shelf\nfind::cup\npick::cup\nmove::desk\nfind::wooden dish\nplace::wooden dish\n\nCommand: Move cup on the shelft into wooden dish on the desk. \nProgram:\nmove::shelf\nfind::cup\npick::cup\nmove::desk\nfind::wooden dish\nplace::wooden dish\n\n\nCommand: Give me remote control on the bed\nProgram:\nmove::bed\nfind::remote control\npick::remote control\nmove::desk\nplace::me\n\nCommand: I am thirsty\nProgram:\nmove::shelf\nfind::drink\npick::drink\nmove::desk\nplace::me\n\nCommand: I am thirsty. Drink in the fridge\nProgram:\nmove::fridge\nfind::drink\npick::drink\nmove::desk\nplace::me\n\nCommand: I am hungry\nProgram:\nmove::shelf\nfind::food\npick::food\nmove::desk\nplace::me\n\nCommand: I am hungry. Food on the fidge\nProgram:\nmove::fridge\nfind::food\npick::food\nmove::desk\nplace::me\n\n\n\nCommand: I am hungry and thirsty\nProgram:\nmove::shelf\nfind::food\npick::food\nmove::desk\nplace::me\nmove::shelf\nfind::drink\npick::drink\nmove::desk\nplace::me\n\nCommand: I am thirsty and hungry\nProgram:\nmove::shelf\nfind::drink\npick::drink\nmove::desk\nplace::me\nmove::shelf\nfind::food\npick::food\nmove::desk\nplace::me\n\nCommand: I am hungry and thirsty. Food and drink in the fridge\nProgram:\nmove::fridge\nfind::food\npick::food\nmove::desk\nplace::me\nmove::fridge\nfind::drink\npick::drink\nmove::desk\nplace::me\n\nCommand: Approach to remote control\nProgram:\nfind::remote control\napproach::rempte control\n\nCommand: Set up the dinning table on the desk. Food and dink on the shelf. \nProgram:\nmove::shelf\nfind::food\npick::food\nmove::desk\nfind::empty dish\nplace::empty dish\nmove::shelf\nfind::drink\npick::drink\nmove::desk\nfind::empty dish\nplace::empty dish\n\nCommand: Set up the dinning table on the desk. \nProgram:\nmove::shelf\nfind::food\npick::food\nmove::desk\nfind::empty dish\nplace::empty dish\nmove::shelf\nfind::drink\npick::drink\nmove::desk\nfind::empty dish\nplace::empty dish\n\n\nCommand: Set up for dining.\nProgram:\nmove::shelf\nfind::food\npick::food\nmove::desk\nfind::empty dish\nplace::empty dish\nmove::shelf\nfind::drink\npick::drink\nmove::desk\nfind::empty dish\nplace::empty dish\n\n\nComplete the following without any explanation and note:\n\nCommand: COMMAND_HERE.\nProgram:\n",
+   "format": null
+  },
+  "guide_short": {
+   "guide": "\nThe robot is a mobile manipulator consisting of a 6-degree-of-freedom collaborative robot arm mounted on a 2-wheel mobile base. The arm is equipped with a wrist camera, a two-finger gripper with suction capability, an additional robotic arm, and a wide-area observation camera.\n\nThe robot's capabilities include:\n\npick: Grasp an object using the robot arm and gripper.\nplace: Position a held object at a designated location.\n\nKnown Information:\n\nShelf: Primarily contains necessary items.\n\nUsing these skills, develop a task plan to execute provided commands.\n\nFor example:\n\nCommand: give me pringles and cola\n\nProgram:\nplace::pringles>>me\nplace::cola>>me\n\n\nCommand: give me food and drink\n\nProgram:\nplace::food>>me\nplace::drink>>me\n\nCommand: Put cup into wooden dish. \nProgram:\nplace::cup>>wooden dish\n\nCommand: Place food on the dish \nProgram:\nplace::food>>dish\n\nCommand: Place food on the dish  and give me drink\nProgram:\nplace::food>>dish\nplace::drink>>me\n\nCommand: Put cup into wooden dish on the desk. \nProgram:\nplace::cup@wooden dish>>desk\n\nCommand: Move cup on the shelft into wooden dish on the desk. \nProgram:\nplace::cup@shelf>>dish@desk\n\n\nCommand: Give me remote control on the bed\nProgram:\nplace::remote control@bed>>me\n\nCommand: I am thirsty\nProgram:\nplace::drink>>me\n\nCommand: I am thirsty. Drink in the fridge\nProgram:\nplace::drink@fridge>>me\n\nCommand: I am hungry\nProgram:\nplace::food>>me\n\nCommand: I am hungry. Food on the fridge\nProgram:\nplace::food@fridge>>me\n\nCommand: I am hungry and thirsty\nProgram:\nplace::food>>me\nplace::drink>>me\n\nCommand: I am thirsty and hungry\nProgram:\nplace::drink>>me\nplace::food>>me\n\nCommand: I am hungry and thirsty. Food and drink in the fridge\nProgram:\nplace::food@fridge>>me\nplace::drink@fridge>>me\n\nCommand: pick remote control\nProgram:\npick::remote control\n\nCommand: Set up the dinning table. Food and dink on the shelf. \nProgram:\nplace::food@shelf>>dinning table\nplace::drink@shelf>>dinning table\n\nCommand: Set up the dinning table.\nProgram:\nplace::food>>dinning table\nplace::drink>>dinning table\n\nCommand: place trash on table in living room  into trash bin in kitchen\nProgram:\nplace::trash@table@living room>>trash bin@kitchen\n\nCommand: place trash living room table  into kitchen trash bin\nProgram:\nplace::trash@table@living room>>trash bin@kitchen\n\nCommand: put bread and cheese in kitchen fridge on dining table\nProgram:\nplace::bread@fridge@kitchen>>dining table\nplace::cheese@fridge@kitchen>>dining table\n\nCommand: put bread and cheese in kitchen fridge on living room table\nProgram:\nplace::bread@fridge@kitchen>>table@living room\nplace::cheese@fridge@kitchen>>table@living room\n\nCommand: move cup on the desk to living room table \nProgram:\nplace::cup@desk>>table@living room\n\nCommand: Give me snack on the desk\nProgram:\nplace::snack@desk>>me\n\nCommand: Give me snack\nProgram:\nplace::snack>>me\n\nCommand: Give me phone on the desk\nProgram:\nplace::phone@desk>>me\n\nCommand: Give me phone\nProgram:\nplace::phone>>me\n\nComplete the following without any explanation and note:\n\nCommand: COMMAND_HERE.\nProgram:\n\n",
+   "format": null
+  },
+  "guide_struct_kr": {
+   "guide": "\n이 로봇은 2륜 이동식 베이스에 장착된 6자유도 협동 로봇 팔로 구성된 이동식 매니퓰레이터입니다. 팔에는 손목 카메라, 흡입 기능이 있는 두 손가락 그리퍼, 추가 로봇 팔, 그리고 광역 관찰 카메라가 장착되어 있습니다.\n\n로봇의 기능은 다음과 같습니다.\n\n위치: 지정된 위치에 물체를 놓습니다.\n\n이러한 기술을 사용하여 제공된 명령을 실행하는 작업 계획을 개발합니다.\n\n예:\n\n명령: 프링글스와 콜라를 줘\n\n프로그램:\n대상 객체: 프링글스, 콜라\n대상 위치: None, None\n목적지 위치: 나, 나\n\n명령: 컵을 나무 접시에 넣어\n프로그램:\ntarget_objects: cup\ntarget_locations: None\ndestination_locations: 나무 접시\n\n명령: 접시에 음식을 놓고 음료를 주세요\n프로그램:\ntarget_objects: food, drink\ntarget_locations: None, None\ndestination_locations: dish, me\n\n명령: 선반 위의 컵을 책상 위의 나무 접시로 옮겨라.\n프로그램:\ntarget_objects: 컵\ntarget_locations: 선반\ndestination_locations: 나무 접시@책상\n\n명령: 침대 위의 리모컨을 줘\n프로그램:\ntarget_objects: 리모컨\ntarget_locations: 침대\ndestination_locations: 나\n\n명령어: 목마르다\n프로그램:\ntarget_objects: 음료\ntarget_locations: None\ndestination_locations: 나\n\n명령: 목마르다. 냉장고에 음료가 있어\n프로그램:\ntarget_objects: 음료\ntarget_locations: 냉장고\ndestination_locations: 나\n\n명령: 배고프다\n프로그램:\ntarget_objects: 음식\ntarget_locations: None\ndestination_locations: 나\n\n명령: 배고파. 냉장고에 음식이 있어.\n프로그램:\ntarget_objects: 음식\ntarget_locations: 냉장고\ndestination_locations: 나\n\n명령: 배고프고 목마르다.\n프로그램:\ntarget_objects: 음식, 음료\ntarget_locations: None, None\ndestination_locations: 나, 나\n\n명령: 식탁을 차려. 음식과 음료는 선반에 있어.\n프로그램:\ntarget_objects: 음식, 음료\ntarget_locations: 선반, 선반\ndestination_locations: 식탁, 식탁\n\n명령: 식탁 위 주방 냉장고에 빵과 치즈를 넣으세요\n프로그램:\ntarget_objects: 빵, 치즈\ntarget_locations: 주방 냉장고, 주방 냉장고\ndestination_locations: 식탁, 식탁\n\n명령: 식탁을 차려주세요. 선반에 음식과 음료를 놓으세요\n프로그램:\ntarget_objects: 음식, 음료\ntarget_locations: 선반, 선반\ndestination_locations: 테이블, 테이블\n\n\n설명이나 메모 없이 다음을 완성하세요.\n\n명령: COMMAND_HERE.\n프로그램:\n\n",
+   "format": {
+    "properties": {
+     "target_objects": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Target Objects",
+      "type": "array"
+     },
+     "target_locations": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Target Locations",
+      "type": "array"
+     },
+     "destination_locations": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Destination Locations",
+      "type": "array"
+     }
+    },
+    "required": [
+     "target_objects",
+     "target_locations",
+     "destination_locations"
+    ],
+    "title": "TaskPlan",
+    "type": "object"
+   }
+  }
+ }
+}

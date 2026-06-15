@@ -326,21 +326,34 @@ names below match `ClosedLoop.run_blocking`:
 
 | event | fields | spoken? |
 |---|---|---|
-| `task_start` | `task`, `run_id`, `say` | ✓ |
+| `task_start` | `task`, `run_id`, `world`, `say` | ✓ |
 | `status` | `msg` | — |
-| `plan` | `steps[]`, `plan_meta`, `warnings[]` | — |
+| `plan` | `steps[]`, `plan_meta`, `warnings[]`, `world` | — |
 | `warning` | `msg` (one per unsupported step) | — |
 | `step_start` | `index`, `action`, `object`, `skill`, `say` | ✓ |
 | `step_verify` | `index`, `verifies[]` (layer/ok/detail/confidence/latency_ms) | — |
-| `step_done` | `index`, `status`, `result?`, `reason?`, `skill?`, `say` | ✓ (success/fail) |
-| `replan` | `at_index`, `reason`, `say` | ✓ |
-| `done` | `status` (`success`/`failed`/`planned`), `run_id`, `say` | ✓ |
+| `step_done` | `index`, `status`, `result?`, `reason?`, `skill?`, `world`, `say` | ✓ (success/fail) |
+| `replan` | `at_index`, `reason`, `world`, `say` | ✓ |
+| `done` | `status` (`success`/`failed`/`planned`), `run_id`, `world`, `say` | ✓ |
 | `error` | `msg`, `trace` | — |
 
 Existing `step_start/step_done/done` are **kept** (frontend contract stable); the
-driver only **adds** `action/object/verifies/say`. `RunLogger.event` persists every
-event, and the driver's `finally` appends the final `snapshot`. The `plan_ready`
-phrase rides the `done` event in plan-only mode (`status="planned"`).
+driver only **adds** `action/object/verifies/say` and the `world` snapshot
+(`world.to_dict()`). `RunLogger.event` persists every event, and the driver's
+`finally` appends the final `snapshot`. The `plan_ready` phrase rides the `done`
+event in plan-only mode (`status="planned"`).
+
+### 5.1 `world` snapshot + the open-loop / direct path
+
+`world` carries the live `WorldState.to_dict()`
+(`arrived/found/holding/opened/on/holding_since/found_pose`) so the dashboard
+"Robot State" panel stays current each step. The **open-loop / direct** executor
+(`UnifiedAgent.run` / `run_direct`) has no GRACE step, so it emits a dedicated
+**`world`** event (`{event:'world', world:{…}, found_pose_stale?}`) — once as an
+initial snapshot and once after each step — via `_emit_world`, which applies the
+`grace_namemap.apply_skill_effect` hook, reconciles `arrived`, computes
+`found_pose_stale`, and persists. Operators can correct a stale belief live with
+`PUT /agent/world` (the panel is editable mid-run).
 
 ---
 

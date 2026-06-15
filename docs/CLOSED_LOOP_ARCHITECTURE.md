@@ -218,9 +218,28 @@ StepVerifier.verify(step, result, world, node) ──► [VerifyResult …] ─�
 ```
 
 State object = `core/planning/base.py::WorldState` — a self-contained dataclass
-(`arrived`, `found`, `holding`, `opened`, `on`) with `copy()` / `as_text()`. It
-mirrors `pyplanner.verifier.SymbolicState` semantics but is **not** imported
-from pyplanner.
+(`arrived`, `found`, `holding`, `opened`, `on`, plus `holding_since` and
+`found_pose`) with `copy()` / `as_text()` / `to_dict()` / `update_from_dict()` /
+`found_pose_is_stale()`. It mirrors `pyplanner.verifier.SymbolicState` semantics
+but is **not** imported from pyplanner.
+
+It is **persistent**: it lives on `AgentState.world` (one per process, not a
+per-run local), so a plan sees what the previous one left behind, and it is
+saved to `common_dir/world_state.json` (`save_world`/`load_world`) to survive a
+restart. Two things feed it each run:
+
+- **Sensor reconcile** — at the **start** of `run_blocking`, `reconcile_world(node,
+  world)` refreshes `arrived` from the localizer (nearest ENV `loc`), then
+  `world.as_text()` is appended to the planner `obs` so the planner knows the
+  current holding/location. Robot-overridable via the namemap hooks
+  `reconcile_world` / `robot_xy` (else a generic `mobile_pose` + ENV fallback).
+- **`apply_effect`** — after each verified step (and `holding_since` stamping on
+  Pick/Place); the world is `save_world()`-persisted after each effect.
+
+Only `arrived` is sensor-derived; `found`/`holding`/`opened`/`on`/`found_pose`
+are beliefs (no gripper sensor). `found_pose` is base-frame at detection and goes
+stale once the base moves (display-only). The live world is also streamed to the
+dashboard — see `TRACKING_VERIFY_VOICE.md` §5.
 
 ---
 

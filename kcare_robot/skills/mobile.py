@@ -12,7 +12,7 @@ def check_current_loc(node, loc):
         x0, y0 = mobile_pose(node=node)['pose'][:2]
         x, y = loc['x'], loc['y']
 
-        return np.linalg.norm([x-x0, y-y0]) < 0.15
+        return np.linalg.norm([x-x0, y-y0]) < 0.25
     except Exception as e:
         print(e)
         return False

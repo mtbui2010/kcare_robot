@@ -93,8 +93,8 @@ def approach_close(**kwargs):
     stay_here = kwargs.pop('stay_here', False)
     inputs = kwargs.pop('inputs', None)
 
-    env = get_env_specs(inputs, ENV)
-    robot_mode = get_robot_mode(node=node, env=env)
+    # env = get_env_specs(inputs, ENV)
+    robot_mode = get_robot_mode(node=node)
 
     # Step 1a: init_pose_fixed if object_from_drawer
     if kwargs.pop("object_from_drawer", False):
@@ -102,51 +102,68 @@ def approach_close(**kwargs):
     
 
     # Step 1b: resolve target pose.
-    err, pose_3d, env, obj_name, ins_obj, islying = _h.resolve_pose_3d(node, inputs, env, stay_here, kwargs)
+    ret =_h.resolve_pose_3d(node, **kwargs)
     if err is not None:
         return err
-    x0, y, z = pose_3d[:3]
+    x, y, z = pose_3d[:3]
     kwargs['islying'] =  islying
 
-    # Step 2: early wrist angle (init_pose branch may overwrite).
-    wrist_angle = _h.resolve_wrist_angle_early(kwargs.pop('wrist_angle', None), pose_3d)
-
-    if not is_inside_workspace(x0, y, z):
-        raise Exception(f'Out of workspace: x,y,z = {(x0, y, z)}')
-
-    # Step 3: pre-approach — clip x and drive base forward + fold arm.
-    x, mforward = _h.compute_forward_distance(x0, stay_here)
-    kwargs['mforward'] = mforward
-    ret = _h.move_forward_and_fold(node, mforward, robot_mode)
-    if not ret['isdone']:
-        return ret
-
-    # Step 4a: init_pose_fixed branch returns directly.
+    # step 2: init_pose_fixed branch returns directly.
     if kwargs.pop('init_pose_fixed', False):
-        return _run_init_pose_fixed(node, agents, robot_mode, x, y, z, obj_name, kwargs)
+        if abs(mforward)>0:
+            ret = forward(node=node, inputs=mforward, wait=True)
+            assert ret['isdone'], f'{ret}'
+        if abs(base_rotate)>0:
+            ret = movej(node=node, dr0=base_rotate, wait=True)
+            assert ret['isdone'], f'{ret}'
+        if approach_lying:
+            ret = movej(node=node, inputs='approach_lying', wait=True)
+            assert ret['isdone'], f'{ret}'
+        ret = movel(node=node, **approach_pose, wait=True)
+        assert ret['isdone'], f'{ret}'
+        
+        kwargs['isdone'] = True
+        return kwargs
 
-    # Step 4b: normal branch.
-    print(f'Approaching to : {x, y, z}')
+    # # Step 2: early wrist angle (init_pose branch may overwrite).
+    # wrist_angle = _h.resolve_wrist_angle_early(kwargs.pop('wrist_angle', None), pose_3d)
 
-    wrist_angle = _h.resolve_wrist_angle_for_motion(node, action_type, wrist_angle, ins_obj, z)
-    kwargs['wrist_angle'] = wrist_angle
+    # if not is_inside_workspace(x0, y, z):
+    #     raise Exception(f'Out of workspace: x,y,z = {(x0, y, z)}')
 
-    shift_values = _h.compute_shift_values(
-        node, wrist_angle, robot_mode,
-        dlift_up=kwargs.pop('dlift_up', [0, 0, 0]),
-        islying=kwargs.get('islying', False)
-    )
-    lm_state = lift_state(node=node)['current_position']
-    dmove, target_xyz, lift_to = _h.compute_target_and_lift(
-        x, y, z, shift_values, lm_state
-    )
+    # # Step 3: pre-approach — clip x and drive base forward + fold arm.
+    # x, mforward = _h.compute_forward_distance(x0, stay_here)
+    # kwargs['mforward'] = mforward
+    # ret = _h.move_forward_and_fold(node, mforward, robot_mode)
+    # if not ret['isdone']:
+    #     return ret
 
-    ret = _h.execute_approach_motion(node, robot_mode, lift_to, wrist_angle, target_xyz, kwargs.get('islying', False))
-    if not ret['isdone']:
-        return ret
+    # # Step 4a: init_pose_fixed branch returns directly.
+    # if kwargs.pop('init_pose_fixed', False):
+    #     return _run_init_pose_fixed(node, agents, robot_mode, x, y, z, obj_name, kwargs)
 
-    kwargs['isdone'] = True
-    return kwargs
+    # # Step 4b: normal branch.
+    # print(f'Approaching to : {x, y, z}')
+
+    # wrist_angle = _h.resolve_wrist_angle_for_motion(node, action_type, wrist_angle, ins_obj, z)
+    # kwargs['wrist_angle'] = wrist_angle
+
+    # shift_values = _h.compute_shift_values(
+    #     node, wrist_angle, robot_mode,
+    #     dlift_up=kwargs.pop('dlift_up', [0, 0, 0]),
+    #     islying=kwargs.get('islying', False)
+    # )
+    # lm_state = lift_state(node=node)['current_position']
+    # dmove, target_xyz, lift_to = _h.compute_target_and_lift(
+    #     x, y, z, shift_values, lm_state
+    # )
+
+    # ret = _h.execute_approach_motion(node, robot_mode, lift_to, wrist_angle, target_xyz, kwargs.get('islying', False))
+    # if not ret['isdone']:
+    #     return ret
+
+    # kwargs['isdone'] = True
+    # return kwargs
 
 
 @arm_exception_handler

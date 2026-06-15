@@ -1,2 +1,236 @@
-mosquitto_pub -h $MQTT_SERVER_IP -t 'cotap/keti/task/plan' -m '{
-  "timestamp":"...","contents":{"data":{"plan":"find::banana"}}}'
+
+The robot is a mobile manipulator consisting of a 6-degree-of-freedom collaborative robot arm mounted on a 2-wheel mobile base. The arm is equipped with a wrist camera, a two-finger gripper with suction capability, an additional robotic arm, and a wide-area observation camera.
+
+The robot's capabilities include:
+
+pick: Grasp an object using the robot arm and gripper.
+place: Position a held object at a designated location.
+move: Navigate the mobile base to the location of an object or a target destination.
+find: Use the camera to locate an object at a specified place, returning its location if found or None if not.
+
+Known Information:
+
+Shelf: Primarily contains necessary items.
+
+Using these skills, develop a task plan to execute provided commands.
+
+For example:
+
+Command: give me pringles and cola
+
+Program:
+move::shelf
+find::Pringles
+pick::Pringles
+move::desk
+place::me
+move::shelf
+find::cola
+pick::cola
+move::desk
+place::me
+
+
+Command: give me food and drink
+
+Program:
+move::shelf
+find::food
+pick::food
+move::desk
+place::me
+move::shelf
+find::drink
+pick::drink
+move::desk
+place::me
+
+Command: Put cup into wooden dish. 
+Program:
+move::shelf
+find::cup
+pick::cup
+move::desk
+find::wooden dish
+place::wooden dish
+
+Command: Place food on the dish 
+Program:
+move::shelf
+find::food
+pick::food
+move::desk
+find::dish
+place::dish
+
+Command: Place food on the dish  and give me drink
+Program:
+move::shelf
+find::food
+pick::food
+move::desk
+find::dish
+place::dish
+move::shelf
+find::drink
+pick::drink
+move::desk
+place::me
+
+Command: Put cup into wooden dish on the desk. 
+Program:
+move::shelf
+find::cup
+pick::cup
+move::desk
+find::wooden dish
+place::wooden dish
+
+Command: Move cup on the shelft into wooden dish on the desk. 
+Program:
+move::shelf
+find::cup
+pick::cup
+move::desk
+find::wooden dish
+place::wooden dish
+
+
+Command: Give me remote control on the bed
+Program:
+move::bed
+find::remote control
+pick::remote control
+move::desk
+place::me
+
+Command: I am thirsty
+Program:
+move::shelf
+find::drink
+pick::drink
+move::desk
+place::me
+
+Command: I am thirsty. Drink in the fridge
+Program:
+move::fridge
+find::drink
+pick::drink
+move::desk
+place::me
+
+Command: I am hungry
+Program:
+move::shelf
+find::food
+pick::food
+move::desk
+place::me
+
+Command: I am hungry. Food on the fidge
+Program:
+move::fridge
+find::food
+pick::food
+move::desk
+place::me
+
+
+
+Command: I am hungry and thirsty
+Program:
+move::shelf
+find::food
+pick::food
+move::desk
+place::me
+move::shelf
+find::drink
+pick::drink
+move::desk
+place::me
+
+Command: I am thirsty and hungry
+Program:
+move::shelf
+find::drink
+pick::drink
+move::desk
+place::me
+move::shelf
+find::food
+pick::food
+move::desk
+place::me
+
+Command: I am hungry and thirsty. Food and drink in the fridge
+Program:
+move::fridge
+find::food
+pick::food
+move::desk
+place::me
+move::fridge
+find::drink
+pick::drink
+move::desk
+place::me
+
+Command: Approach to remote control
+Program:
+find::remote control
+approach::rempte control
+
+Command: Set up the dinning table on the desk. Food and dink on the shelf. 
+Program:
+move::shelf
+find::food
+pick::food
+move::desk
+find::empty dish
+place::empty dish
+move::shelf
+find::drink
+pick::drink
+move::desk
+find::empty dish
+place::empty dish
+
+Command: Set up the dinning table on the desk. 
+Program:
+move::shelf
+find::food
+pick::food
+move::desk
+find::empty dish
+place::empty dish
+move::shelf
+find::drink
+pick::drink
+move::desk
+find::empty dish
+place::empty dish
+
+
+Command: Set up for dining.
+Program:
+move::shelf
+find::food
+pick::food
+move::desk
+find::empty dish
+place::empty dish
+move::shelf
+find::drink
+pick::drink
+move::desk
+find::empty dish
+place::empty dish
+
+
+Complete the following without any explanation and note:
+
+Command: COMMAND_HERE.
+Program:
+

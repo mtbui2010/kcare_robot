@@ -10,7 +10,7 @@ from robot_agent.utils import get_env_specs, run_parallel_check
 from kcare_robot.skills.arm import movel, movej, movet, get_wrist_angle, arm_pose
 from kcare_robot.skills.lift import lift, dlift, lift_state
 from kcare_robot.skills.grip import grip
-from kcare_robot.skills.recognition import find, find_arm, get_side_pose_3d
+from kcare_robot.skills.recognition import find, find_arm, get_side_pose_3d, find_place
 from kcare_robot.skills.mobile import move, forward
 
 
@@ -151,7 +151,11 @@ def resolve_pose_3d(node, inputs, env, not_move, kwargs):
             pose_3d = side_ret.get('pose_3d', pose_3d)
         except Exception as exc:
             print(f'[resolve_pose_3d] get_side_pose_3d failed, using base placepose: {exc}')
-        return None, pose_3d, env, None, {}, islying
+
+        
+
+        # approach_pose, mforward, base_rotate, approach_lying
+        return None, pose_3d, env, None, {}, islying, None,  0., 0., False
 
     # Object spec: retry find() up to 2 times to populate ins.
     obj_name = loc_name.split('@')[0]
@@ -167,6 +171,10 @@ def resolve_pose_3d(node, inputs, env, not_move, kwargs):
     if len(ins_obj) == 0:
         raise Exception(f'Find and refind 2 times failed. Terminated ...')
     islying = ins_obj.get('islying', islying)
+    base_rotate = ins_obj.get('base_rotate', 0.)
+    approach_lying = ins_obj.get('approach_lying', False)
+    mforward = ins_obj.get('mforward', 0.)
+    approach_pose = ins_obj.get('approach_pose', 0.)
 
     # When the caller asked for a side approach, prefer the side_pose that
     # recognition.detect computed alongside pose_3d.
@@ -174,7 +182,7 @@ def resolve_pose_3d(node, inputs, env, not_move, kwargs):
         target_pose = ins_obj['side_pose']
     else:
         target_pose = ins_obj['pose_3d']
-    return None, target_pose, {}, obj_name, ins_obj, islying
+    return None, target_pose, {}, obj_name, ins_obj, islying, approach_pose, mforward, base_rotate, approach_lying
 
 
 # ---------------------------------------------------------------------------

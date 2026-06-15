@@ -164,18 +164,41 @@ integration finding.
 ```python
 @dataclass
 class WorldState:
-    arrived: Optional[str] = None          # location robot is at
+    arrived: Optional[str] = None          # location robot is at (sensor-reconciled)
     found:   Optional[str] = None          # object located, not yet picked
     holding: Optional[str] = None          # object currently grasped
     opened:  set[str] = field(default_factory=set)   # open containers
     on:      set[str] = field(default_factory=set)   # appliances switched on
+    holding_since: Optional[float] = None  # epoch when `holding` was set (belief clock)
+    found_pose:    Optional[dict] = None   # geometry of `found` (see below)
+    holding_pose:  Optional[dict] = None   # grasp used to pick `holding` (see below)
 
-    def copy(self) -> "WorldState":  ...   # duplicates the two sets
+    def copy(self) -> "WorldState":  ...
     def as_text(self) -> str:        ...   # "arrived=- found=cup holding=- opened=[] on=[]"
+    def to_dict(self) -> dict:       ...   # JSON snapshot (sets→sorted lists) for the API/UI
+    def update_from_dict(self, d):   ...   # partial operator edit (PUT /agent/world)
+    def found_pose_is_stale(self, robot_xy, threshold=0.25) -> bool:  ...
 ```
 
-Note this is **five** fields (`arrived/found/holding/opened/on`) — GRACE's `visible`
-set is **not** mirrored here.
+The first five fields mirror GRACE (`visible` is **not** mirrored). The two extra
+fields support the dashboard "Robot State" panel and sensorless beliefs:
+
+- `holding_since` — there is no gripper width/force sensor, so `holding` is a
+  *belief*; the timestamp lets the UI flag a stale grasp.
+- `found_pose` — geometric memory of `found`:
+  `{loc_3d, pose_3d, side_pose?, grasppose?, ts, robot_pose:[x,y,rz]}`, in the
+  **base frame at detection time**. `robot_pose` stamps where the base was, so
+  `found_pose_is_stale(robot_xy)` returns True once the base has moved
+  >`threshold` m. It is display-only — a pick that reuses it is a planned
+  follow-up, not implemented.
+
+**Persistence.** `WorldState` is not a per-run local: it lives on
+`AgentState.world` (one instance per process), so a plan sees what the previous
+one left behind, and it is saved to `common_dir/world_state.json`
+(`AgentState.save_world`/`load_world`) to survive a restart. On reload `arrived`
+is dropped (re-reconciled from the localizer) and `found_pose` is re-flagged
+stale. Only `arrived` is sensor-derived; everything else is a belief the operator
+can correct via `PUT /agent/world`.
 
 The driver mutates the state **only from skills that actually succeeded** (`isdone==True`),
 via `ActionMapper.apply_effect(step, world)`. That method is the as-built mirror of
@@ -197,6 +220,31 @@ Sit/LieOn/Serve/Wait/Wash → no symbolic effect
 `copy()` is available for snapshotting state before a tentative step. To recompute
 state from a `completed` prefix you may still replay it through `apply_effect`, or
 reuse `pyplanner.verifier.simulate(...)` (read-only call — no pyplanner change needed).
+
+### 3.1 Two effect sources + sensor reconcile
+
+`apply_effect` above is the **closed-loop** path (keyed on GRACE *actions*). The
+**open-loop / direct** path runs raw skills with no GRACE step, so the engine
+instead calls three optional, duck-typed hooks on the namemap (best-effort; absent
+hooks → graceful fallback):
+
+- `apply_skill_effect(world, skill, params, result, node)` — the inverse of
+  `build_params`, keyed on the kcare *skill name*: `find`/`find_arm`/`find_once`
+  → set `found` + stash `found_pose` (from `result['ins'][name]`, stamped with the
+  base pose at detection); `pick`/`grasp` → `holding`=prior `found`, clear
+  `found`/`found_pose`, set `holding_since` + `holding_pose` (the grasp `pick`
+  returns, `{grasppose, ts, robot_pose}`); `placeat`/`place`/`put`/`putin`/`give`
+  → clear `holding`; `open_drawer`/`open` · `close_drawer`/`close` → `opened`.
+  Applied only on `result['isdone']`. `arrived` and `on` are not set here.
+- `reconcile_world(node, world)` — full override of the `arrived` sensor pass; or
+- `robot_xy(node) -> (x, y) | None` — a pose reader the engine's generic reconcile
+  uses (nearest ENV `loc` match). If neither is defined, the engine falls back to a
+  built-in reader (`mobile_pose` agent, tolerant of payload shapes) + ENV match.
+
+`reconcile_world(node, world)` runs at the **start** of every plan (both paths) so
+`arrived` reflects the localizer before planning; closed-loop also appends
+`world.as_text()` to the planner observation. This keeps all robot-specific
+knowledge in the namemap, exactly as the engine/namemap split above requires.
 
 ---
 

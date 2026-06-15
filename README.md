@@ -119,6 +119,29 @@ run_parallel_check([
 waits for all to converge before continuing — drops a typical pick from
 ~7 s sequential to ~3 s.
 
+### Persistent symbolic world state
+
+The robot keeps a small **belief** about itself — `arrived` (where it is),
+`found` (+ `found_pose`), `holding`, `opened`, `on` — that survives across plan
+runs and (selectively) across a restart. Running skills feed it through the
+`grace_namemap.apply_skill_effect(world, skill, params, result, node)` hook,
+keyed on the kcare skill name:
+
+| Skill | World effect |
+|---|---|
+| `find` / `find_arm` / `find_once` | set `found`; stash `found_pose` (`loc_3d`/`pose_3d`/`grasppose` from `ins[name]`, stamped with the base pose at detection) |
+| `pick` / `grasp` | `holding` ← prior `found`; clear `found`/`found_pose`; set `holding_since` + `holding_pose` (grasp `pick` returns) |
+| `placeat` / `place` / `put` / `putin` / `give` | clear `holding` |
+| `open_drawer` / `open` · `close_drawer` / `close` | add / remove in `opened` |
+| `move` | `arrived` — set by sensor reconcile (localization), not the hook |
+
+Effects apply only on `result['isdone']`. **Only `arrived` is sensor-derived**;
+the rest are beliefs (there is no gripper width/force sensor — `holding_since`
+timestamps the grasp belief for staleness). `found_pose` is the detection-time
+**base-frame** geometry and is flagged stale once the robot moves, so it is
+display-only. The state is shown and editable in the dashboard "Robot State"
+panel via `GET`/`PUT /agent/world`.
+
 ### Three ways to drive the same skills
 
 | Mode | Use case | Latency |

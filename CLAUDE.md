@@ -71,6 +71,47 @@ Skills MUST return a dict with `isdone`. `@exception_handler` (in
 `robot_agent.utils`) wraps exceptions into `{'isdone': False, 'msg': ...}`
 when applied — most skills already use it.
 
+## Persistent world state
+
+A symbolic `WorldState`
+(`arrived/found/holding/opened/on/holding_since/found_pose/holding_pose`)
+lives on `robot_agent`'s per-process `AgentState.world`, so it **persists across
+plan runs** and (selectively) across a **restart** via `common_dir/world_state.json`.
+A just-run skill updates it through the `configs/grace_namemap.py` hook
+`apply_skill_effect(world, skill, params, result, node)` (find→`found`/`found_pose`,
+pick→`holding`/`holding_pose`, placeat→clear, open/close_drawer→`opened`); `arrived`
+is sensor-reconciled from localization (`reconcile_world` / the optional `robot_xy`
+hook). Only `arrived` is sensor-derived — the rest are **beliefs** (no gripper
+sensor). It is shown and editable in the dashboard "Robot State" panel via
+`GET`/`PUT /agent/world`.
+
+`found_pose` (base-frame geometry of `found`, flagged stale once the robot moves)
+and `holding_pose` (the grasp actually used to pick — `{grasppose:[dx,dy,dz,angle,width],
+ts, robot_pose}`) are display/record only; `pick` returns its executed grasppose so
+`apply_skill_effect` can stash it.
+
+### Reading world state inside a skill
+
+A skill has `node`; reach the live state through the process singleton:
+
+```python
+from robot_agent.state import current
+
+def my_skill(node, **params) -> dict:
+    world = current().world
+    obj   = world.holding                       # name of held object, or None
+    grasp = (world.holding_pose or {}).get('grasppose')   # [dx,dy,dz,angle,width]
+    fp    = world.found_pose                     # {loc_3d, pose_3d, grasppose?, ...} or None
+    # geometric memory is base-frame at detection — re-detect if the base moved:
+    if fp and world.found_pose_is_stale(_robot_xy(node)):
+        fp = None
+    ...
+```
+
+It is a **belief** snapshot, not a live sensor read — treat `found_pose`/`holding_pose`
+as hints (re-detect before grasping if the base has moved), and never assume
+`holding` reflects a real gripper measurement.
+
 ## Inter-skill calls
 
 Skills can call other skills, but always pass `node=` through:

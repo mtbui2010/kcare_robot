@@ -49,4 +49,8 @@ SKILL_CONFIGS: dict[str, tuple[str, str]] = {
     'get3d':            (f'{_PKG}.pointcloud',  'get3d'),
     'llm':              (f'{_PKG}.vlm',         'llm'),
     'rest_detect': (f'{_PKG}.rest_detect', 'rest_detect'),
+    'new_skill': (f'{_PKG}.new_skill', 'new_skill'),
+    'find_place': (f'{_PKG}.recognition', 'find_place'),
+    'approach_pick': (f'{_PKG}.pick', 'approach_pick'),
+    'approach_place': (f'{_PKG}.place', 'approach_place'),
 }

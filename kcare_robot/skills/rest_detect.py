@@ -8,6 +8,11 @@ This file follows the "detect" pattern:
 from robot_agent.skills import log_data
 from robot_agent.state import current
 
+from visionserve import draw, select_target_object
+import cv2
+from PIL import Image
+
+
 def _fetch_data_rest_detect(node):
     """Mock image fetch. Replace 'head_rgb'/'head_depth' with the agent
     names you registered in the Connections panel."""
@@ -42,16 +47,18 @@ def rest_detect(node, **params) -> dict:
 
     # 2. call the detector client (TCP). Register a TCP client named 'detector'
     #    (or rename below) in the Connections panel.
-    detector = current().dm.get_client('inferix')
+    detector = current().dm.get_client('visionserve')
     if detector is None:
         raise Exception("TCP client 'detector' not registered — add it in the Connections panel")
 
 
 
-    result = detector.infer_array(data['rgb'], conf=0.3, iou=0.7, prompt=inp)
+    result = detector.predict('grounding-dino', data['rgb'], prompt=inp, max_size=30)
 
-
+    target = select_target_object(result)
+    annotated = result.visualize( data['rgb'], target_grasp=target)
     # 3. log the annotated image so it shows up in the UI Camera panel
-    log_data({'log_image': data['rgb']})
+    log_data({'log_image': annotated})
 
-    return {'isdone': True, 'msg': f'rest_detect done', 'result': result}
+    return {'isdone': True, 'msg': f'rest_detect done', 'result': target}
+

@@ -68,6 +68,22 @@
       },
       "dshift": -0.25,
       "dforward": -0.1
+    },
+    "drawer2@living room": {
+      "default_mode": "left",
+      "placepose": {
+        "dx": 0.1
+      },
+      "handle": "white handle",
+      "handle_height": 0.6,
+      "height": 0.72,
+      "loc": {
+        "x": 0.763,
+        "y": -1.913,
+        "rz": -90
+      },
+      "dshift": -0.25,
+      "dforward": -0.1
     }
   },
   "HOME_LOC": {
@@ -276,13 +292,33 @@
         -185.5
       ]
     },
+    "approach_drawer": {
+      "right": [
+        3.33,
+        63.297,
+        -10.774,
+        40.909,
+        -273.2,
+        99.08,
+        -22
+      ],
+      "left": [
+        -0.21,
+        67.6,
+        23.97,
+        47.53,
+        -71.55,
+        106.74,
+        23.16
+      ]
+    },
     "j_arm_speed": 1.5,
     "j_arm_accel": 12,
     "l_arm_speed": 400,
     "l_arm_accel": 1200,
     "tool_radius": 0.05,
     "tool_length": 0.26,
-    "wrist_tool_length": 0.216,
+    "wrist_tool_length": 0.166,
     "approach_wrist_angle": 45,
     "place_liftup": 0.13
   },
@@ -416,5 +452,41 @@
     "fy": 746.0178833007812,
     "ppy": 356.381591796875,
     "lm_max_value": 935
+  },
+  "FIND_CONFIGS": {
+    "detector": "groundingdino",
+    "camera": "head",
+    "head_angles": [
+      -25
+    ],
+    "params": {
+      "min_mass": 200,
+      "max_ratio": 0.6,
+      "box_threshold": 0.28,
+      "text_threshold": 0.28,
+      "roi": [
+        235,
+        125,
+        1065,
+        580
+      ],
+      "method": "automask",
+      "stride": 20,
+      "dilate": -35
+    },
+    "standing_obj_names": [
+      "cup",
+      "bottle"
+    ],
+    "lying_obj_names": [
+      "phone",
+      "fork",
+      " spoon",
+      "bread",
+      "banana",
+      "control"
+    ],
+    "having_handle_obj_names": [],
+    "target_distance": 650
   }
 }

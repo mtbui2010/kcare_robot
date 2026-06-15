@@ -245,12 +245,12 @@
     "name": "get3d",
     "config": {
       "conn_name": "/create_object_marker",
-      "agent_name": "get3d",
       "conn_type": "ros_service",
-      "data_interface": "kaair_msgs/srv/CreateObjectMarker",
       "is_client": true,
+      "agent_name": "get3d",
+      "data_interface": "kaair_msgs/srv/CreateObjectMarker",
       "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
-      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'x': res.x, 'y':res.y, 'z': res.z}"
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'x': res.x_array, 'y': res.y_array, 'z': res.z_array, 'msg': res.message}"
     }
   },
   {
@@ -290,17 +290,6 @@
     }
   },
   {
-    "type": "http",
-    "name": "inferix",
-    "config": {
-      "is_client": true,
-      "url": "https://label.aistations.org/api/deploy/endpoint-ad4115a2/infer_array",
-      "agent_name": "inferix",
-      "method": "POST",
-      "token": "ifx_ccafac3ce59b_vr3xGTe9lZh_vT_NNjgrFfUFvc6rfYxqPQXilcoHKmY"
-    }
-  },
-  {
     "type": "llm",
     "name": "llama3.2",
     "config": {
@@ -308,6 +297,65 @@
       "agent_name": "llama3.2",
       "url": "http://10.252.205.103:11434",
       "model": "llama3.2",
+      "is_active": false
+    }
+  },
+  {
+    "type": "visionserve",
+    "name": "detect_head",
+    "config": {
+      "is_client": true,
+      "url": "http://192.168.1.11:11435",
+      "model": "grounding-dino",
+      "agent_name": "detect_head"
+    }
+  },
+  {
+    "type": "visionserve",
+    "name": "detect_arm",
+    "config": {
+      "is_client": true,
+      "url": "http://192.168.1.11:11435",
+      "model": "grasp-gd",
+      "agent_name": "detect_arm"
+    }
+  },
+  {
+    "type": "visionserve",
+    "name": "rf-detr",
+    "config": {
+      "is_client": true,
+      "url": "http://10.252.205.103:11435",
+      "model": "rf-detr"
+    }
+  },
+  {
+    "type": "visionserve",
+    "name": "detserve",
+    "config": {
+      "is_client": true,
+      "url": "http://10.252.205.103:11435",
+      "model": "rf-detr",
+      "agent_name": "detserve"
+    }
+  },
+  {
+    "type": "visionserve",
+    "name": "visionserve",
+    "config": {
+      "is_client": true,
+      "url": "http://192.168.1.11:11435",
+      "model": "rf-detr",
+      "agent_name": "visionserve"
+    }
+  },
+  {
+    "type": "llm",
+    "name": "llama",
+    "config": {
+      "name": "llama",
+      "agent_name": "llama",
+      "url": "http://192.168.1.11:11434",
       "is_active": true
     }
   }
