@@ -45,7 +45,8 @@ def movel(node, **kwargs):
 
     out['base_frame'] = 'base_footprint'
     out['is_relative'] = False
-    return node.agents['arm_movel'].send(out)
+    ret =  node.agents['arm_movel'].send(out)
+    return ret
     
 
 fix_angle = lambda angle: angle-360 if angle>=360 else angle+360 if angle<=-360 else angle

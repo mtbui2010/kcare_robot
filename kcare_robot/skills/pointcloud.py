@@ -8,7 +8,11 @@ def get3d(node, **kwargs):
     p2 = kwargs['points']
     u  = [int(p[0]) for p in p2]
     v  = [int(p[1]) for p in p2]
-    ret =  node.agents['get3d'].send({'u_array':u, 'v_array': v, 'base_frame': 'base_footprint'})
+    out = {'u_array':u, 'v_array': v,  'base_frame': 'base_footprint'}
+    if  len(p2[0])==3:
+        out['d_array'] = [float(p[2]/1000.) for p in p2]
+
+    ret =  node.agents['get3d'].send(out)
     ret['pose'] = np.stack(
         (np.asarray(ret.pop('x')),
         np.asarray(ret.pop('y')),

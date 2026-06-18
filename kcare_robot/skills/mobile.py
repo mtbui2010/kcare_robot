@@ -136,19 +136,22 @@ def move(node, **kwargs):
 
     # backward 
     if prev_robot_mode!='front':
-        ret = run_parallel_check(funcs=[
-            lambda : moveh(node=node, inputs='straight,front', wait=True),
-            # lambda : node.agents['turn'].send({'inputs': back_turn_deg, 'wait': True}),
-            lambda : turn(node=node, inputs=back_turn_deg),
-        ])
-        if not ret['isdone']:
-            return ret
+        # ret = run_parallel_check(funcs=[
+        #     lambda : moveh(node=node, inputs='straight,front', wait=True),
+        #     # lambda : node.agents['turn'].send({'inputs': back_turn_deg, 'wait': True}),
+        #     lambda : turn(node=node, inputs=back_turn_deg),
+        # ])
+        # if not ret['isdone']:
+        #     return ret
         
-        ret = run_parallel_check(funcs=[
-            lambda : forward(node=node, inputs=-0.3, wait=True),
-        ])
-        if not ret['isdone']:
-            return ret
+        # ret = run_parallel_check(funcs=[
+        #     lambda : forward(node=node, inputs=-0.3, wait=True),
+        # ])
+        # if not ret['isdone']:
+        #     return ret
+
+        ret = moveh(node=node, inputs='straight,front', wait=True)
+        assert  ret['isdone'], f'{ret}'
     
     # move
     kwargs.update({'wait':True})

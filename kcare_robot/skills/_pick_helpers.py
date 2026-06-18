@@ -17,7 +17,7 @@ from kcare_robot.skills.recognition import find_arm, find, grasp_succeed
 DPULL = 0.3
 DEFAULT_HANDLE = 'brown handle'
 DRAWER_HEIGHT = 0.75
-DRAWER_RANGE = [0., 0.1]
+DRAWER_RANGE = [0.1, 0.4]
 
 
 # ---------------------------------------------------------------------------
@@ -67,11 +67,13 @@ def compute_drawer_mforward(node, handle_name, robot_mode):
     ret = find(node=node, inputs=handle_name, camera='arm')
     if not ret['isdone']:
         return ret, 0
-    x0 = ret['ins'][handle_name]['pose_3d'][0]
-    xmin = DRAWER_RANGE[0] if robot_mode == 'right' else -DRAWER_RANGE[1]
-    xmax = DRAWER_RANGE[1] if robot_mode == 'right' else -DRAWER_RANGE[0]
-    mforward = np.clip(x0, xmin, xmax) - x0
-    return None, (0 if abs(mforward) < 0.05 else mforward)
+    return None, 0
+
+    # x0 = ret['ins'][handle_name]['pose_3d'][0]
+    # xmin = DRAWER_RANGE[0] if robot_mode == 'right' else -DRAWER_RANGE[1]
+    # xmax = DRAWER_RANGE[1] if robot_mode == 'right' else -DRAWER_RANGE[0]
+    # mforward = np.clip(x0, xmin, xmax) - x0
+    # return None, (0 if abs(mforward) < 0.1 else mforward)
 
 
 def drive_forward_if_needed(node, mforward):

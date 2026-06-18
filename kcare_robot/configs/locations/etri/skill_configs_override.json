@@ -58,13 +58,16 @@
       "handle": "gray handle",
       "handle_height": 0.415,
       "height": 0.566,
+      "placepose": {
+        "dx ": 0
+      },
       "loc": {
         "x": 1.322,
         "y": -0.809,
         "rz": -90
       },
       "dforward": 0.15,
-      "dshift": -0.2
+      "dshift": -0.3
     },
     "bed@main room": {
       "label": "\uc548\ubc29 \uce68\ub300",
@@ -168,6 +171,14 @@
       },
       "dshift": -0.4,
       "dforward": 0.1
+    },
+    "wait": {
+      "default_mode": "front",
+      "loc": {
+        "x": 1.6,
+        "y": -3.4,
+        "rz": -90
+      }
     }
   },
   "HOME_LOC": {
@@ -376,13 +387,33 @@
         -185.5
       ]
     },
+    "approach_drawer": {
+      "right": [
+        -6.211779573691565,
+        81.90505354547581,
+        -15.779663096075398,
+        80.38103343597086,
+        -277.14880451766084,
+        105.36503896698794,
+        -3.078588880403007
+      ],
+      "left": [
+        3.834008869823475,
+        82.74111651120957,
+        17.51407523013154,
+        81.91691758406412,
+        -81.43637962500787,
+        107.12427713112979,
+        2.9979493191843094
+      ]
+    },
     "j_arm_speed": 1.5,
     "j_arm_accel": 12,
     "l_arm_speed": 400,
     "l_arm_accel": 1200,
     "tool_radius": 0.05,
     "tool_length": 0.26,
-    "wrist_tool_length": 0.216,
+    "wrist_tool_length": 0.166,
     "approach_wrist_angle": 45,
     "place_liftup": 0.13
   },
@@ -516,5 +547,73 @@
     "fy": 746.0178833007812,
     "ppy": 356.381591796875,
     "lm_max_value": 935
+  },
+  "FIND_CONFIGS": {
+    "detect_object": {
+      "model": "grounding-dino",
+      "min_size": 0,
+      "max_size": 30,
+      "box_threshold": 0.3,
+      "text_threshold": 0.15,
+      "target_distance": 0.9,
+      "distance_sigma": 0.9,
+      "near_point": "center",
+      "weight": {
+        "quality": 0.8,
+        "distance": 0.1,
+        "near": 0.1
+      }
+    },
+    "detect_grasp": {
+      "model": "grounding-dino",
+      "min_size": 0,
+      "max_size": 30,
+      "box_threshold": 0.3,
+      "text_threshold": 0.15,
+      "target_distance": 0.3,
+      "distance_sigma": 0.3,
+      "near_point": "center",
+      "weight": {
+        "quality": 0.8,
+        "distance": 0.1,
+        "near": 0.1
+      },
+      "gripper_min": 10,
+      "gripper_max": 200
+    },
+    "detect_background": {
+      "use": true,
+      "model": "background",
+      "bg_min_area": 0,
+      "bg_max_area": 80,
+      "method": "automask",
+      "roi": [
+        222,
+        100,
+        900,
+        650
+      ],
+      "stride": 20,
+      "dilate": -45
+    },
+    "grasp_check_roi": [
+      415,
+      365,
+      476,
+      390
+    ],
+    "standing_obj_names": [
+      "cup",
+      "bottle"
+    ],
+    "lying_obj_names": [
+      "phone",
+      "fork",
+      "spoon",
+      "bread",
+      "banana",
+      "control"
+    ],
+    "having_handle_obj_names": []
   }
 }

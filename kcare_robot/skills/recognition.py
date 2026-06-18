@@ -43,14 +43,21 @@ from kcare_robot.skills._recognition_helpers import (
 )
 
 def _detect_nearest(node, pose, **kwargs) -> dict:
-    stride = kwargs.pop('stride', FIND_CONFIGS['params']['stride'])
+    # ret = moveh(node=node, inputs="down")
+    # assert ret['isdone'], f'{ret}'
+    # time.sleep(0.5)
+
     cam = fetch_camera_data(node, 'head')
     h, w =  cam.rgb.shape[:2]
     fx,fy, cx, cy = cam.cam_params
 
-    params = {k:kwargs.pop(k, v) for k,v in FIND_CONFIGS['params'].items() if k in ['roi','method', 'dilate']}
+    configs = FIND_CONFIGS['detect_background']
+    if not configs['use']:
+        return pose
+    det_configs = {k:v for k,v in configs.items() if k in ['model', 'roi', 'method', 'dilate', 'method', 'bg_min_size', 'bg_min_size']}
+    stride = configs['stride']
 
-    res = _vs_client().predict('background', cam.rgb, depth=cam.depth, bg_max_area=60, **params)
+    res = _vs_client().predict(image=cam.rgb, depth=cam.depth, **det_configs)
     _log_annotated(res,  cam.rgb)
 
     if len(res.masks)==0:
@@ -92,7 +99,7 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     """grounding-dino on `camera`. Head → 3D via get3d (base frame); wrist →
     3D via Ixy2xyz (camera frame, metres)."""
     simple_return = kwargs.pop('simple_return', False)
-    target_distance = kwargs.pop('target_distance', 0.9)
+    # target_distance = kwargs.pop('target_distance', 0.9)
     camera = kwargs.pop('camera', 'head')
     robot_mode = get_robot_mode(node=node)
     select_target_object, _ = _vs_postprocess()
@@ -102,43 +109,62 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     rgb, depth, cam_params = cam.rgb, cam.depth, cam.cam_params
     h, w = rgb.shape[:2]
 
-    max_size = kwargs.pop('max_size', FIND_CONFIGS['params'].get('max_ratio', 0.6) * 100)
+    # max_size = kwargs.pop('max_size', FIND_CONFIGS['params'].get('max_ratio', 0.6) * 100)
     min_conf = kwargs.pop('min_conf', 0.1 if any('handle' in n for n in obj_names) else 0.0)
-    side = kwargs.pop('side', None)
-    text_threshold = kwargs.pop('text_threshold', 0.15)
+    # side = kwargs.pop('side', None)
+    # text_threshold = kwargs.pop('text_threshold', 0.15)
+
 
     # A side approach needs object masks → grounded-sam (boxes + masks in one
     # call); plain find uses grounding-dino (boxes only).
-    want_side = side is not None and use_head
-    model = 'grounded-sam' if want_side else 'grounding-dino'
-    res = _vs_client().predict(model, rgb, prompt=_prompt(obj_names), max_size=max_size, text_threshold=text_threshold)
-    if min_conf > 0:
-        res = res.filter_by_conf(min_conf=min_conf)
+    # want_side = side is not None and use_head
+    # model = 'grounded-sam' if want_side else 'grounding-dino'
+    # res = _vs_client().predict(model, rgb, prompt=_prompt(obj_names), max_size=max_size, text_threshold=text_threshold)
+    # if min_conf > 0:
+    #     res = res.filter_by_conf(min_conf=min_conf)
     # log_data(**res)
-    _log_annotated(res, rgb)
+    # _log_annotated(res, rgb)
 
-    fg_mask = _foreground_mask(res, w, h, depth) if want_side else None
+    # fg_mask = _foreground_mask(res, w, h, depth) if want_side else None
 
     cam_angle = abs(cam.head_state['current_ry']) if use_head else get_wrist_angle(node=node)
     cam_angle_rad = cam_angle * np.pi / 180
     horizon_yz = np.array([-np.cos(cam_angle_rad), -np.sin(cam_angle_rad)])
 
+    configs = FIND_CONFIGS['detect_object']
+    det_configs = {k:v for k,v in configs.items() if k in ['model', 'min_size', 'max_size', 'text_threshold', 'box_threshold']}
+    select_configs = {k:v for k,v in configs.items() if k in ['near_point', 'target_distance', 'distance_sigma']}
+
+    for k in ['text_threshold', 'box_threshold']:
+        det_configs[k] = kwargs.get(k,det_configs[k])
+        
+
     out: dict = {}
+    annotated = rgb.copy()
     for name in obj_names:
+        res = _vs_client().predict(image=rgb, prompt=f'{name.strip()}.', **det_configs)
+        if min_conf > 0:
+            res = res.filter_by_conf(min_conf=min_conf)
+        # _log_annotated(res, rgb)
+
         target = select_target_object(
-            res, cls=name, near_point='center', image_size=(w, h), 
-            target_distance=target_distance, depth_result=depth, intrinsics=cam_params,
-            weights={'quality': 0.5, 'distance': 0.3, 'near': 0.2})
+            res, cls=name, image_size=(w, h), depth_result=depth, intrinsics=cam_params, **select_configs)
+        
         if target is None:
             continue
-        _log_annotated(res, rgb, target_box=target)
+        # _log_annotated(res, rgb, target_box=target)
+        x0, y0, w, h = target.bbox
+        annotated = show_box_on_rgb(annotated, box=(x0, y0, x0+w, y0+h), label= f'{name[:2]}:{target.conf:.2f}')
+
+
         box = _bbox_to_xyxy(target.bbox)
         cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
 
+        box_depths = _box_depths(depth, box)
         if use_head:
             # pose = list(get3d(node=node, x=cx, y=cy)['pose'])
             # pose = list(get3d(node=node, x=int(cx), y=int(cy))['pose'])
-            pose = get3d(node=node, points = [[cx, cy]])['pose'][0, :].tolist()
+            pose = get3d(node=node, points = [[cx, cy, box_depths['obj_median']]])['pose'][0, :].tolist()
         else:
             Z = _sample_depth(depth, cx, cy)
             px, py, pz = Ixy2xyz(Ix=cx, Iy=cy, Z=Z, cam_params=cam_params)
@@ -171,7 +197,7 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
 
         approach_pose = {k:v for k,v in zip(['x', 'y', 'z', 'rx', 'ry', 'rz'], approach_pose)}
 
-        base_rotate = 90 if robot_mode=='right' else -90
+        base_rotate = 60 if robot_mode=='right' else -60
         out[name] = {
             'duration_ms':   res.duration_ms,
             'device':        res.device,
@@ -186,12 +212,13 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
             'score':         float(getattr(target, 'conf', 0.0)),
             'islying':       islying,
             'mass_percents': [50, 50],
-            'depths':        _box_depths(depth, box),
+            'depths':        box_depths,
         }
-        if fg_mask is not None:
-            sp = _compute_side_pose(node, box, side, fg_mask, rgb, cam.head_state)
-            if sp is not None:
-                out[name]['side_pose'] = sp
+        # if fg_mask is not None:
+        #     sp = _compute_side_pose(node, box, side, fg_mask, rgb, cam.head_state)
+        #     if sp is not None:
+        #         out[name]['side_pose'] = sp
+    log_data({'log_image': annotated})
     save_detection_dataset(rgb=rgb, depth=depth, results=out, tag=camera)
     return {'isdone': len(out) > 0, 'ins': out}
 
@@ -206,24 +233,28 @@ def _detect_grasps(node, obj_names, **kwargs: dict) -> dict:
     rgb, depth, cam_params = cam.rgb, cam.depth, cam.cam_params
     h, w = rgb.shape[:2]
 
-    gmin = kwargs.pop('gripper_min', None)
-    gmax = kwargs.pop('gripper_max', None)
-    text_threshold = kwargs.pop('text_threshold', 0.15)
+    # gmin = kwargs.pop('gripper_min', None)
+    # gmax = kwargs.pop('gripper_max', None)
+    # text_threshold = kwargs.pop('text_threshold', 0.15)
     keep_orientation = kwargs.pop('keep_orientation', False)
 
+    configs = FIND_CONFIGS['detect_grasp']
+    det_configs = {k:v for k,v in configs.items() if k in ['model','min_size', 'max_size', 'text_threshold', 'box_theshold']}
+    select_configs = {k:v for k,v in configs.items() if k in ['near_point', 'target_distance', 'distance_sigma']}
+    grasp_configs = {k:v for k,v in configs.items() if k in ['gripper_min', 'gripper_max']}
 
-    res = _vs_client().predict(
-        'grounding-dino', rgb, prompt=_prompt(obj_names), text_threshold=text_threshold)
+
+    res = _vs_client().predict(image=rgb, prompt=_prompt(obj_names), **det_configs)
     _log_annotated(res, rgb)
     
 
     out: dict = {}
     # target_for_draw = None
     for name in obj_names:
-        obj = select_target_object(res, cls=name, near_point="center", image_size=(w, h), 
-            target_distance=0.3, depth_result=depth, intrinsics=cam_params,
-            weights={'quality': 0.5, 'distance': 0.3, 'near': 0.2}) 
-        gs  = _vs_client().predict("grasp", rgb, box=obj.bbox, gripper_min=gmin, gripper_max=gmax) 
+        obj = select_target_object(res, cls=name, image_size=(w, h),
+            depth_result=depth, intrinsics=cam_params, **select_configs) 
+
+        gs  = _vs_client().predict("grasp", rgb, box=obj.bbox, **grasp_configs) 
         g, garg = select_target_grasp(gs.grasps, return_index=True)
         _log_annotated(gs, rgb, target_grasp=g)
         if g is None:
@@ -266,7 +297,7 @@ def detect(node, **kwargs):
     Returns ``{'isdone', 'ins': {name: {...}}}``."""
     obj_names = _parse_obj_names(kwargs.pop('inputs', None), kwargs.pop('obj_names', None))
     camera = kwargs.pop('camera', FIND_CONFIGS['camera'])
-    return _detect_objects(node, obj_names, camera=camera, kwargs=kwargs)
+    return _detect_objects(node, obj_names, camera=camera, **kwargs)
 
 
 @exception_handler
@@ -294,6 +325,11 @@ def find(node, **kwargs):
     'cup,bottle@table' (objects, optional '@location'). Retries over `views`
     and, if `once=False`, over every ENV location."""
     loc_name = kwargs.pop('inputs', None)
+    splits = loc_name.split('|')
+    loc_name, num_trials = splits if len(splits)==2 else (splits[0], 1)
+    num_trials = int(num_trials)
+
+
     if loc_name is None:
         raise Exception(f'inputs :{loc_name}')
     splits = loc_name.split('@')
@@ -312,10 +348,14 @@ def find(node, **kwargs):
             if ret['isdone']:
                 return ret
         return ret
-
-    ret = run(loc, views)
-    if ret['isdone'] or once:
+    
+    for i in range(num_trials):
+        ret = run(loc, views)
+        if ret['isdone']:
+            return ret
+    if once:
         return ret
+
 
     locs = list(ENV.keys())
     print(f'Recognition failed. Try to find in {locs}')
@@ -348,8 +388,7 @@ def find_arm(node, **kwargs):
 
 @exception_handler
 def grasp_succeed(node, **kwargs):
-    # x0, y0, x1, y1 = kwargs.get('crop_roi', [448, 333, 464, 347])
-    x0, y0, x1, y1 = kwargs.get('crop_roi', [448, 359, 464, 377]) #
+    x0, y0, x1, y1 = kwargs.get('crop_roi', FIND_CONFIGS['grasp_check_roi']) #
     cam_data = _fetch_arm(node=node)
     rgb, depth = cam_data.rgb, cam_data.depth
 

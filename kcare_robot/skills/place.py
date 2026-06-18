@@ -84,8 +84,8 @@ def place(node, **kwargs):
 
     env = get_env_specs(destination, ENV)
     if len(env)>0:
-        move(node=node, inputs=destination, **kwargs)
-        assert kwargs['isdone'], f'{kwargs}'
+        ret = move(node=node, inputs=destination, **kwargs)
+        assert ret['isdone'], f'{ret}'
     
     kwargs.update(approach_place(node=node, inputs=destination, **kwargs))
     assert kwargs['isdone'], f'{kwargs}'
@@ -96,11 +96,20 @@ def place(node, **kwargs):
         ret = movet(node=node, dz=kwargs['dapproach'], wait=True)
         assert ret['isdone'], f'{ret}'
 
+    def slow_place():
+        time.sleep(0.5)
+        return movet(node=node, dz=kwargs['dz_up']/2) if kwargs['islying'] else movel(node=node, dz=-kwargs['dz_up'])
+
     ret = run_parallel_check(funcs=[
-        lambda: movet(node=node, dz=kwargs['dz_up']/2) if kwargs['islying'] else movel(node=node, dz=-kwargs['dz_up']),
+        lambda: slow_place(),
         lambda: grip(node=node, inputs='open', wait=True)
     ])
     assert ret['isdone'], f'{ret}'
+    # ret = grip(node=node, inputs='open')
+    # assert ret['isdone'], f'{ret}'
+
+    # ret = movet(node=node, dz=kwargs['dz_up']/2) if kwargs['islying'] else movel(node=node, dz=-kwargs['dz_up'])
+    # assert ret['isdone'], f'{ret}'
 
     ret = movel(node=node, dz=0.15)
     assert  ret['isdone'], f'{ret}'

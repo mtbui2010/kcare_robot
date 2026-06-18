@@ -42,12 +42,12 @@
     "name": "lift",
     "config": {
       "conn_name": "/kaair_worker/lift_move",
-      "agent_name": "lift",
       "conn_type": "ros_action",
-      "data_interface": "kaair_msgs/action/LiftMove",
       "is_client": true,
+      "agent_name": "lift",
+      "data_interface": "kaair_msgs/action/LiftMove",
       "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
-      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'final_height': res.final_height}"
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'final_height': res.final_height, 'msg': res.message}"
     }
   },
   {
@@ -245,12 +245,12 @@
     "name": "get3d",
     "config": {
       "conn_name": "/create_object_marker",
-      "agent_name": "get3d",
       "conn_type": "ros_service",
-      "data_interface": "kaair_msgs/srv/CreateObjectMarker",
       "is_client": true,
+      "agent_name": "get3d",
+      "data_interface": "kaair_msgs/srv/CreateObjectMarker",
       "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
-      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'x': res.x, 'y':res.y, 'z': res.z}"
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'x': res.x_array, 'y':res.y_array, 'z': res.z_array, 'msg': res.message}"
     }
   },
   {
@@ -281,12 +281,60 @@
     "name": "arm_movel",
     "config": {
       "conn_name": "/kaair_worker/arm_moveL",
-      "agent_name": "arm_movel",
       "conn_type": "ros_action",
-      "data_interface": "kaair_msgs/action/MoveLinear",
       "is_client": true,
+      "agent_name": "arm_movel",
+      "data_interface": "kaair_msgs/action/MoveLinear",
       "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
-      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success}"
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'msg': res.message}"
+    }
+  },
+  {
+    "type": "visionserve",
+    "name": "visionserve",
+    "config": {
+      "is_client": true,
+      "url": "http://192.168.1.200:11435",
+      "model": "rf-detr",
+      "agent_name": "visionserve"
+    }
+  },
+  {
+    "type": "visionserve",
+    "name": "rf-detr",
+    "config": {
+      "is_client": true,
+      "url": "http://10.252.205.103:11435",
+      "model": "rf-detr"
+    }
+  },
+  {
+    "type": "visionserve",
+    "name": "rf-detr",
+    "config": {
+      "is_client": true,
+      "url": "http://10.252.205.103:11435",
+      "model": "rf-detr"
+    }
+  },
+  {
+    "type": "visionserve",
+    "name": "detserve",
+    "config": {
+      "is_client": true,
+      "url": "http://10.252.205.103:11435",
+      "model": "rf-detr",
+      "agent_name": "detserve"
+    }
+  },
+  {
+    "type": "llm",
+    "name": "llama",
+    "config": {
+      "name": "llama",
+      "agent_name": "llama",
+      "url": "http://192.168.1.11:11434",
+      "is_active": true
     }
   }
 ]

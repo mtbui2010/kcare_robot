@@ -151,6 +151,7 @@ def open_drawer(**kwargs):
             ret = move(node=node, inputs=inp, wait=True)
             if not ret['isdone']:
                 return ret
+        lift_height = env.get('handle_height', lift_height)
         height = env.get('handle_height', __DRAWER_HEIGHT)
 
     robot_mode = get_robot_mode(node=node)
@@ -258,6 +259,7 @@ def close_drawer(**kwargs):
             ret = move(node=node, inputs=inp, wait=True)
             if not ret['isdone']:
                 return ret
+        lift_height = env.get('height', lift_height)
         target_height = env.get('handle_height', __DRAWER_HEIGHT)
     pose_after_open = kwargs.pop('pose_after_open', None)
     lift_after_open = kwargs.pop('lift_after_open', None)
@@ -560,7 +562,13 @@ def approach_pick(node, **kwargs) -> dict:
 @arm_exception_handler
 def pick(node, **kwargs):
     """`pick_no_sound` wrapped with picking/picked voice announcements."""
-    loc_name = kwargs.get('inputs', None)
+    loc_name = kwargs.pop('inputs', None)
+    splits = loc_name.split('|')
+    loc_name, num_trials = splits if len(splits)==2 else (splits[0], 1)
+    num_trials = int(num_trials)
+
+
+
     caption, _loc = _h.split_loc(loc_name)
     robot_mode = get_robot_mode(node=node)
 
@@ -576,11 +584,11 @@ def pick(node, **kwargs):
             
             kwargs['islying'] = True
         else:
-            kwargs.update(approach_pick(node=node, **kwargs))
+            kwargs.update(approach_pick(node=node, inputs=loc_name, **kwargs))
             assert  kwargs['isdone'], f'{kwargs}'
 
         kwargs['inputs'] = caption
-        kwargs.update(fine_move(node=node, **kwargs))
+        kwargs.update(fine_move(node=node, num_trials=num_trials, **kwargs))
         assert  kwargs['isdone'], f'{kwargs}'
 
         ret = movel(node=node, dz=0.15)
@@ -651,6 +659,3 @@ def pushing(**kwargs):
         return ret
 
     return movet(node=node, dz=-dz)
-
-
-

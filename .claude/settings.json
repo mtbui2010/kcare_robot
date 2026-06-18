@@ -4,7 +4,13 @@
       "Bash(ls /home/keti-kcare-3/workdir/)",
       "Read(//home/keti-kcare-3/workdir/**)",
       "Bash(python3 -c \"import pyconnect.ros.custom_node as m; print\\(m.__file__\\)\")",
-      "Read(//home/keti-kcare-3/docker_ws/kcare_carerobotapp/src/pyconnect/pyconnect/ros/**)"
+      "Read(//home/keti-kcare-3/docker_ws/kcare_carerobotapp/src/pyconnect/pyconnect/ros/**)",
+      "Bash(pip show *)",
+      "Bash(python3 -c \"import visionserve; print\\(visionserve.__file__\\)\")",
+      "Bash(ls /home/keti-kcare-3/docker_ws/kcare_carerobotapp/.venv/lib/python3.10/site-packages/ | grep -i vision; echo '---'; pip show -f visionserve 2>&1 | head -40)",
+      "Read(//home/keti-kcare-3/docker_ws/kcare_carerobotapp/.venv/lib/python3.10/site-packages/**)",
+      "Bash(/home/keti-kcare-3/docker_ws/kcare_carerobotapp/.venv/bin/pip show *)",
+      "Bash(/home/keti-kcare-3/docker_ws/kcare_carerobotapp/.venv/bin/python -c \"import visionserve; print\\('OK ->', visionserve.__file__\\); print\\('attrs:', [a for a in dir\\(visionserve\\) if not a.startswith\\('_'\\)][:20]\\)\")"
     ],
     "additionalDirectories": [
       "/home/keti-kcare-3/workdir/pyconnect/pyconnect/ros"
