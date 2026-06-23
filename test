@@ -13,7 +13,7 @@
       "distance": 0.1,
       "near": 0.1
     },
-    "fuse_islying": true,
+    "fuse_islying": false,
     "disagree_trust": "head"
   },
   "detect_grasp": {
@@ -48,7 +48,7 @@
       650
     ],
     "stride": 20,
-    "dilate": -45
+    "dilate": -60
   },
   "grasp_check_roi": [
     415,

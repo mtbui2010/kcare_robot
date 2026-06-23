@@ -95,7 +95,8 @@
         "y": -4.4,
         "rz": -90
       },
-      "dshift": -0.1
+      "dshift": -0.1,
+      "dforward": 0.1
     },
     "wait@living room": {
       "label": "living_room_wait",
@@ -583,7 +584,7 @@
         "distance": 0.1,
         "near": 0.1
       },
-      "fuse_islying": true,
+      "fuse_islying": false,
       "disagree_trust": "head"
     },
     "detect_grasp": {
@@ -640,4 +641,3 @@
     "having_handle_obj_names": []
   }
 }
-

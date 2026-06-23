@@ -167,8 +167,8 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     3D via Ixy2xyz (camera frame, metres)."""
     simple_return = kwargs.pop('simple_return', False)
     camera = kwargs.pop('camera', 'head')
-    fuse = FIND_CONFIGS.get('fuse_islying', True)   # False → `camera` only (no cross-check)
-    disagree_trust = FIND_CONFIGS.get('disagree_trust', 'arm')   # cam to trust if VLM unavailable on disagreement
+    fuse = kwargs.get('fuse_islying', FIND_CONFIGS['detect_object']['fuse_islying'])   # False → `camera` only (no cross-check)
+    disagree_trust = kwargs.get('disagree_trust', FIND_CONFIGS['detect_object']['disagree_trust'])   # cam to trust if VLM unavailable on disagreement
     robot_mode = get_robot_mode(node=node)
     use_head = 'head' in camera
 
@@ -265,6 +265,7 @@ def detect(node, **kwargs):
 
 @exception_handler
 def find_once(node, **kwargs):
+    fuse_islying = kwargs.get('fuse_islying', FIND_CONFIGS['detect_object']['fuse_islying'])
     loc = kwargs.get('loc', None)
     camera = kwargs.pop('camera', 'head')
     if loc is not None:
@@ -275,7 +276,7 @@ def find_once(node, **kwargs):
         view = kwargs.pop('view', 'down')
         ret = run_parallel_check(funcs=[
             lambda: (moveh(node=node, ry=view),time.sleep(1))[0],
-            lambda: movej(node=node, inputs='pre_pick')
+            lambda: movej(node=node, inputs='pre_pick') if fuse_islying else {'isdone': True} 
         ])
         # moveh(node=node, ry=view)
         # time.sleep(1)

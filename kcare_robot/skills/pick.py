@@ -585,7 +585,7 @@ def pick(node, **kwargs):
             
             kwargs['islying'] = True
         else:
-            kwargs.update(approach_pick(node=node, inputs=loc_name, **kwargs))
+            kwargs.update(approach_pick(node=node, inputs=loc_name, fuse_islying=True, **kwargs))
             assert  kwargs['isdone'], f'{kwargs}'
 
         kwargs['inputs'] = caption
@@ -606,6 +606,7 @@ def pick(node, **kwargs):
         assert  ret['isdone'], f'{ret}'
         
         kwargs.pop('inputs', None)
+        kwargs.pop('fuse_islying', None)
         return kwargs
 
     return {'isdone': True}
