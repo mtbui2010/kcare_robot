@@ -38,7 +38,7 @@ from kcare_robot.skills._recognition_helpers import (
     _vs_client, _prompt, _log_annotated, _get_placepose,
     _bbox_to_xyxy, _box_islying_pca, _gravity_in_cam, _box_depths,
     _arm_horizon_yz, _cam_gravity, _object_det_select_configs, _islying_consensus, _reconcile_grasp_islying,
-    _mask_for_target, _emit_islying_vis, _none_res, _predict_detect, _fused_head_arm,
+    _mask_for_target, _emit_islying_vis, _emit_multi_islying_vis, _none_res, _predict_detect, _fused_head_arm,
     _object_pose_3d, _build_approach_pose, _grasp_from_box, _grasp_label,
     _parse_obj_names,
     call_detector, make_side_box, _head_calib_func_factory, is_inside_workspace_box,
@@ -180,19 +180,29 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     det_configs, select_configs = _object_det_select_configs(kwargs)
 
     out: dict = {}
+    fused_head = fuse and use_head
+    # One shared arm frame across all objects (so the multi-object composite draws
+    # everyone on the same head|arm pair); `multi` → suppress per-object emits and
+    # push one combined log_image at the end.
+    arm_cam = _fetch_arm(node) if fused_head else None
+    multi = fused_head and len(obj_names) > 1
+    panels: list = []
     for name in obj_names:
         grasp = None
-        if fuse and use_head:
+        if fused_head:
             # HEAD detection ∥ ARM grasp-gd ∥ speculative VLM, run concurrently.
             # The arm branch also yields a `grasppose` (best-effort, None if the
             # wrist camera can't see the object yet).
             fr = _fused_head_arm(node, name, rgb=rgb, depth=depth, cam_params=cam_params, cam=cam,
                                  use_head=use_head, det_configs=det_configs, select_configs=select_configs,
-                                 min_conf=min_conf, disagree_trust=disagree_trust)
+                                 min_conf=min_conf, disagree_trust=disagree_trust,
+                                 arm_cam=arm_cam, emit_vis=not multi)
             assert fr is not None, f'No object detected'
             res, target, box = fr['res'], fr['target'], fr['box']
             pose, box_depths, islying = fr['pose'], fr['box_depths'], fr['islying']
             grasp = fr.get('grasp')
+            if multi:
+                panels.append(fr['panel'])
         else:
             # Single-camera (or arm-primary) path with grounded-sam fallback.
             res = _predict_detect(rgb, f'{name.strip()}.', det_configs)
@@ -244,7 +254,10 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
             entry['grasppose']   = grasp['grasppose']
             entry['grasp_score'] = grasp['score']
         out[name] = entry
-    # log_image is emitted per-object by the islying consensus (both-camera debug view).
+    # Multi-object: one shared head|arm composite with every object's box/grasp/votes.
+    # (Single object emits its richer per-object view inside `_fused_head_arm`.)
+    if multi and panels:
+        _emit_multi_islying_vis(node, rgb, arm_cam.rgb if arm_cam is not None else None, panels)
     save_detection_dataset(rgb=rgb, depth=depth, results=out, tag=camera)
     return {'isdone': len(out) > 0, 'ins': out}
 

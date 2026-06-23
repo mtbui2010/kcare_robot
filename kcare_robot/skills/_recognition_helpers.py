@@ -602,6 +602,65 @@ def _emit_islying_vis(node, name, head_res, arm_res, fused, vlm=None, vlm_view=N
         pass
 
 
+def _compose_multi_islying_vis(head_rgb, arm_rgb, panels):
+    """Single shared [head | arm] image with EVERY object's box (coloured by its
+    fused islying), the per-object grasp on the arm panel, and a per-object vote
+    legend (head/arm/vlm/fused) in the bottom-right. Used when `find` runs on
+    multiple objects so the log_image shows all of them, not just the last."""
+    if not panels:
+        return None
+    frames = [im for im in (head_rgb, arm_rgb) if im is not None]
+    if not frames:
+        return None
+    target_h = max(int(im.shape[0]) for im in frames)
+
+    def draw(rgb, kind):
+        im = np.ascontiguousarray(rgb[:, :, :3]).copy()
+        for p in panels:
+            box = p.get(f'{kind}_box')
+            if box is not None:
+                x0, y0, x1, y1 = [int(v) for v in box]
+                cv2.rectangle(im, (x0, y0), (x1, y1), _LY_COLOR if p['fused'] else _ST_COLOR, 3)
+                lbl = f"{p['name']}:{_vlabel(p['fused'])}"
+                cv2.putText(im, lbl, (x0, max(22, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 4)
+                cv2.putText(im, lbl, (x0, max(22, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+            if kind == 'arm' and p.get('grasp_line') is not None:
+                _draw_grasp(im, p['grasp_line'], p.get('grasp_label', ''))
+        h, w = im.shape[:2]
+        if h != target_h:
+            im = cv2.resize(im, (max(1, int(w * target_h / h)), target_h))
+        cv2.putText(im, kind, (8, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 5)
+        cv2.putText(im, kind, (8, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
+        return im
+
+    cols = [draw(im, k) for im, k in ((head_rgb, 'head'), (arm_rgb, 'arm')) if im is not None]
+    comp = np.concatenate(cols, axis=1)
+
+    def short(v):
+        if isinstance(v, str):
+            return 'TO' if v == 'timeout' else v[:2].upper()
+        return 'na' if v is None else ('LY' if v else 'ST')
+    lines = [f"{p['name']} h:{short(p.get('head_vote'))} a:{short(p.get('arm_vote'))} "
+             f"v:{short(p.get('vlm'))} ->{short(p['fused'])}" for p in panels]
+    x = comp.shape[1] - 430
+    y0 = comp.shape[0] - 14 - (len(lines) - 1) * 28
+    for i, t in enumerate(lines):
+        y = y0 + i * 28
+        cv2.putText(comp, t, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 5)
+        cv2.putText(comp, t, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    return comp
+
+
+def _emit_multi_islying_vis(node, head_rgb, arm_rgb, panels):
+    """Compose + push the shared multi-object islying/grasp debug image."""
+    try:
+        comp = _compose_multi_islying_vis(head_rgb, arm_rgb, panels)
+        if comp is not None:
+            log_data({'log_image': comp})
+    except Exception:
+        pass
+
+
 # ── VLM tie-breaker (local Ollama vision model) ──────────────────────────────
 _VLM_ENABLED = True
 _VLM_URL     = 'http://192.168.1.11:11434/api/chat'
@@ -749,12 +808,14 @@ def _spawn_vlm(rgb, box, obj_name):
     return holder, done
 
 
-def _arm_grasp_branch(node, name, *, keep_orientation=False):
+def _arm_grasp_branch(node, name, *, keep_orientation=False, cam=None):
     """Wrist-camera grasp detection (grasp-gd) → {grasp, vote, rgb, box, camera}
-    or None when the arm can't see the object (best-effort during `find`)."""
+    or None when the arm can't see the object (best-effort during `find`).
+    Pass a pre-fetched `cam` to share one arm frame across multiple objects."""
     try:
         select_target_object, select_target_grasp = _vs_postprocess()
-        cam = _fetch_arm(node)
+        if cam is None:
+            cam = _fetch_arm(node)
         rgb, depth, cam_params = cam.rgb, cam.depth, cam.cam_params
         h, w = rgb.shape[:2]
         configs = FIND_CONFIGS['detect_grasp']
@@ -782,10 +843,12 @@ def _arm_grasp_branch(node, name, *, keep_orientation=False):
 
 def _fused_head_arm(node, name, *, rgb, depth, cam_params, cam, use_head,
                     det_configs, select_configs, min_conf, keep_orientation=False,
-                    emit_vis=True, disagree_trust='arm'):
+                    emit_vis=True, disagree_trust='arm', arm_cam=None):
     """Run HEAD detection ∥ ARM grasp-gd ∥ speculative VLM concurrently, then fuse
     islying. Returns the merged per-object dict (with `grasp` from the arm when
-    visible), or None when HEAD detection fails."""
+    visible) — including a `panel` for shared multi-object visualisation — or None
+    when HEAD detection fails. Pass `arm_cam` to share one arm frame across objects;
+    `emit_vis=False` suppresses the per-object log_image (caller composes instead)."""
     h, w = rgb.shape[:2]
     select_target_object, _ = _vs_postprocess()
     holders = {'head': None, 'arm': None}
@@ -817,7 +880,7 @@ def _fused_head_arm(node, name, *, rgb, depth, cam_params, cam, use_head,
             holders['head'] = None
 
     def arm_branch():
-        holders['arm'] = _arm_grasp_branch(node, name, keep_orientation=keep_orientation)
+        holders['arm'] = _arm_grasp_branch(node, name, keep_orientation=keep_orientation, cam=arm_cam)
 
     th = threading.Thread(target=head_branch)
     ta = threading.Thread(target=arm_branch)
@@ -856,6 +919,16 @@ def _fused_head_arm(node, name, *, rgb, depth, cam_params, cam, use_head,
 
     head['islying'] = islying
     head['grasp'] = arm['grasp'] if arm else None
+    # Per-object annotations for the shared multi-object composite (drawn on the
+    # single head + arm frames by `_compose_multi_islying_vis`).
+    head['panel'] = {
+        'name': name, 'fused': islying,
+        'head_box': head['box'], 'head_vote': hv,
+        'arm_box': arm['box'] if arm else None, 'arm_vote': av,
+        'grasp_line': arm['grasp'].get('line') if arm else None,
+        'grasp_label': _grasp_label(arm['grasp']) if arm else '',
+        'vlm': vlm_disp,
+    }
     return head
 
 
