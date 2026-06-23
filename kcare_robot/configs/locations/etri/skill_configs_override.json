@@ -407,6 +407,26 @@
         2.9979493191843094
       ]
     },
+    "pre_pick": {
+      "right": [
+        8.743469444279539,
+        41.818468400995876,
+        18.121398575656148,
+        52.97783295754323,
+        -294.22176393307814,
+        68.28793762365318,
+        16.83512027568642
+      ],
+      "left": [
+        14.24531232545081,
+        46.09995199165086,
+        -35.125928033326396,
+        47.90983942358294,
+        -51.51324573910115,
+        58.453530728345335,
+        -21.345445939388096
+      ]
+    },
     "j_arm_speed": 1.5,
     "j_arm_accel": 12,
     "l_arm_speed": 400,
@@ -550,19 +570,21 @@
   },
   "FIND_CONFIGS": {
     "detect_object": {
-      "model": "grounding-dino",
+      "model": "grounded-sam",
       "min_size": 0,
       "max_size": 30,
       "box_threshold": 0.3,
       "text_threshold": 0.15,
       "target_distance": 0.9,
-      "distance_sigma": 0.9,
+      "distance_sigma": 0.01,
       "near_point": "center",
       "weight": {
         "quality": 0.8,
         "distance": 0.1,
         "near": 0.1
-      }
+      },
+      "fuse_islying": true,
+      "disagree_trust": "head"
     },
     "detect_grasp": {
       "model": "grounding-dino",
@@ -571,15 +593,17 @@
       "box_threshold": 0.3,
       "text_threshold": 0.15,
       "target_distance": 0.3,
-      "distance_sigma": 0.3,
+      "distance_sigma": 0.01,
       "near_point": "center",
       "weight": {
-        "quality": 0.8,
-        "distance": 0.1,
+        "quality": 0.7,
+        "distance": 0.2,
         "near": 0.1
       },
       "gripper_min": 10,
-      "gripper_max": 200
+      "gripper_max": 200,
+      "fuse_islying": true,
+      "disagree_trust": "arm"
     },
     "detect_background": {
       "use": true,
@@ -594,7 +618,7 @@
         650
       ],
       "stride": 20,
-      "dilate": -45
+      "dilate": -60
     },
     "grasp_check_roi": [
       415,
@@ -603,8 +627,7 @@
       390
     ],
     "standing_obj_names": [
-      "cup",
-      "bottle"
+      "cup"
     ],
     "lying_obj_names": [
       "phone",
@@ -617,3 +640,4 @@
     "having_handle_obj_names": []
   }
 }
+
