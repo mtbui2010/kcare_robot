@@ -358,5 +358,31 @@
       "url": "http://192.168.1.11:11434",
       "is_active": true
     }
+  },
+  {
+    "type": "ros_service",
+    "name": "/create_tool_marker",
+    "config": {
+      "conn_name": "/create_tool_marker",
+      "agent_name": "/create_tool_marker",
+      "conn_type": "ros_service",
+      "data_interface": "kaair_msgs/srv/CreateObjectMarker",
+      "is_client": true,
+      "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success}"
+    }
+  },
+  {
+    "type": "ros_service",
+    "name": "get3d_tool",
+    "config": {
+      "conn_name": "/create_tool_marker",
+      "conn_type": "ros_service",
+      "is_client": true,
+      "agent_name": "get3d_tool",
+      "data_interface": "kaair_msgs/srv/CreateObjectMarker",
+      "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'x': res.x_array, 'y': res.y_array, 'z': res.z_array, 'msg': res.message}"
+    }
   }
 ]

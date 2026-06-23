@@ -22,11 +22,11 @@
     "headers": {}
   },
   {
-    "name": "find_arm",
+    "name": "find_grasp",
     "type": "internal",
-    "description": "from kcare_robot.skills.recognition:find_arm",
+    "description": "from kcare_robot.skills.recognition:find_grasp",
     "module_path": "kcare_robot.skills.recognition",
-    "func_name": "find_arm",
+    "func_name": "find_grasp",
     "url": "",
     "timeout": 30.0,
     "method": "POST",

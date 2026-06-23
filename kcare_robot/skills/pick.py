@@ -32,7 +32,7 @@ from kcare_robot.skills.lift import lift, dlift, lift_state
 from kcare_robot.skills.grip import grip
 from kcare_robot.skills.head import get_robot_mode
 from kcare_robot.skills.mobile import move, forward
-from kcare_robot.skills.recognition import find_arm, grasp_succeed, find
+from kcare_robot.skills.recognition import find_grasp, grasp_succeed, find
 
 from kcare_robot.skills import _pick_helpers as _h
 # Re-export for parity with the original module's public surface.
@@ -66,7 +66,7 @@ def fine_move(**kwargs):
                               Default 1.0.
         dpull       (float | None): explicit pull distance (m). When None,
                                      uses min(dz, 0.3).
-        Remaining kwargs forwarded to find_arm.
+        Remaining kwargs forwarded to find_grasp.
     """
     node       = kwargs.pop('node', None)
     obj_name   = kwargs.pop('inputs')
@@ -102,11 +102,12 @@ def fine_move(**kwargs):
         if not ret['isdone']:
             return ret
 
-        ret = find_arm(node=node, inputs=obj_name, **kwargs)
+        ret = find_grasp(node=node, inputs=obj_name, **kwargs)
         if not ret['isdone']:
             continue
+        ins = ret['ins'][obj_name]
 
-        grasp = _h.grasp_pose_from_ins(ret['ins'][obj_name], dpull)
+        grasp = _h.grasp_pose_from_ins(ins, dpull)
         if grasp is None:
             continue
         dx, dy, dz, angle, width, eff_dpull = grasp
@@ -545,7 +546,7 @@ def approach_pick(node, **kwargs) -> dict:
     kwargs.update(ret['ins'][obj_name])
     ret = run_parallel_check(funcs=[
         lambda: forward(node=node, inputs=kwargs['mforward'], wait=True),
-        lambda: movej(node=node, dr0=kwargs['base_rotate'], wait=True),
+        # lambda: movej(node=node, dr0=kwargs['base_rotate'], wait=True),
         lambda: lift(node=node, inputs=kwargs['lift_to'], wait=True)
     ])
     assert ret['isdone'], f'{ret}'
@@ -615,7 +616,7 @@ def pushing(**kwargs):
     """Push (rather than pick) a target along the detected grasp axis.
 
     Flow:
-      1. find_arm to get a grasppose for `inputs` (object name).
+      1. find_grasp to get a grasppose for `inputs` (object name).
       2. Close the gripper (no grasp; we use the closed fingers as a pusher).
       3. Translate to (dx, dy), rotate wrist to `angle`, descend `dz`.
       4. Open the gripper, retract `-dz`.
@@ -629,7 +630,7 @@ def pushing(**kwargs):
     node = kwargs.pop('node', None)
     obj_name = kwargs.get('inputs')
 
-    ret = find_arm(node=node, **kwargs)
+    ret = find_grasp(node=node, **kwargs)
     if not ret['isdone']:
         return ret
     ins = ret['ins'][obj_name]

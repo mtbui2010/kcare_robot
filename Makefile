@@ -12,7 +12,7 @@ ROS_SETUP ?= /opt/ros/humble/setup.bash
 # Server port — override on the command line: make run PORT=8002
 PORT ?= 8001
 
-.PHONY: install install-deps run cli terminate doctor skill-generic skill-detect skill-external delete-skill run-external test clean help
+.PHONY: install install-deps run cli terminate doctor skill-generic skill-detect skill-external delete-skill rename-skill run-external test clean help
 
 help:
 	@echo "kcare_robot -- robot skills + entry points (UI / CLI / Python API) that use robot_agent"
@@ -150,6 +150,21 @@ delete-skill:
 		python3 -m robot_agent.delete_skill kcare_robot $(SKILL) --yes; \
 	else \
 		python3 -m robot_agent.delete_skill kcare_robot $(SKILL); \
+	fi
+
+# Rename a skill. Renames the registry key (invocation name); also renames the
+# `def` + module file when the skill owns a dedicated single-skill file.
+#   make rename-skill SKILL=wave NEW=greet
+#   make rename-skill SKILL=wave NEW=greet YES=1
+rename-skill:
+	@if [ -z "$(SKILL)" ] || [ -z "$(NEW)" ]; then \
+		echo "Usage: make rename-skill SKILL=<old> NEW=<new> [YES=1]"; \
+		exit 2; \
+	fi
+	@if [ "$(YES)" = "1" ]; then \
+		python3 -m robot_agent.rename_skill kcare_robot $(SKILL) $(NEW) --yes; \
+	else \
+		python3 -m robot_agent.rename_skill kcare_robot $(SKILL) $(NEW); \
 	fi
 
 run-external:

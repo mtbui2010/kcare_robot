@@ -10,7 +10,7 @@ from robot_agent.utils import get_env_specs, run_parallel_check
 from kcare_robot.skills.arm import movel, movej, movet, get_wrist_angle, arm_pose
 from kcare_robot.skills.lift import lift, dlift, lift_state
 from kcare_robot.skills.grip import grip
-from kcare_robot.skills.recognition import find, find_arm, get_side_pose_3d, find_place
+from kcare_robot.skills.recognition import find, find_grasp, get_side_pose_3d, find_place
 from kcare_robot.skills.mobile import move, forward
 
 
@@ -241,7 +241,7 @@ def init_pose_detect_posture(node, obj_name, lift_to_limit, **kwargs):
         ret = {'isdone': False}
         num_trial = 0
         while not ret['isdone'] and num_trial < 2:
-            ret = find_arm(node=node, inputs=obj_name, detector='groundingdino', estimate_grasp=False)
+            ret = find_grasp(node=node, inputs=obj_name, detector='groundingdino', estimate_grasp=False)
             num_trial += 1
         if not ret['isdone']:
             return ret, None, None, None

@@ -25,7 +25,7 @@ Authoritative cross-references:
   * docs/ACTION_MAPPER_SPEC.md   — the mapping table (§2) + name map (§4)
   * docs/SKILLS.md               — skill params / returns
   * configs/skills_config.py     — registered skill names (move/find/pick/
-                                   placeat/open_drawer/close_drawer/find_arm/
+                                   placeat/open_drawer/close_drawer/find_grasp/
                                    grasp_succeed/llm/detect)
 """
 
@@ -235,7 +235,7 @@ def build_params(action: str, obj_camel: str, world) -> dict:
 
 def _arg_object(params, result):
     """Best object name for a skill effect: prefer what was actually detected
-    (``result['ins']`` keys from find/find_arm), else the raw '::' arg's first
+    (``result['ins']`` keys from find/find_grasp), else the raw '::' arg's first
     token. Returns None if nothing usable."""
     if isinstance(result, dict):
         ins = result.get("ins")
@@ -299,7 +299,7 @@ def apply_skill_effect(world, skill, params=None, result=None, node=None) -> Non
     obj = _arg_object(params, result)
     s = str(skill).strip().lower()
 
-    if s in ("find", "find_arm", "find_once"):
+    if s in ("find", "find_grasp", "find_once"):
         if obj:
             world.found = obj
             fp = _found_pose_data(result, obj, node)

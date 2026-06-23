@@ -1,18 +1,20 @@
 {
   "detect_object": {
-    "model": "grounding-dino",
+    "model": "grounded-sam",
     "min_size": 0,
     "max_size": 30,
     "box_threshold": 0.3,
     "text_threshold": 0.15,
     "target_distance": 0.9,
-    "distance_sigma": 0.9,
+    "distance_sigma": 0.01,
     "near_point": "center",
     "weight": {
       "quality": 0.8,
       "distance": 0.1,
       "near": 0.1
-    }
+    },
+    "fuse_islying": true,
+    "disagree_trust": "head"
   },
   "detect_grasp": {
     "model": "grounding-dino",
@@ -21,26 +23,29 @@
     "box_threshold": 0.3,
     "text_threshold": 0.15,
     "target_distance": 0.3,
-    "distance_sigma": 0.3,
+    "distance_sigma": 0.01,
     "near_point": "center",
     "weight": {
-      "quality": 0.8,
-      "distance": 0.1,
+      "quality": 0.7,
+      "distance": 0.2,
       "near": 0.1
     },
     "gripper_min": 10,
-    "gripper_max": 200
+    "gripper_max": 200,
+    "fuse_islying": true,
+    "disagree_trust": "arm"
   },
   "detect_background": {
+    "use": true,
     "model": "background",
     "bg_min_area": 0,
-    "bg_max_area": 60,
+    "bg_max_area": 80,
     "method": "automask",
     "roi": [
       222,
-      269,
-      1054,
-      631
+      100,
+      900,
+      650
     ],
     "stride": 20,
     "dilate": -45
@@ -52,8 +57,7 @@
     390
   ],
   "standing_obj_names": [
-    "cup",
-    "bottle"
+    "cup"
   ],
   "lying_obj_names": [
     "phone",

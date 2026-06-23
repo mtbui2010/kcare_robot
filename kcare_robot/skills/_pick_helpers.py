@@ -10,7 +10,7 @@ from kcare_robot.skills.arm import movet, movel, movelf, movej, arm_pose
 from kcare_robot.skills.lift import lift, dlift
 from kcare_robot.skills.grip import grip
 from kcare_robot.skills.mobile import forward
-from kcare_robot.skills.recognition import find_arm, find, grasp_succeed
+from kcare_robot.skills.recognition import find_grasp, find, grasp_succeed
 
 
 # Drawer pull/push distance and drawer-handle search window.
@@ -153,7 +153,7 @@ def post_drawer_open_prep(node, robot_mode):
 # ---------------------------------------------------------------------------
 
 def grasp_pose_from_ins(ins, dpull):
-    """Extract (dx, dy, dz, angle, width, dpull) from a find_arm `ins` entry.
+    """Extract (dx, dy, dz, angle, width, dpull) from a find_grasp `ins` entry.
     `dz` is forced positive; `angle` is wrist-wrapped; `width` is scaled ×10
     to match the gripper command range. Returns `None` if outside workspace."""
     dx, dy, dz, angle, width = ins['grasppose']
@@ -174,21 +174,23 @@ def execute_fine_grasp(node, dx, dy, dz, angle, width, dpull, pull_speed=1.0):
 
     `pull_speed` controls the dz=-dpull retraction speed (default 1.0).
     """
-    ret = grip(node=node, inputs=width + 0.02, wait=False)
-    if not ret['isdone']:
-        return ret
-    ret = movet(node=node, dx=dx, dy=dy, wait=True)
-    if not ret['isdone']:
-        return ret
+
+    ret = run_parallel_check(funcs=[
+        lambda: grip(node=node, inputs=width + 0.02, wait=False),
+        lambda: movet(node=node, dx=dx, dy=dy, wait=True)
+    ])
+    assert ret['isdone'], f'{ret}'
+    
     ret = movej(node=node, dr6=angle, wait=True)
-    if not ret['isdone']:
-        return ret
+    assert ret['isdone'], f'{ret}'
+
     ret = movet(node=node, dz=dz, speed=0.5, wait=True)
-    if not ret['isdone']:
-        return ret
+    assert ret['isdone'], f'{ret}'
+
     ret = grip(node=node, inputs='close', wait=True)
     if not ret['isdone']:
         return ret
+        
     return run_parallel_check(funcs=[
         lambda: grip(node=node, inputs='close', wait=False),
         lambda: movet(node=node, dz=-dpull, speed=pull_speed, wait=True),

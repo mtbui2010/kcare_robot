@@ -41,7 +41,7 @@
   },
   "ENV": {
     "table@living room": {
-      "default_mode": "right",
+      "default_mode": "left",
       "placepose": {
         "dy": -0.05
       },
@@ -205,7 +205,7 @@
         -10
       ],
       "left": [
-        70,
+        50,
         -14,
         -22.9,
         9.4,
@@ -214,7 +214,7 @@
         -17
       ],
       "right": [
-        -70,
+        -50,
         0,
         23.3,
         9.7,
@@ -294,22 +294,42 @@
     },
     "approach_drawer": {
       "right": [
-        3.33,
-        63.297,
-        -10.774,
-        40.909,
-        -273.2,
-        99.08,
-        -22
+        -4.387060385976809,
+        65.2560439718412,
+        -17.813452666736953,
+        65.32877182612349,
+        -280.2778234594704,
+        106.07761211252786,
+        -1.7433105898841976
       ],
       "left": [
-        -0.21,
-        67.6,
-        23.97,
-        47.53,
-        -71.55,
-        106.74,
-        23.16
+        1.3618652287499071,
+        66.41202616810916,
+        20.1290404746276,
+        67.01517285295631,
+        -78.33306951523424,
+        108.39781371320285,
+        1.8354859137242239
+      ]
+    },
+    "pre_pick": {
+      "right": [
+        8.743469444279539,
+        41.818468400995876,
+        18.121398575656148,
+        52.97783295754323,
+        -294.22176393307814,
+        68.28793762365318,
+        16.83512027568642
+      ],
+      "left": [
+        14.24531232545081,
+        46.09995199165086,
+        -35.125928033326396,
+        47.90983942358294,
+        -51.51324573910115,
+        58.453530728345335,
+        -21.345445939388096
       ]
     },
     "j_arm_speed": 1.5,
@@ -454,39 +474,74 @@
     "lm_max_value": 935
   },
   "FIND_CONFIGS": {
-    "detector": "groundingdino",
-    "camera": "head",
-    "head_angles": [
-      -25
-    ],
-    "params": {
-      "min_mass": 200,
-      "max_ratio": 0.6,
-      "box_threshold": 0.28,
-      "text_threshold": 0.28,
-      "roi": [
-        235,
-        125,
-        1065,
-        580
-      ],
-      "method": "automask",
-      "stride": 20,
-      "dilate": -35
+    "detect_object": {
+      "model": "grounded-sam",
+      "min_size": 0,
+      "max_size": 30,
+      "box_threshold": 0.3,
+      "text_threshold": 0.15,
+      "target_distance": 0.9,
+      "distance_sigma": 0.01,
+      "near_point": "center",
+      "weight": {
+        "quality": 0.8,
+        "distance": 0.1,
+        "near": 0.1
+      },
+      "fuse_islying": true,
+      "disagree_trust": "head"
     },
+    "detect_grasp": {
+      "model": "grounding-dino",
+      "min_size": 0,
+      "max_size": 30,
+      "box_threshold": 0.3,
+      "text_threshold": 0.15,
+      "target_distance": 0.3,
+      "distance_sigma": 0.01,
+      "near_point": "center",
+      "weight": {
+        "quality": 0.7,
+        "distance": 0.2,
+        "near": 0.1
+      },
+      "gripper_min": 10,
+      "gripper_max": 200,
+      "fuse_islying": true,
+      "disagree_trust": "arm"
+    },
+    "detect_background": {
+      "use": true,
+      "model": "background",
+      "bg_min_area": 0,
+      "bg_max_area": 80,
+      "method": "automask",
+      "roi": [
+        222,
+        100,
+        900,
+        650
+      ],
+      "stride": 20,
+      "dilate": -60
+    },
+    "grasp_check_roi": [
+      415,
+      365,
+      476,
+      390
+    ],
     "standing_obj_names": [
-      "cup",
-      "bottle"
+      "cup"
     ],
     "lying_obj_names": [
       "phone",
       "fork",
-      " spoon",
+      "spoon",
       "bread",
       "banana",
       "control"
     ],
-    "having_handle_obj_names": [],
-    "target_distance": 650
+    "having_handle_obj_names": []
   }
 }
