@@ -57,43 +57,85 @@ def _detect_nearest(node, pose, **kwargs) -> dict:
     configs = FIND_CONFIGS['detect_background']
     if not configs['use']:
         return pose
-    det_configs = {k:v for k,v in configs.items() if k in ['model', 'roi', 'method', 'dilate', 'method', 'bg_min_size', 'bg_min_size']}
-    stride = configs['stride']
+    stride       = configs['stride']
+    band         = configs.get('place_height_band', 0.05)            # ±m around the target support height
+    avoid_model  = configs.get('avoid_model', 'rfdetr-gdino-etri')   # open-vocab detector for objects to avoid
+    avoid_prompt = configs.get('avoid_prompt', 'object.')            # class-agnostic: any object, flat or tall
+    avoid_conf   = configs.get('avoid_conf', 0.25)
+    avoid_pad    = configs.get('avoid_pad', 8)                       # enlarge each object box (px) before excluding
+    avoid_max    = configs.get('avoid_max_area', 0.15)              # ignore boxes larger than this fraction of the image: "object." also boxes the empty TABLE/couch itself — those are the SURFACE, not an obstacle
 
-    res = _vs_client().predict(image=cam.rgb, depth=cam.depth, **det_configs)
-    _log_annotated(res,  cam.rgb)
+    # Two cheap, complementary filters so a place point never lands on an object:
+    #   1) detect objects (open-vocab "object.") and exclude their boxes — catches
+    #      FLAT objects (phone/card) a height test can't, ~0.24s and reliable
+    #      (vs ~7.7s for a MobileSAM grid-32 segment-everything that still merges
+    #      objects into the table at smaller grids).
+    #   2) height band around the target support height `pose[2]` — rejects the
+    #      floor/couch (lower) and any TALL object the detector missed (higher);
+    #      free, since get3d is run anyway.
+    objects = np.zeros((h, w), bool)
+    od = None
+    try:
+        od = _vs_client().predict(model=avoid_model, image=cam.rgb, prompt=avoid_prompt,
+                                  box_threshold=avoid_conf, text_threshold=0.2)
+        for d in od.detections:
+            bx, by, bw, bh = [int(v) for v in d.bbox]
+            if bw * bh > avoid_max * h * w:        # a whole-surface box (empty table/couch) → not an obstacle
+                continue
+            x0, y0 = max(0, bx - avoid_pad), max(0, by - avoid_pad)
+            x1, y1 = min(w, bx + bw + avoid_pad), min(h, by + bh + avoid_pad)
+            objects[y0:y1, x0:x1] = True
+    except Exception:
+        pass
 
-    if len(res.masks)==0:
+    margin_cells = configs.get('place_margin_cells', 2)   # erode the placeable mask by N grid cells (≈ N*stride px) → clearance from objects AND table edges
+
+    # Sample a full-frame grid; keep cells that miss every object box.
+    gyg, gxg = np.mgrid[0:h:stride, 0:w:stride]
+    gh, gw = gyg.shape
+    gxf, gyf = gxg.ravel(), gyg.ravel()
+    free = ~objects[gyf, gxf]
+    if not free.any():
         return pose
-
-    bg_mask = (res.masks[0].to_ndarray(width=w, height=h)>0).astype('uint8')
-
-    # bg_mask = cv2.erode(bg_mask, np.ones((21, 21), 'uint8'))
-    sampled_mask = bg_mask[::stride, ::stride]
-    Iy, Ix = np.where(sampled_mask)
-
-    if len(Ix) == 0:
-        return pose
-
-    Ix = Ix * stride
-    Iy = Iy * stride
-    points = [[x, y] for x,y in zip(Ix, Iy)]
+    points = [[int(x), int(y)] for x, y in zip(gxf[free], gyf[free])]
 
     ret = get3d(node=node, points=points)
     assert ret['isdone'], f'{ret}'
-    
-    P = ret['pose']
-    inds = ~np.isnan(P).any(axis=-1)
-    P = P[inds, ...]
 
-    dist2 = np.sum((P - np.array(pose).reshape(1,3)) ** 2, axis=1)
-    argmin = np.argmin(dist2)
+    # Map per-free-point 3D back onto the full grid; mark cells on the support plane.
+    P_full = np.full((gxf.size, 3), np.nan)
+    P_full[free] = np.asarray(ret['pose'])
+    valid = ~np.isnan(P_full).any(axis=-1)
+    on_plane = valid & (np.abs(P_full[:, 2] - pose[2]) < band)
 
-    x, y =(int(np.array(Ix)[inds][argmin]), int(np.array(Iy)[inds][argmin]))
-    annotated = np.asarray(res.visualize(cam.rgb))
-    log_data({'log_image': cv2.drawMarker(annotated, (x,y), (255, 0, 0), cv2.MARKER_TILTED_CROSS, 20, 2)})
-    
-    return P[argmin].tolist()
+    place_grid = on_plane.reshape(gh, gw).astype('uint8')
+    if margin_cells > 0:
+        k = 2 * margin_cells + 1
+        eroded = cv2.erode(place_grid, np.ones((k, k), 'uint8'))
+        if eroded.any():
+            place_grid = eroded               # keep clearance; fall back if it empties out
+    sel = place_grid.ravel().astype(bool)
+    if not sel.any():
+        sel = valid                           # last resort: any valid free point
+        if not sel.any():
+            return pose
+
+    cand_xy = np.stack([gxf, gyf], axis=1)[sel]
+    cand_P = P_full[sel]
+    weights = np.array([0.2, 1.0, 1.0])
+    dist2 = np.sum(weights * (cand_P - np.array(pose).reshape(1, 3)) ** 2, axis=1)
+    argmin = int(np.argmin(dist2))
+    x, y = int(cand_xy[argmin, 0]), int(cand_xy[argmin, 1])
+
+    # Visualize: detected objects (boxes) + placeable mask (green) + chosen spot (marker).
+    annotated = np.asarray(od.visualize(cam.rgb)).copy() if od is not None else np.asarray(cam.rgb).copy()
+    place_full = cv2.resize(place_grid * 255, (w, h), interpolation=cv2.INTER_NEAREST) > 0
+    overlay = np.zeros_like(annotated); overlay[place_full] = (0, 200, 0)
+    annotated = cv2.addWeighted(annotated, 0.75, overlay, 0.25, 0)
+    cv2.drawMarker(annotated, (x, y), (255, 0, 0), cv2.MARKER_TILTED_CROSS, 24, 3)
+    log_data({'log_image': annotated})
+
+    return cand_P[argmin].tolist()
 
 
 # ── Core: grasp detection (grasp-gd) ─────────────────────────────────────────
@@ -123,6 +165,7 @@ def _detect_grasps(node, obj_names, **kwargs: dict) -> dict:
     grasp_configs  = {k:v for k,v in configs.items() if k in ['gripper_min', 'gripper_max']}
 
     res = _vs_client().predict(image=rgb, prompt=_prompt(obj_names), **det_configs)
+
     _log_annotated(res, rgb)
     assert len(res.detections) > 0, f'No object detected'
 
@@ -133,7 +176,10 @@ def _detect_grasps(node, obj_names, **kwargs: dict) -> dict:
     for name in obj_names:
         obj = select_target_object(res, cls=name, image_size=(w, h),
             depth_result=depth, intrinsics=cam_params, **select_configs)
-        assert obj is not None, f"failed to select target object"
+        # assert obj is not None, f"failed to select target object"
+
+        if obj is None:
+            continue
 
         x0, y0, dx, dy = [int(el) for el in obj.bbox]
         arm_box = [x0, y0, x0+dx, y0+dy]
@@ -169,6 +215,7 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     camera = kwargs.pop('camera', 'head')
     fuse = kwargs.get('fuse_islying', FIND_CONFIGS['detect_object']['fuse_islying'])   # False → `camera` only (no cross-check)
     disagree_trust = kwargs.get('disagree_trust', FIND_CONFIGS['detect_object']['disagree_trust'])   # cam to trust if VLM unavailable on disagreement
+    use_vlm = kwargs.get('use_vlm', FIND_CONFIGS['detect_object'].get('use_vlm', False))   # False → skip the VLM tie-breaker entirely
     robot_mode = get_robot_mode(node=node)
     use_head = 'head' in camera
 
@@ -178,6 +225,8 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
 
     min_conf = kwargs.pop('min_conf', 0.1 if any('handle' in n for n in obj_names) else 0.0)
     det_configs, select_configs = _object_det_select_configs(kwargs)
+    if 'box_threshold' in kwargs:
+        det_configs['box_threshold'] = kwargs['box_threshold'] 
 
     out: dict = {}
     fused_head = fuse and use_head
@@ -189,6 +238,7 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     panels: list = []
     for name in obj_names:
         grasp = None
+        nf_panel = None        # non-fused per-object viz panel (drawn at the end)
         if fused_head:
             # HEAD detection ∥ ARM grasp-gd ∥ speculative VLM, run concurrently.
             # The arm branch also yields a `grasppose` (best-effort, None if the
@@ -196,7 +246,7 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
             fr = _fused_head_arm(node, name, rgb=rgb, depth=depth, cam_params=cam_params, cam=cam,
                                  use_head=use_head, det_configs=det_configs, select_configs=select_configs,
                                  min_conf=min_conf, disagree_trust=disagree_trust,
-                                 arm_cam=arm_cam, emit_vis=not multi)
+                                 arm_cam=arm_cam, emit_vis=not multi, use_vlm=use_vlm)
             assert fr is not None, f'No object detected'
             res, target, box = fr['res'], fr['target'], fr['box']
             pose, box_depths, islying = fr['pose'], fr['box_depths'], fr['islying']
@@ -211,7 +261,9 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
             assert len(res.detections) > 0, f'No object detected'
             target = select_target_object(
                 res, cls=name, image_size=(w, h), depth_result=depth, intrinsics=cam_params, **select_configs)
-            assert target is not None, f'Failed to select target object'
+            # assert target is not None, f'Failed to select target object'
+            if target is None:
+                continue
 
             box = _bbox_to_xyxy(target.bbox)
             box_depths = _box_depths(depth, box)
@@ -224,12 +276,20 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
             if fuse:
                 islying = _islying_consensus(node, name, min_conf=min_conf,
                                              seed=(pcam, islying_primary, rgb, box),
-                                             disagree_trust=disagree_trust)
+                                             disagree_trust=disagree_trust,
+                                             use_vlm=use_vlm, emit_vis=False)
             else:
                 islying = islying_primary
-                pres = {'camera': pcam, 'vote': islying_primary, 'rgb': rgb, 'box': box}
-                _emit_islying_vis(node, name, pres if pcam == 'head' else _none_res('head'),
-                                  pres if pcam == 'arm' else _none_res('arm'), islying)
+            # Accumulate one panel per object; every object is drawn on the single
+            # detection frame at the end (grounding-dino style: short name + score,
+            # box colour = islying) so a multi-object find no longer overwrites the
+            # log_image down to just the last object.
+            nf_panel = {
+                'name': name, 'fused': islying,
+                'score': float(getattr(target, 'conf', 0.0)),
+                f'{pcam}_box': box, f'{pcam}_vote': islying_primary,
+                'vlm': None,
+            }
 
         if simple_return:
             entry = {'pose': pose, 'islying': islying}
@@ -237,6 +297,9 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
                 entry['grasppose'] = grasp['grasppose']
             out[name] = entry
             continue
+
+        if nf_panel is not None:
+            panels.append(nf_panel)
 
         approach = _build_approach_pose(pose, islying, robot_mode)
         entry = {
@@ -254,10 +317,15 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
             entry['grasppose']   = grasp['grasppose']
             entry['grasp_score'] = grasp['score']
         out[name] = entry
-    # Multi-object: one shared head|arm composite with every object's box/grasp/votes.
-    # (Single object emits its richer per-object view inside `_fused_head_arm`.)
-    if multi and panels:
-        _emit_multi_islying_vis(node, rgb, arm_cam.rgb if arm_cam is not None else None, panels)
+    # One shared composite with EVERY object's box (short name + score, coloured by
+    # islying). Fused-head multi → head|arm frames; non-fused → the single detection
+    # frame (head or arm). A fused single object keeps its richer per-object view
+    # emitted inside `_fused_head_arm`.
+    if panels:
+        if fused_head:
+            _emit_multi_islying_vis(node, rgb, arm_cam.rgb if arm_cam is not None else None, panels)
+        else:
+            _emit_multi_islying_vis(node, rgb if use_head else None, None if use_head else rgb, panels)
     save_detection_dataset(rgb=rgb, depth=depth, results=out, tag=camera)
     return {'isdone': len(out) > 0, 'ins': out}
 
@@ -384,7 +452,8 @@ def grasp_succeed(node, **kwargs):
     valid = depth_roi[depth_roi > 0]
     tip_mm = ARM_CONFIGS['wrist_tool_length'] * 1000.
     near_mm = tip_mm + margin * 1000.
-    frac_near = float((valid < near_mm).sum()) / max(depth_roi.size, 1)   # ROI fraction "near"
+    # frac_near = float((valid < near_mm).sum()) / max(depth_roi.size, 1)   # ROI fraction "near"
+    frac_near = float((valid < near_mm).sum()) / max((0.1*depth_roi.size+ 0.9*valid.size), 1)   # ROI fraction "near"
     obj_depth = float(np.median(valid)) / 1000. - ARM_CONFIGS['wrist_tool_length'] if valid.size else None
     isdone = bool(frac_near > min_frac)
 
@@ -495,7 +564,7 @@ def find_place(node, **kwargs) -> dict:
             )
 
     # avoid obstacle
-    if place_beside:
+    if place_beside and 'trash' not in inputs and 'sink' not in inputs:
         point3d = _detect_nearest(node=node, pose=point3d)
         
         
@@ -507,6 +576,7 @@ def find_place(node, **kwargs) -> dict:
     dz_up = 0.1
     approach_pose = copy.deepcopy(point3d)
     approach_pose[-1] +=dz_up
+    
     
     if islying:
         dapproach = 0.1
@@ -529,6 +599,12 @@ def find_place(node, **kwargs) -> dict:
     approach_pose = {k:v for k,v in zip(['x', 'y', 'z', 'rx', 'ry', 'rz'], approach_pose)}
 
     base_rotate = 60 if robot_mode=='right' else -60
+
+    # calib tune
+    dx = FIND_CONFIGS['detect_background']['calib_tune']['dx']
+    dy = FIND_CONFIGS['detect_background']['calib_tune']['dy']
+    approach_pose['x'] += dx  if robot_mode=='right' else -dx
+    approach_pose['y'] += dy  if robot_mode=='right' else -dy
     return {
         'isdone': True,
         'islying':       islying,

@@ -76,25 +76,25 @@ def fine_move(**kwargs):
 
     # Step 1: coarse detect + dx nudge. Failure here is non-fatal — we just
     # fall through to the per-trial loop without nudging.
-    # try:
-    #     coarse = find(node=node, inputs=obj_name, camera='arm', target_distance=0.3)
-    #     if coarse.get('isdone'):
-    #         pose = coarse['ins'][obj_name].get('pose_3d') \
-    #             or coarse['ins'][obj_name].get('loc_3d')
-    #         if pose is not None:
-    #             # pose components are in mm (from Ixy2xyz / camera frame);
-    #             # movet expects metres → divide by 1000. ±0.2 m matches the
-    #             # ±200 mm carerobotapp clamp.
-    #             dx_pre = float(np.clip(pose[0], -0.2, 0.2))
-    #             if abs(dx_pre) > 1e-4:
-    #                 ret = movet(node=node, dx=dx_pre, wait=True)
-    #             if _h.is_vertical_gripper(node=node):
-    #                 dz_pre = float(np.clip(0.3 - pose[-1], -0.2, 0.))
-    #                 if abs(dz_pre) > 1e-4:
-    #                     dlift(node=node, inputs=dz_pre, wait=True)
+    try:
+        coarse = find(node=node, inputs=obj_name, camera='arm', target_distance=0.3)
+        if coarse.get('isdone'):
+            pose = coarse['ins'][obj_name].get('pose_3d') \
+                or coarse['ins'][obj_name].get('loc_3d')
+            if pose is not None:
+                # pose components are in mm (from Ixy2xyz / camera frame);
+                # movet expects metres → divide by 1000. ±0.2 m matches the
+                # ±200 mm carerobotapp clamp.
+                dx_pre = float(np.clip(pose[0], -0.2, 0.2))
+                if abs(dx_pre) > 1e-4:
+                    ret = movet(node=node, dx=dx_pre, wait=True)
+                if _h.is_vertical_gripper(node=node):
+                    dz_pre = float(np.clip(0.3 - pose[-1], -0.2, 0.))
+                    if abs(dz_pre) > 1e-4:
+                        dlift(node=node, inputs=dz_pre, wait=True)
 
-    # except Exception:
-    #     pass
+    except Exception:
+        pass
 
     dx = dy = dz = None
     for _ in range(num_trials):
@@ -537,26 +537,56 @@ def stack(**kwargs):
 
 @arm_exception_handler
 def approach_pick(node, **kwargs) -> dict:
+    robot_mode = get_robot_mode(node=node)
     inp = kwargs.pop('inputs')
-    obj_name = inp.split('@')[0]
+    splits = inp.split('@')
+    obj_name, target_loc = (splits[0], '@'.join(splits[1:])) if  len(splits)>0 else (splits[0], None)
 
-    ret = find(node=node, inputs=inp, **kwargs)
-    assert ret['isdone'], f'{ret}'
-
-    kwargs.update(ret['ins'][obj_name])
-    ret = run_parallel_check(funcs=[
-        lambda: forward(node=node, inputs=kwargs['mforward'], wait=True),
-        # lambda: movej(node=node, dr0=kwargs['base_rotate'], wait=True),
-        lambda: lift(node=node, inputs=kwargs['lift_to'], wait=True)
-    ])
-    assert ret['isdone'], f'{ret}'
-
-    if kwargs['islying']:
-        ret = movej(node=node, inputs='approach_lying', wait=True)
+    env = get_env_specs(target_loc, ENV)
+    if len(env)>0:
+        ret = move(node=node, inputs=target_loc, wait=True)
         assert ret['isdone'], f'{ret}'
 
-    ret = movel(node=node, **kwargs['approach_pose'])
+    # ret = find(node=node, inputs=inp, **kwargs)
+    # assert ret['isdone'], f'{ret}'
+
+    # kwargs.update(ret['ins'][obj_name])
+    # ret = run_parallel_check(funcs=[
+    #     lambda: forward(node=node, inputs=kwargs['mforward'], wait=True),
+    #     # lambda: movej(node=node, dr0=kwargs['base_rotate'], wait=True),
+    #     lambda: lift(node=node, inputs=kwargs['lift_to'], wait=True)
+    # ])
+    # assert ret['isdone'], f'{ret}'
+    ret = find_grasp(node=node, inputs=obj_name, **kwargs)
     assert ret['isdone'], f'{ret}'
+    ins = ret['ins'][obj_name]
+
+    dx,_,y = ins['pose_3d'][:3]
+    y -= 0.05
+    y = y if robot_mode=='right' else -y
+    # dx = dx if robot_mode=='right' else -dx
+    
+
+
+    kwargs['islying'] = ins['islying']
+    mforward =  dx - (np.clip(dx, -0.4, -0.1) if robot_mode=='right' else np.clip(dx, 0.1, 0.4))
+    kwargs['mforward'] = mforward if abs(mforward)>0.05 else 0
+
+    ret = movel(node=node, inputs='give')
+    assert ret['isdone'], f'{ret}'
+
+    ret = run_parallel_check(funcs=[
+        lambda: movej(node=node, inputs='approach_lying' if kwargs['islying'] else 'approach_standing', wait=True) ,
+        lambda: forward(node=node, inputs=kwargs['mforward'] , wait=True)
+    ])
+    assert ret['isdone'], f'{ret}'
+    
+    if kwargs['islying']:
+        ret = movel(node=node, y=y)
+        assert ret['isdone'], f'{ret}'
+
+    # ret = movel(node=node, **kwargs['approach_pose'])
+    # assert ret['isdone'], f'{ret}'
 
     return kwargs
 
@@ -565,10 +595,8 @@ def pick(node, **kwargs):
     """`pick_no_sound` wrapped with picking/picked voice announcements."""
     loc_name = kwargs.pop('inputs', None)
     splits = loc_name.split('|')
-    loc_name, num_trials = splits if len(splits)==2 else (splits[0], 1)
+    loc_name, num_trials = splits if len(splits)==2 else (splits[0], 2)
     num_trials = int(num_trials)
-
-
 
     caption, _loc = _h.split_loc(loc_name)
     robot_mode = get_robot_mode(node=node)
@@ -577,6 +605,8 @@ def pick(node, **kwargs):
     if not NO_ACTION:
 
         if kwargs.pop("object_from_drawer", False):
+            ret = movej(node=node, inputs="give")
+            assert ret['isdone'], f'{ret}'
             ret = movej(node=node, inputs="approach_lying")
             assert ret['isdone'], f'{ret}'
             
@@ -598,6 +628,9 @@ def pick(node, **kwargs):
         if kwargs['islying']:
             ret = movej(node=node, inputs='approach_lying')
             assert  ret['isdone'], f'{ret}'
+
+        ret = movej(node=node, inputs='give')
+        assert  ret['isdone'], f'{ret}'
 
         ret = movej(node=node, inputs='fold')
         assert  ret['isdone'], f'{ret}'

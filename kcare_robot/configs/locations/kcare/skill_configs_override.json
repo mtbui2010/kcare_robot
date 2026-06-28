@@ -523,7 +523,14 @@
         650
       ],
       "stride": 20,
-      "dilate": -60
+      "dilate": -60,
+      "place_height_band": 0.05,
+      "place_margin_cells": 2,
+      "avoid_model": "rfdetr-gdino-etri",
+      "avoid_prompt": "object.",
+      "avoid_conf": 0.25,
+      "avoid_pad": 8,
+      "avoid_max_area": 0.15
     },
     "grasp_check_roi": [
       415,

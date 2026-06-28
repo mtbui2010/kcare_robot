@@ -9,7 +9,7 @@ import `recognition` back (no import cycle)."""
 from dataclasses import dataclass
 from typing import Optional, Callable
 
-import numpy as np, threading, base64, json, urllib.request
+import numpy as np, threading, base64, json, time, urllib.request
 
 from pyconnect.utils import run_parallel
 from visionserve.utils import (
@@ -218,10 +218,11 @@ def _box_depths(depth, box) -> dict:
 def _get_bound_depth(depth, mask):
     mask = (mask > 0).astype(np.uint8)
 
-    dilated = cv2.dilate(mask, np.ones((15, 15), np.uint8))
-    boundary = (dilated > 0) & (mask == 0)
+    dilated_large = cv2.dilate(mask, np.ones((25, 25), np.uint8))
+    dilated_small = cv2.dilate(mask, np.ones((5, 5), np.uint8))
+    boundary = (dilated_large > 0) & (dilated_small == 0) & (depth > 0)
 
-    boundary_depths = depth[boundary]
+    boundary_depths = depth[boundary ]
 
     if boundary_depths.size == 0:
         return None
@@ -276,10 +277,14 @@ def _box_islying(obj_name: str, box, depth, cam_params, horizon_yz) -> bool:
         return False
 
 
-# Decision constants for `_box_islying_pca`.
-_PCA_VERTICAL_DOT = 0.5   # |long_axis·gravity| above this ⇒ axis is vertical ⇒ standing
-_PCA_ELONGATION   = 1.3   # √(λ0/λ1) below this ⇒ shape not elongated ⇒ use extent ratio
-_PCA_MAD_K        = 3.0   # drop pixels whose Z deviates > k·MAD from the median depth
+# Decision constants for the islying estimator (`_islying_estimate`).
+_PCA_VERTICAL_DOT   = 0.5    # |long_axis·gravity| above this ⇒ axis vertical ⇒ standing
+_PCA_ELONGATION     = 1.3    # √(λ0/λ1) below ⇒ shape not elongated (legacy/extent fallback)
+_PCA_MAD_K          = 3.0    # drop pixels whose Z deviates > k·MAD from the median depth
+_PCA_LONG_LYING_DEG = 50.0   # angle(long-axis, gravity) above ⇒ long-axis cue says lying
+_PCA_NORM_LYING_DEG = 40.0   # angle(normal,   gravity) below ⇒ normal cue says lying
+_PCA_ANISO_MIN      = 1.15   # eigen-ratio below ⇒ that axis ill-conditioned (cue weight→0)
+_PCA_SCORE_MARGIN   = 0.34   # |fused score| below ⇒ cues weak/disagree ⇒ defer to prior/extent
 
 
 def _gravity_in_cam(node, *, use_head: bool, horizon_yz) -> np.ndarray:
@@ -292,12 +297,15 @@ def _gravity_in_cam(node, *, use_head: bool, horizon_yz) -> np.ndarray:
     way. For the arm we therefore rotate base-frame gravity into the camera using
     the *full* tool orientation:
 
-        g_tool = R(rx,ry,rz)ᵀ · [0,0,-1]      (base-down expressed in the tool)
-        g_cam  = [g_tool_y, g_tool_x, g_tool_z]   (fixed tool→cam mount: swap x,y)
+        g_tool = R(rx,ry,rz)ᵀ · [0,0,-1]            (base-down expressed in the tool)
+        g_cam  = [-g_tool_y, g_tool_x, -g_tool_z]   (fixed tool→cam mount)
 
-    The x↔y swap is recovered from the existing pitch-only convention
-    (`horizon_yz = [-cos(90+ry), -sin(90+ry)]`), which this reproduces exactly
-    when rx=rz=0.
+    The mount maps tool→camera. It was validated empirically against the object
+    surface-normal across 2 arm poses × 5 objects: with this transform a flat
+    object lying on a horizontal table has its measured surface normal within
+    ~2–5° of `g_cam` (∥ gravity, as physics requires); the earlier
+    `[g_tool_y, g_tool_x, g_tool_z]` swap was ~43° off (X and Z signs flipped),
+    which made every lying object misclassify as standing.
     """
     if use_head:
         return np.array([0.0, float(horizon_yz[0]), float(horizon_yz[1])], dtype='float32')
@@ -309,84 +317,122 @@ def _gravity_in_cam(node, *, use_head: bool, horizon_yz) -> np.ndarray:
         2 * (qy * qz + qx * qw),
         1 - 2 * (qx * qx + qy * qy),
     ], dtype='float32')
-    return np.array([g_tool[1], g_tool[0], g_tool[2]], dtype='float32')
+    return np.array([-g_tool[1], g_tool[0], -g_tool[2]], dtype='float32')
 
 
-def _box_islying_pca(obj_name: str, box, depth, cam_params, gravity_cam, mask=None) -> bool:
-    """Noise-robust islying estimate — drop-in for `_box_islying`.
+def _class_prior(obj_name: str) -> int:
+    """Object-class orientation prior from the configured name lists:
+    +1 ⇒ usually lying, -1 ⇒ usually standing, 0 ⇒ unknown. Used only as a
+    tie-break for near-isotropic shapes (e.g. a squat cup) where the geometry
+    cannot tell lying from standing."""
+    n = (obj_name or '').lower()
+    if any(el in n for el in LYING_OBJ_NAMES):
+        return 1
+    if any(el in n for el in STANDING_OBJ_NAMES):
+        return -1
+    return 0
 
-    `_box_islying` fits a single plane and reads its surface normal, i.e. the
-    *thinnest* (worst-conditioned) direction of the point set — exactly the axis
-    that depth noise + flying pixels corrupt most, which is why it flips a lot.
 
-    This version instead asks the well-conditioned question "is the object's long
-    axis vertical or horizontal?":
+def _islying_estimate(obj_name: str, box, depth, cam_params, gravity_cam, mask=None):
+    """Robust lying/standing estimate from a single (arm) view.
 
-      1. object pixels — from the grounded-sam segmentation `mask` when given
-         (clean: excludes the supporting table), else the whole bbox + a depth
-         foreground filter (which can leak the table around a thin object).
-      2. MAD outlier rejection — remove flying pixels at depth discontinuities.
-      3. PCA principal axis    — the largest-eigenvalue direction (best-conditioned)
-         is the object's long axis; ∥ gravity ⇒ standing, ⟂ gravity ⇒ lying.
-      4. extent-ratio tie-break — for blobby (non-elongated) shapes the principal
-         axis is ill-defined, so compare vertical vs horizontal 3D extent instead.
+    Returns ``(lying: bool, confidence: float)`` with confidence in [0, 1].
 
-    `gravity_cam` is the world-down direction as a 3-vector in the camera frame
-    (see `_gravity_in_cam`), valid for any camera roll/flip — this is what makes
-    it correct for the wrist camera, not just the head.
-    Returns False on any failure, matching `_box_islying`.
+    Fuses two COMPLEMENTARY gravity-relative PCA cues, each weighted by how
+    well-conditioned its own axis is, and defers to the object-class prior (then
+    the 3D extent ratio) only when the geometry is ambiguous:
+
+      • long-axis·gravity — largest-eigenvalue axis ∥ gravity ⇒ standing,
+        ⟂ gravity ⇒ lying. Reliable when the shape is ELONGATED.
+      • normal·gravity    — smallest-eigenvalue axis (dominant-surface normal)
+        ∥ gravity ⇒ lying (flat object face-up), ⟂ ⇒ standing. Reliable when the
+        shape is PLANAR.
+      • weights `w_long ∝ elongation`, `w_norm ∝ planarity`: every object has at
+        least one well-conditioned axis, so the trustworthy cue dominates.
+      • class prior / extent ratio — only when both cues are weak (near-isotropic)
+        or they disagree (|score| small).
+
+    Validated on 2 arm poses × 5 objects (water/juice bottle, cup, phone, remote):
+    each angle cue alone separated lying vs standing with a ~77° margin once the
+    `gravity_cam` mount was corrected (see `_gravity_in_cam`). Requires a CORRECT
+    `gravity_cam`; returns (False, 0.0) on any failure.
     """
     try:
         if mask is not None:
-            # Object segmentation pixels (no table contamination).
-            ys, xs = np.where((mask > 0) & (depth > 0))
+            ys, xs = np.where((mask > 0) & (depth > 0))   # clean object pixels (no table)
         else:
             x0, y0, x1, y1 = [int(v) for v in box]
             sub = depth[y0:y1, x0:x1]
             yy, xx = np.where(sub > 0)
             ys, xs = yy + y0, xx + x0
         if len(ys) < 10:
-            return False
+            return False, 0.0
         Z = depth[ys, xs].astype('float32')
 
-        # 1+2) depth foreground filter + MAD outlier rejection (mask already
-        # isolates the object; this just drops flying pixels / depth holes).
+        # depth foreground filter + MAD outlier rejection (drop flying pixels).
         zc = float(np.median(Z))
         mad = float(np.median(np.abs(Z - zc))) + 1e-6
         keep = (np.abs(Z - zc) < _PCA_MAD_K * mad) & (Z < zc + 3.0 * mad)
         if keep.sum() < 10:
-            return False
+            return False, 0.0
         ys, xs, Z = ys[keep], xs[keep], Z[keep]
 
-        Iy = ys.astype('float32')
-        Ix = xs.astype('float32')
-        X3, Y3, Z3 = Ixy2xyz(Ix=Ix, Iy=Iy, Z=Z, cam_params=cam_params)
+        X3, Y3, Z3 = Ixy2xyz(Ix=xs.astype('float32'), Iy=ys.astype('float32'),
+                             Z=Z, cam_params=cam_params)
         pts = np.stack([X3.ravel(), Y3.ravel(), Z3.ravel()], axis=-1)
 
-        # gravity (world-down) in the camera frame.
         g = np.asarray(gravity_cam, dtype='float32')
         g = g / (np.linalg.norm(g) + 1e-9)
 
-        # 3) PCA — eigh returns ascending eigenvalues; take the largest as long axis.
         centered = pts - pts.mean(axis=0)
         cov = centered.T @ centered / len(centered)
-        evals, evecs = np.linalg.eigh(cov)
-        evals = evals[::-1]
-        evecs = evecs[:, ::-1]
-        principal = evecs[:, 0]
-        elongation = float(np.sqrt(evals[0] / (evals[1] + 1e-9)))
+        evals, evecs = np.linalg.eigh(cov)           # ascending
+        evals = evals[::-1]; evecs = evecs[:, ::-1]  # → descending (λ0≥λ1≥λ2)
+        long_axis = evecs[:, 0]                       # largest variance
+        normal    = evecs[:, 2]                       # smallest variance (surface normal)
+        elong = float(np.sqrt(evals[0] / (evals[1] + 1e-9)))   # how elongated
+        flat  = float(np.sqrt(evals[1] / (evals[2] + 1e-9)))   # how planar
 
-        if elongation >= _PCA_ELONGATION:
-            return abs(float(np.dot(principal, g))) < _PCA_VERTICAL_DOT
-
-        # 4) tie-break: vertical extent vs horizontal extent in the gravity frame.
+        # gravity-frame 3D extents (for the extent-ratio last resort).
         vert = centered @ g
         h_v = float(vert.max() - vert.min())
         horiz = centered - np.outer(vert, g)
         h_h = float(np.linalg.norm(horiz, axis=1).max()) * 2.0
-        return h_h > h_v
+
+        prior = _class_prior(obj_name)
+
+        # Two cues vote: +1 ⇒ lying, -1 ⇒ standing.
+        deg = 180.0 / np.pi
+        th_long = float(np.arccos(min(1.0, abs(float(np.dot(long_axis, g)))))) * deg
+        th_norm = float(np.arccos(min(1.0, abs(float(np.dot(normal, g)))))) * deg
+        s_long = 1.0 if th_long > _PCA_LONG_LYING_DEG else -1.0
+        s_norm = 1.0 if th_norm < _PCA_NORM_LYING_DEG else -1.0
+        w_long = max(0.0, elong - _PCA_ANISO_MIN)
+        w_norm = max(0.0, flat - _PCA_ANISO_MIN)
+        wsum = w_long + w_norm
+
+        if wsum < 1e-6:
+            # Near-isotropic blob — geometry is blind. Trust the class prior, else
+            # the extent ratio (low confidence either way).
+            if prior != 0:
+                return prior > 0, 0.5
+            return (h_h > h_v), 0.3
+
+        score = (w_long * s_long + w_norm * s_norm) / wsum     # in [-1, 1]
+        if abs(score) < _PCA_SCORE_MARGIN:
+            # Cues weak / disagree → class prior breaks the tie, else extent ratio.
+            if prior != 0:
+                return prior > 0, 0.4
+            return (h_h > h_v), 0.35
+        return score > 0, float(min(1.0, abs(score)))
     except Exception:
-        return False
+        return False, 0.0
+
+
+def _box_islying_pca(obj_name: str, box, depth, cam_params, gravity_cam, mask=None) -> bool:
+    """Backward-compatible bool wrapper around `_islying_estimate` (drops the
+    confidence). Existing callers expect a plain bool."""
+    return _islying_estimate(obj_name, box, depth, cam_params, gravity_cam, mask=mask)[0]
 
 
 # ── Cross-camera islying consensus ───────────────────────────────────────────
@@ -453,7 +499,7 @@ def _predict_detect(rgb, prompt, det_configs):
     retry with grounding-dino (box only, no mask → islying uses the bbox)."""
     try:
         return _vs_client().predict(image=rgb, prompt=prompt, **det_configs)
-    except Exception:
+    except Exception as e:
         if det_configs.get('model') in (None, 'grounding-dino'):
             raise
         return _vs_client().predict(image=rgb, prompt=prompt, **{**det_configs, 'model': 'grounding-dino'})
@@ -549,6 +595,10 @@ def _compose_islying_vis(head_res, arm_res, fused, vlm=None, vlm_view=None):
         if box is not None:
             x0, y0, x1, y1 = [int(v) for v in box]
             cv2.rectangle(im, (x0, y0), (x1, y1), _LY_COLOR if vote else _ST_COLOR, 3)
+            if res.get('name'):    # grounding-dino style: short name + detection score
+                blbl = f"{res['name'][:2]} {res.get('score', 0.0):.2f}"
+                cv2.putText(im, blbl, (x0, max(22, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 4)
+                cv2.putText(im, blbl, (x0, max(22, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
         if res.get('grasp_line') is not None:        # grasppose on the arm panel
             _draw_grasp(im, res['grasp_line'], res.get('grasp_label', ''))
         h, w = im.shape[:2]
@@ -621,7 +671,7 @@ def _compose_multi_islying_vis(head_rgb, arm_rgb, panels):
             if box is not None:
                 x0, y0, x1, y1 = [int(v) for v in box]
                 cv2.rectangle(im, (x0, y0), (x1, y1), _LY_COLOR if p['fused'] else _ST_COLOR, 3)
-                lbl = f"{p['name']}:{_vlabel(p['fused'])}"
+                lbl = f"{p['name'][:2]} {p.get('score', 0.0):.2f}"   # short name + detection score (box colour = islying)
                 cv2.putText(im, lbl, (x0, max(22, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 4)
                 cv2.putText(im, lbl, (x0, max(22, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
             if kind == 'arm' and p.get('grasp_line') is not None:
@@ -663,10 +713,13 @@ def _emit_multi_islying_vis(node, head_rgb, arm_rgb, panels):
 
 # ── VLM tie-breaker (local Ollama vision model) ──────────────────────────────
 _VLM_ENABLED = True
-_VLM_URL     = 'http://192.168.1.11:11434/api/chat'
+_VLM_URL     = 'http://192.168.1.200:11535/api/chat'
 _VLM_MODEL   = 'qwen2.5vl:3B'
-_VLM_WAIT    = 3.0     # seconds the consensus waits for the VLM (on disagreement)
+_VLM_WAIT    = 8.0     # seconds the consensus waits for the VLM (on disagreement).
+                       # Sized to cover a cold model load (~8s); warm calls ~2.5s.
+                       # Pre-warm (below) keeps the model hot so this rarely bites.
 _VLM_HTTP_TO = 30.0    # the request itself runs longer (warms the model for next time)
+_VLM_KEEPALIVE_S = 480 # pre-warm re-ping period (s); must stay < the 10m keep_alive
 # NOTE: this exact wording (the "Decide its orientation:" framing + the trailing
 # "reason" field) is what makes the small 3B model answer reliably — shorter
 # prompts or dropping "reason" flip its answers. Keep it verbatim.
@@ -712,7 +765,48 @@ def _vlm_islying(rgb, box, obj_name):
         return None
 
 
-def _islying_consensus(node, name, *, min_conf=0.0, seed=None, emit_vis=True, disagree_trust='arm') -> bool:
+# ── VLM pre-warm (keep the model hot so cold-load never bites _VLM_WAIT) ──────
+_PREWARM_STARTED = False
+_PREWARM_LOCK = threading.Lock()
+
+
+def _vlm_ping() -> bool:
+    """Load the islying model into VRAM and refresh its keep_alive. Best-effort, silent."""
+    try:
+        body = json.dumps({
+            'model': _VLM_MODEL, 'stream': False, 'keep_alive': '10m',
+            'messages': [{'role': 'user', 'content': 'ok'}],
+        }).encode()
+        req = urllib.request.Request(_VLM_URL, data=body, headers={'Content-Type': 'application/json'})
+        urllib.request.urlopen(req, timeout=_VLM_HTTP_TO)
+        return True
+    except Exception:
+        return False
+
+
+def prewarm_vlm():
+    """Start a daemon at bootstrap that loads the islying VLM and re-pings it every
+    `_VLM_KEEPALIVE_S` (< the 10m keep_alive), so the first `find` after an idle gap
+    finds the model already hot and stays within `_VLM_WAIT`. Idempotent; no-op when
+    the VLM is disabled. Failures are silent (the consensus already degrades to the
+    camera vote when the VLM is unreachable)."""
+    global _PREWARM_STARTED
+    if not _VLM_ENABLED:
+        return
+    with _PREWARM_LOCK:
+        if _PREWARM_STARTED:
+            return
+        _PREWARM_STARTED = True
+
+    def _loop():
+        while True:
+            _vlm_ping()
+            time.sleep(_VLM_KEEPALIVE_S)
+
+    threading.Thread(target=_loop, daemon=True, name='vlm-prewarm').start()
+
+
+def _islying_consensus(node, name, *, min_conf=0.0, seed=None, emit_vis=True, disagree_trust='arm', use_vlm=True) -> bool:
     """Fuse the lying/standing belief across head + arm cameras, with a VLM tiebreak.
 
       • both agree       → that value (VLM launched but ignored — no wait)
@@ -732,7 +826,8 @@ def _islying_consensus(node, name, *, min_conf=0.0, seed=None, emit_vis=True, di
     # Fire-and-forget VLM (daemon thread): only awaited if the cameras disagree.
     vlm_holder = {'vote': None}
     vlm_done = threading.Event()
-    if _VLM_ENABLED and seed is not None:
+    vlm_on = _VLM_ENABLED and use_vlm
+    if vlm_on and seed is not None:
         srgb, sbox = seed[2], seed[3]
         def _vlm_task():
             try: vlm_holder['vote'] = _vlm_islying(srgb, sbox, name)
@@ -768,7 +863,7 @@ def _islying_consensus(node, name, *, min_conf=0.0, seed=None, emit_vis=True, di
             vlm_disp = vlm_vote
         else:
             fused = bool(av) if disagree_trust == 'arm' else bool(hv)             # VLM down → trust chosen cam
-            vlm_disp = 'timeout' if (_VLM_ENABLED and seed is not None) else None
+            vlm_disp = 'timeout' if (vlm_on and seed is not None) else None
 
     if emit_vis:
         vlm_view = (seed[2], seed[3]) if (seed is not None and vlm_vote is not None) else None
@@ -843,7 +938,7 @@ def _arm_grasp_branch(node, name, *, keep_orientation=False, cam=None):
 
 def _fused_head_arm(node, name, *, rgb, depth, cam_params, cam, use_head,
                     det_configs, select_configs, min_conf, keep_orientation=False,
-                    emit_vis=True, disagree_trust='arm', arm_cam=None):
+                    emit_vis=True, disagree_trust='arm', arm_cam=None, use_vlm=True):
     """Run HEAD detection ∥ ARM grasp-gd ∥ speculative VLM concurrently, then fuse
     islying. Returns the merged per-object dict (with `grasp` from the arm when
     visible) — including a `panel` for shared multi-object visualisation — or None
@@ -867,8 +962,9 @@ def _fused_head_arm(node, name, *, rgb, depth, cam_params, cam, use_head,
                 return
             box = _bbox_to_xyxy(target.bbox)
             # speculative VLM as soon as the head box is known (overlaps the arm branch).
-            vlm['holder'], vlm['done'] = _spawn_vlm(rgb, box, name)
-            vlm['started'] = True
+            if use_vlm:
+                vlm['holder'], vlm['done'] = _spawn_vlm(rgb, box, name)
+                vlm['started'] = True
             mask = _mask_for_target(res, target, w, h)
             islying_head = _box_islying_pca(name, box, depth, cam_params,
                                             _cam_gravity(node, cam, use_head), mask=mask)
@@ -910,7 +1006,8 @@ def _fused_head_arm(node, name, *, rgb, depth, cam_params, cam, use_head,
             vlm_disp = 'timeout' if vlm['started'] else None
 
     if emit_vis:
-        head_panel = {'camera': 'head', 'vote': hv, 'rgb': rgb, 'box': head['box']}
+        head_panel = {'camera': 'head', 'vote': hv, 'rgb': rgb, 'box': head['box'],
+                      'name': name, 'score': float(getattr(head['target'], 'conf', 0.0))}
         arm_panel = ({'camera': 'arm', 'vote': av, 'rgb': arm['rgb'], 'box': arm['box'],
                       'grasp_line': arm['grasp'].get('line'), 'grasp_label': _grasp_label(arm['grasp'])}
                      if arm else _none_res('arm'))
@@ -923,6 +1020,7 @@ def _fused_head_arm(node, name, *, rgb, depth, cam_params, cam, use_head,
     # single head + arm frames by `_compose_multi_islying_vis`).
     head['panel'] = {
         'name': name, 'fused': islying,
+        'score': float(getattr(head['target'], 'conf', 0.0)),
         'head_box': head['box'], 'head_vote': hv,
         'arm_box': arm['box'] if arm else None, 'arm_vote': av,
         'grasp_line': arm['grasp'].get('line') if arm else None,
@@ -1034,7 +1132,7 @@ def _line_to_grasppose(node, line, *, cam_params, depths: dict,
     if v1 is None:
         depth_value = v0 + depth_tune
     else:
-        depth_value = v0 + min(((1 - alpha) * v0 + alpha * v1) - v0 + depth_tune, 60)
+        depth_value = v0 + min(((1 - alpha) * v0 + alpha * v1) - v0 + depth_tune, 50)
 
     x0, y0, z0 = Ixy2xyz(Ix=ix0, Iy=iy0, Z=depth_value, cam_params=cam_params)
     x1, y1, z1 = Ixy2xyz(Ix=ix1, Iy=iy1, Z=depth_value, cam_params=cam_params)

@@ -1,10 +1,10 @@
 {
   "detect_object": {
-    "model": "grounded-sam",
+    "model": "rfdetr-gdino-sam-etri",
     "min_size": 0,
-    "max_size": 30,
-    "box_threshold": 0.3,
-    "text_threshold": 0.15,
+    "max_size": 50,
+    "box_threshold": 0.35,
+    "text_threshold": 0.3,
     "target_distance": 0.9,
     "distance_sigma": 0.01,
     "near_point": "center",
@@ -14,41 +14,42 @@
       "near": 0.1
     },
     "fuse_islying": false,
-    "disagree_trust": "head"
+    "disagree_trust": "arm"
   },
   "detect_grasp": {
-    "model": "grounding-dino",
+    "model": "rfdetr-gdino-etri",
     "min_size": 0,
-    "max_size": 30,
+    "max_size": 50,
     "box_threshold": 0.3,
     "text_threshold": 0.15,
     "target_distance": 0.3,
     "distance_sigma": 0.01,
     "near_point": "center",
     "weight": {
-      "quality": 0.7,
+      "quality": 0.78,
       "distance": 0.2,
-      "near": 0.1
+      "near": 0.02
     },
     "gripper_min": 10,
-    "gripper_max": 200,
+    "gripper_max": 500,
     "fuse_islying": true,
     "disagree_trust": "arm"
   },
   "detect_background": {
     "use": true,
     "model": "background",
-    "bg_min_area": 0,
-    "bg_max_area": 80,
+    "fg_min_area": 0,
+    "bg_max_area": 7,
     "method": "automask",
-    "roi": [
-      222,
-      100,
-      900,
-      650
-    ],
     "stride": 20,
-    "dilate": -60
+    "dilate": -50,
+    "place_height_band": 0.05,
+    "place_margin_cells": 2,
+    "avoid_max_area": 0.15,
+    "calib_tune": {
+      "dx": 0.03,
+      "dy": 0.05
+    }
   },
   "grasp_check_roi": [
     415,

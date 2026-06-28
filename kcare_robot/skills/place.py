@@ -44,14 +44,16 @@ def approach_place(node, **kwargs) -> dict:
 
     ret = run_parallel_check(funcs=[
         lambda: forward(node=node, inputs=kwargs['mforward'], wait=True),
-        lambda: movej(node=node, dr0=kwargs['base_rotate'], wait=True),
+        # lambda: movej(node=node, dr0=kwargs['base_rotate'], wait=True),
         lambda: lift(node=node, inputs=kwargs['lift_to'], wait=True)
     ])
     assert ret['isdone'], f'{ret}'
 
-    if kwargs['islying']:
-        ret = movej(node=node, inputs='approach_lying', wait=True)
-        assert ret['isdone'], f'{ret}'
+    ret = movej(node=node, inputs='give')
+    assert ret['isdone'], f'{ret}'
+
+    ret = movej(node=node, inputs='approach_lying' if kwargs['islying'] else 'approach_standing', wait=True)
+    assert ret['isdone'], f'{ret}'
 
     ret = movel(node=node, **kwargs['approach_pose'])
     assert ret['isdone'], f'{ret}'
@@ -117,6 +119,9 @@ def place(node, **kwargs):
     if kwargs['islying']:
         ret = movej(node=node, inputs='approach_lying')
         assert  ret['isdone'], f'{ret}'
+
+    ret = movej(node=node, inputs='give')
+    assert ret['isdone'], f'{ret}'
 
     ret = movej(node=node, inputs='fold')
     assert  ret['isdone'], f'{ret}'
@@ -213,16 +218,70 @@ def return_card(**kwargs):
 
 
 @arm_exception_handler
-def wipe(**kwargs):
+def wipe(node, **kwargs):
+    for k in ['object_from_drawer', 'pose_after_open', 'lift_after_open', 'forward_after_open', 'init_pose_fixed']:
+        kwargs.pop(k, None)
     """`place` with wiping enabled. Defaults `inputs='towel>>spill'`."""
     inp = kwargs.pop('inputs', 'towel>>spill')
     splits = inp.split('>>')
-    target_loc, rev_loc = splits if len(splits) == 2 else ('towel', splits[-1])
+    target, destination = splits if len(splits) == 2 else ('towel', splits[-1])
+    robot_mode = get_robot_mode(node=node)
+    
 
-    kwargs['inputs'] = f'{target_loc}>>{rev_loc}'
-    kwargs['to_wipe'] = True
-    kwargs['wrist_angle'] = 30
-    return place(**kwargs)
+    if not grasp_succeed(node=node)['isdone']:
+        kwargs.update(pick(node=node, inputs=target,  **kwargs))
+        assert kwargs['isdone'], f'{kwargs}'
+
+    # move to 
+    env = get_env_specs(destination, ENV)
+    if len(env)>0:
+        dest_obj, dest_loc = None, destination
+    else:
+        splits = inp.split('@')
+        dest_obj, dest_loc = (splits[0], '@'.join(splits[1:])) if len(splits)>=2 else (splits[0], None)
+    if dest_loc is not None:
+        ret = move(node=node, inputs=dest_loc, **kwargs)
+        assert ret['isdone'], f'{ret}'
+    
+    #
+    kwargs['islying'] = False
+    kwargs.update(approach_place(node=node, inputs=dest_loc if dest_obj is None else dest_obj, **kwargs))
+    assert kwargs['isdone'], f'{kwargs}'
+
+
+    ret = movet(node=node, dz=kwargs['dapproach'], wait=True)
+    assert ret['isdone'], f'{ret}'
+
+    movel(node=node, dz=-kwargs['dz_up'] + 0.015)
+
+    #wipe here
+    mul = 1 if robot_mode=='right' else -1
+    dx, dy = 0.15, mul*0.05
+    
+    movel(node=node, dy=dy, dx=-dx)
+    for i in range(3):
+        movel(node=node, dx=2*dx, dy=-dy)
+        movel(node=node, dx=-2*dx)
+    #
+
+    ret = movel(node=node, dz=0.15)
+    assert  ret['isdone'], f'{ret}'
+
+    if kwargs['islying']:
+        ret = movej(node=node, inputs='approach_lying')
+        assert  ret['isdone'], f'{ret}'
+
+    ret = movej(node=node, inputs='give')
+    assert ret['isdone'], f'{ret}'
+    
+    ret = movej(node=node, inputs='fold')
+    assert  ret['isdone'], f'{ret}'
+
+    ret = forward(node=node, inputs=-kwargs.get('mforward', 0 )) 
+    assert  ret['isdone'], f'{ret}'
+
+
+    return kwargs
 
 
 

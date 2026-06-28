@@ -29,7 +29,7 @@
     },
     "ry": {
       "up": 10,
-      "straight": -30,
+      "straight": -40,
       "down": -50
     }
   },
@@ -45,12 +45,16 @@
       "label": "\uc548\ubc29 \ud14c\uc774\ube14",
       "default_mode": "left",
       "height": 0.762,
+      "placepose": {
+        "dy": 0
+      },
       "loc": {
-        "x": 1.979,
+        "x": 2.4,
         "y": -0.809,
         "rz": -90
       },
-      "dforward": 0.15
+      "dforward": 0,
+      "dshift": -0.15
     },
     "drawer@main room": {
       "label": "\uc11c\ub78d",
@@ -59,7 +63,7 @@
       "handle_height": 0.415,
       "height": 0.566,
       "placepose": {
-        "dx ": 0
+        "dy": -0.1
       },
       "loc": {
         "x": 1.322,
@@ -73,7 +77,7 @@
       "label": "\uc548\ubc29 \uce68\ub300",
       "default_mode": "right",
       "placepose": {
-        "dy ": -0.05
+        "dy ": -0.1
       },
       "height": 0.32,
       "loc": {
@@ -87,7 +91,8 @@
       "label": "\uac70\uc2e4 \ud14c\uc774\ube14",
       "default_mode": "left",
       "placepose": {
-        "dx": 0
+        "dx": 0.05,
+        "dy": -0.1
       },
       "height": 0.456,
       "loc": {
@@ -95,8 +100,8 @@
         "y": -4.4,
         "rz": -90
       },
-      "dshift": -0.1,
-      "dforward": 0.1
+      "dshift": -0.2,
+      "dforward": 0
     },
     "wait@living room": {
       "label": "living_room_wait",
@@ -113,22 +118,26 @@
     "trash@living room": {
       "label": "\uc2a4\ub808\uae30\ud1b5",
       "default_mode": "left",
-      "grasppose": {
-        "dy": 0.2
+      "placepose": {
+        "dy": -0.1,
+        "dx": -0.1
       },
-      "height": 0.17,
+      "height": 0.4,
       "loc": {
         "x": -0.79,
         "y": -4.75,
         "rz": -150
       },
       "dforward": 0.15,
-      "dshift": 0.1
+      "dshift": 0
     },
     "counter@kitchen": {
       "label": "\uc8fc\ubc29 \uc120\ubc18",
       "default_mode": "left",
       "height": 0.85,
+      "placepose": {
+        "dy": -0.1
+      },
       "loc": {
         "x": -4.137,
         "y": -2.278,
@@ -146,18 +155,23 @@
         "y": -2.355,
         "rz": 180
       },
-      "dforward": 0.15
+      "dforward": 0.15,
+      "dshift": -0.2
     },
     "table@kitchen": {
       "label": "\uc2dd\ud0c1",
       "default_mode": "right",
       "height": 0.755,
+      "grasppose": {
+        "dy": -0.05
+      },
       "loc": {
-        "x": -2.838,
+        "x": -2.5,
         "y": -2.145,
         "rz": -90
       },
-      "dforward": 0.2
+      "dforward": 0.2,
+      "dshift": 0
     },
     "drawer@kitchen": {
       "label": "\uc11c\ub78d",
@@ -165,13 +179,17 @@
       "handle": "gray handle",
       "handle_height": 0.415,
       "height": 0.566,
+      "placepose": {
+        "dx": -0.5,
+        "dy": -0.2
+      },
       "loc": {
-        "x": -3.628,
-        "y": -2.278,
+        "x": -1.8,
+        "y": -2.2,
         "rz": 90
       },
-      "dshift": -0.4,
-      "dforward": 0.1
+      "dshift": 0,
+      "dforward": -0.03
     },
     "wait": {
       "default_mode": "front",
@@ -301,22 +319,22 @@
         -10
       ],
       "left": [
-        70,
-        -14,
-        -22.9,
-        9.4,
-        -49.9,
-        95.2,
-        -17
+        82.75220873842167,
+        -26.259632150976163,
+        -32.94722746168656,
+        17.842784914127574,
+        -41.129295483552426,
+        104.7276115626965,
+        -14.829346433452967
       ],
       "right": [
-        -70,
-        0,
-        23.3,
-        9.7,
-        -308,
-        80,
-        6.6
+        -76.25895963035481,
+        -35.633824315103126,
+        31.37629419786738,
+        21.483215977589133,
+        -313.3162407767658,
+        110.09322375955092,
+        23.492944499352024
       ]
     },
     "unfold": {
@@ -388,6 +406,26 @@
         -185.5
       ]
     },
+    "approach_standing": {
+      "right": [
+        36.430907682150696,
+        33.89414098255503,
+        -31.20457641194409,
+        51.74252835934931,
+        -295.6459403372958,
+        99.96921684343455,
+        13.196118429308688
+      ],
+      "left": [
+        -39.71862719505864,
+        30.56703972462593,
+        36.299706287476845,
+        45.17457405723544,
+        -58.420349669357414,
+        99.99019918456483,
+        -5.605114914535039
+      ]
+    },
     "approach_drawer": {
       "right": [
         -6.211779573691565,
@@ -434,7 +472,7 @@
     "l_arm_accel": 1200,
     "tool_radius": 0.05,
     "tool_length": 0.26,
-    "wrist_tool_length": 0.166,
+    "wrist_tool_length": 0.169,
     "approach_wrist_angle": 45,
     "place_liftup": 0.13
   },
@@ -571,11 +609,11 @@
   },
   "FIND_CONFIGS": {
     "detect_object": {
-      "model": "grounded-sam",
+      "model": "rfdetr-gdino-sam-etri",
       "min_size": 0,
-      "max_size": 30,
-      "box_threshold": 0.3,
-      "text_threshold": 0.15,
+      "max_size": 50,
+      "box_threshold": 0.35,
+      "text_threshold": 0.3,
       "target_distance": 0.9,
       "distance_sigma": 0.01,
       "near_point": "center",
@@ -585,41 +623,42 @@
         "near": 0.1
       },
       "fuse_islying": false,
-      "disagree_trust": "head"
+      "disagree_trust": "arm"
     },
     "detect_grasp": {
-      "model": "grounding-dino",
+      "model": "rfdetr-gdino-etri",
       "min_size": 0,
-      "max_size": 30,
+      "max_size": 50,
       "box_threshold": 0.3,
       "text_threshold": 0.15,
       "target_distance": 0.3,
       "distance_sigma": 0.01,
       "near_point": "center",
       "weight": {
-        "quality": 0.7,
+        "quality": 0.78,
         "distance": 0.2,
-        "near": 0.1
+        "near": 0.02
       },
       "gripper_min": 10,
-      "gripper_max": 200,
+      "gripper_max": 500,
       "fuse_islying": true,
       "disagree_trust": "arm"
     },
     "detect_background": {
       "use": true,
       "model": "background",
-      "bg_min_area": 0,
-      "bg_max_area": 80,
+      "fg_min_area": 0,
+      "bg_max_area": 7,
       "method": "automask",
-      "roi": [
-        222,
-        100,
-        900,
-        650
-      ],
       "stride": 20,
-      "dilate": -60
+      "dilate": -50,
+      "place_height_band": 0.05,
+      "place_margin_cells": 2,
+      "avoid_max_area": 0.15,
+      "calib_tune": {
+        "dx": 0.03,
+        "dy": 0.05
+      }
     },
     "grasp_check_roi": [
       415,

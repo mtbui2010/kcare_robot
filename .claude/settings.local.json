@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -m 10 http://192.168.1.200:11434/api/tags -w \"\\\\nHTTP_CODE:%{http_code}\\\\nTIME_TOTAL:%{time_total}s\\\\n\")",
+      "Bash(ping -c 2 -W 2 192.168.1.200)",
+      "Bash(timeout 5 bash -c 'cat < /dev/null > /dev/tcp/192.168.1.200/11434')",
+      "Bash(curl -sv -m 5 http://192.168.1.200:11434/)",
+      "Bash(curl -s -m 8 http://192.168.1.11:11434/api/tags -w \"\\\\nHTTP:%{http_code} TIME:%{time_total}s\\\\n\")",
+      "Bash(curl -s -m 8 http://192.168.1.200:11435/api/tags -w \"\\\\nHTTP:%{http_code} TIME:%{time_total}s\\\\n\")",
+      "Bash(ping -c1 -W2 192.168.1.11)",
+      "Bash(curl -s -m4 http://127.0.0.1:11434/api/tags -w \"\\\\nHTTP:%{http_code}\\\\n\")",
+      "Bash(curl -s -m4 http://192.168.1.200:11435/ -w \"\\\\nHTTP:%{http_code}\\\\n\")",
+      "Bash(curl -s -m 10 http://192.168.1.200:11434/api/tags -w \"\\\\nHTTP:%{http_code} TIME:%{time_total}s\\\\n\")",
+      "Bash(curl -s -m 12 http://192.168.1.200:11535/api/tags -w \"\\\\nHTTP:%{http_code} TIME:%{time_total}s\\\\n\")",
+      "Bash(timeout 4 bash -c \"cat </dev/null >/dev/tcp/192.168.1.200/11535\")",
+      "Bash(curl -s -m 60 http://192.168.1.200:11535/api/chat -H 'Content-Type: application/json' -d '{\"model\":\"qwen2.5vl:3B\",\"stream\":false,\"format\":\"json\",\"options\":{\"temperature\":0},\"messages\":[{\"role\":\"user\",\"content\":\"Respond ONLY JSON: {\\\\\"islying\\\\\": true_or_false, \\\\\"reason\\\\\": \\\\\"<short>\\\\\"}. The image shows nothing, just answer false.\"}]}' -w '\\\\nHTTP:%{http_code} TIME:%{time_total}s\\\\n')",
+      "Bash(grep -nA3 \"^run:\\\\|^cli:\\\\|^doctor:\\\\|VENV\\\\|python\\\\|uvicorn\\\\|PYTHON\" Makefile)",
+      "Bash(echo \"=== running kcare/uvicorn/python processes ===\" *)",
+      "Bash(curl -s -m8 http://127.0.0.1:8001/openapi.json)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(m.upper\\(\\), p\\) for p,v in d['paths'].items\\(\\) for m in v]\")",
+      "Bash(ps -o lstart= -p 530498)",
+      "Bash(ps -o pid,lstart,cmd -p 530498)",
+      "Bash(python3 -c \"import sys,time; t=int\\(sys.stdin.read\\(\\)\\); print\\(time.strftime\\('%Y-%m-%d %H:%M:%S', time.localtime\\(t\\)\\)\\)\")",
+      "Bash(curl -s -m8 http://127.0.0.1:8001/skills)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(s.get\\('name'\\), '->', s.get\\('module_path'\\), s.get\\('func_name'\\)\\) for s in \\(d if isinstance\\(d,list\\) else d.get\\('skills',d.get\\('all',[]\\)\\)\\) ] \")",
+      "Bash(ps -eo pid,lstart,cmd)",
+      "Bash(curl -s -m8 http://127.0.0.1:8001/skills/status -w \"\\\\nHTTP:%{http_code}\\\\n\")",
+      "Bash(curl -s -m60 http://192.168.1.200:11535/api/chat -H 'Content-Type: application/json' -d '{\"model\":\"qwen2.5vl:3B\",\"stream\":false,\"keep_alive\":\"10m\",\"messages\":[{\"role\":\"user\",\"content\":\"warmup, reply ok\"}]}' -w '\\\\nHTTP:%{http_code} TIME:%{time_total}s\\\\n')",
+      "Bash(curl -s -m90 -X POST http://127.0.0.1:8001/skill/find -H 'Content-Type: application/json' -d '{\"inputs\":\"bottle\"}' -w '\\\\nHTTP:%{http_code} TIME:%{time_total}s\\\\n')",
+      "Bash(python3 -c 'import sys; d=sys.stdin.read\\(\\); import json,re; *)",
+      "Bash(curl -s -m8 http://192.168.1.200:11535/api/ps)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(m['name'],'expires',m.get\\('expires_at'\\)\\) for m in d.get\\('models',[]\\)]\")",
+      "Bash(python3 -c \"import json;d=json.load\\(open\\('kcare_robot/configs/locations/etri/skill_configs_override.json'\\)\\);import sys\")",
+      "Bash(ls -dt /home/keti-kcare-3/.claude/projects/*/ 2>/dev/null | head; echo \"---\"; ls -t /home/keti-kcare-3/.claude/projects/-home-keti-kcare-3-workdir-kcare-robot/*.jsonl 2>/dev/null | head)",
+      "Bash(python3 -c \"import json; json.load\\(open\\('kcare_robot/configs/locations/etri/skill_configs_override.json'\\)\\); print\\('JSON OK'\\)\")"
+    ]
+  }
+}
