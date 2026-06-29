@@ -23,12 +23,3 @@ try:
 except Exception as _e:
     import sys
     print(f'[kcare_robot.skills] auto_wrap_skills skipped: {_e}', file=sys.stderr)
-
-# Keep the islying tie-breaker VLM hot from bootstrap so the first detection after
-# an idle gap doesn't cold-miss the consensus wait. Best-effort, daemon thread.
-try:
-    from kcare_robot.skills._recognition_helpers import prewarm_vlm
-    prewarm_vlm()
-except Exception as _e:
-    import sys
-    print(f'[kcare_robot.skills] vlm prewarm skipped: {_e}', file=sys.stderr)

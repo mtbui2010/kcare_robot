@@ -472,7 +472,7 @@
     "l_arm_accel": 1200,
     "tool_radius": 0.05,
     "tool_length": 0.26,
-    "wrist_tool_length": 0.169,
+    "wrist_tool_length": 0.17,
     "approach_wrist_angle": 45,
     "place_liftup": 0.13
   },

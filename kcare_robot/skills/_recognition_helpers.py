@@ -2,14 +2,14 @@
 the skill module; behaviour matches the original 1:1.
 
 `recognition.py` keeps the registered skills (`find`, `find_grasp`,
-`get_side_pose_3d`, ...) plus the two orchestrators (`_detect_objects`,
-`_detect_grasps`) and pulls everything else from here. This module must NOT
+`get_side_pose_3d`, ...) plus the single detection orchestrator
+(`_detect_objects`) and pulls everything else from here. This module must NOT
 import `recognition` back (no import cycle)."""
 
 from dataclasses import dataclass
 from typing import Optional, Callable
 
-import numpy as np, threading, base64, json, time, urllib.request
+import numpy as np, threading, json, time
 
 from pyconnect.utils import run_parallel
 from visionserve.utils import (
@@ -25,7 +25,7 @@ from robot_agent.state import current
 from robot_agent.skills import log_data
 from kcare_robot.skills.calibrattion import Head2BaseCalibration
 from kcare_robot.skills.head import head_state as get_head_state
-from kcare_robot.skills.pointcloud import get3d
+from kcare_robot.skills.pointcloud import get3d, get3d_arm
 from kcare_robot.skills.arm import get_wrist_angle, arm_pose
 from robot_agent.utils import deg2quaternion
 import cv2
@@ -150,17 +150,6 @@ def _vs_client():
     if c is None:
         raise Exception("client 'visionserve' not registered — add it in the Connection panel")
     return c
-
-
-def _vs_postprocess():
-    """Lazy import so the module stays importable without the SDK installed."""
-    from visionserve import select_target_object, select_target_grasp
-    return select_target_object, select_target_grasp
-
-
-def _prompt(obj_names) -> str:
-    """GroundingDINO / grasp-gd text prompt, e.g. ['cup','bottle'] → 'cup. bottle.'."""
-    return ' '.join(f'{n.strip()}.' for n in obj_names if n.strip())
 
 
 # ── Legacy TCP detector (still used by get_side_pose_3d's fastsam) ────────────
@@ -435,16 +424,13 @@ def _box_islying_pca(obj_name: str, box, depth, cam_params, gravity_cam, mask=No
     return _islying_estimate(obj_name, box, depth, cam_params, gravity_cam, mask=mask)[0]
 
 
-# ── Cross-camera islying consensus ───────────────────────────────────────────
-def _arm_horizon_yz(node) -> np.ndarray:
-    """World-down in the wrist camera's (y,z) plane, from the arm pitch."""
-    cam_angle_rad = (90 + arm_pose(node=node)['pose'][-2]) * np.pi / 180
-    return np.array([-np.cos(cam_angle_rad), -np.sin(cam_angle_rad)])
+def _object_det_select_configs(overrides: dict | None = None, *, cfg_key: str = 'detect_object'):
+    """(det_configs, select_configs) for grounding-dino object detection.
 
-
-def _object_det_select_configs(overrides: dict | None = None):
-    """(det_configs, select_configs) for grounding-dino object detection."""
-    configs = FIND_CONFIGS['detect_object']
+    `cfg_key` chooses the profile: 'detect_object' for plain detection (head, or a
+    coarse wrist locate) and 'detect_grasp' for the wrist grasp path (a closer
+    `target_distance`, so the near object is selected)."""
+    configs = FIND_CONFIGS[cfg_key]
     det = {k: v for k, v in configs.items()
            if k in ('model', 'min_size', 'max_size', 'text_threshold', 'box_threshold')}
     select = {k: v for k, v in configs.items()
@@ -455,17 +441,18 @@ def _object_det_select_configs(overrides: dict | None = None):
     return det, select
 
 
+def _grasp_configs() -> dict:
+    """Gripper width bounds for grasp-gd, from the `detect_grasp` profile."""
+    configs = FIND_CONFIGS['detect_grasp']
+    return {k: v for k, v in configs.items() if k in ('gripper_min', 'gripper_max')}
+
+
 def _cam_gravity(node, cam, use_head) -> np.ndarray:
     """World-down 3-vector in the camera frame, from the head tilt / wrist pitch."""
     cam_angle = abs(cam.head_state['current_ry']) if use_head else get_wrist_angle(node=node)
     cam_angle_rad = cam_angle * np.pi / 180
     horizon_yz = np.array([-np.cos(cam_angle_rad), -np.sin(cam_angle_rad)])
     return _gravity_in_cam(node, use_head=use_head, horizon_yz=horizon_yz)
-
-
-def _none_res(camera):
-    """Empty per-camera islying result (no frame / no detection)."""
-    return {'camera': camera, 'vote': None, 'rgb': None, 'box': None}
 
 
 def _mask_for_target(res, target, w, h):
@@ -503,39 +490,6 @@ def _predict_detect(rgb, prompt, det_configs):
         if det_configs.get('model') in (None, 'grounding-dino'):
             raise
         return _vs_client().predict(image=rgb, prompt=prompt, **{**det_configs, 'model': 'grounding-dino'})
-
-
-def _islying_one_cam(node, name, camera, det_configs, select_configs, *, min_conf=0.0):
-    """islying for `name` from a single camera. Returns a result dict
-    ``{camera, vote, rgb, box}``; `vote` is None when the camera cannot detect
-    the object (out of FOV / no detection) — caller treats None as a non-vote,
-    not as `standing`. `rgb`/`box` are kept for the debug visualisation."""
-    out = _none_res(camera)
-    try:
-        select_target_object, _ = _vs_postprocess()
-        cam = fetch_camera_data(node, camera)
-        rgb, depth, cam_params = cam.rgb, cam.depth, cam.cam_params
-        out['rgb'] = rgb
-        h, w = rgb.shape[:2]
-
-        res = _predict_detect(rgb, f'{name.strip()}.', det_configs)
-        if min_conf > 0:
-            res = res.filter_by_conf(min_conf=min_conf)
-        if len(res.detections) == 0:
-            return out
-        target = select_target_object(res, cls=name, image_size=(w, h),
-                                      depth_result=depth, intrinsics=cam_params, **select_configs)
-        if target is None:
-            return out
-
-        box = _bbox_to_xyxy(target.bbox)
-        out['box'] = box
-        mask = _mask_for_target(res, target, w, h)   # grounded-sam mask (None → bbox fallback)
-        gravity_cam = _cam_gravity(node, cam, 'head' in camera)
-        out['vote'] = _box_islying_pca(name, box, depth, cam_params, gravity_cam, mask=mask)
-        return out
-    except Exception:
-        return out
 
 
 # ── islying debug visualisation ──────────────────────────────────────────────
@@ -576,458 +530,45 @@ def _draw_grasp(im, line, label=''):
         cv2.putText(im, label, (8, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, _GRASP_COLOR, 2)
 
 
-def _compose_islying_vis(head_res, arm_res, fused, vlm=None, vlm_view=None):
-    """Side-by-side [head | arm (| vlm-crop)] image: each camera's selected box
-    (red=lying, green=standing) + the per-camera, vlm and fused islying in the
-    TOP-RIGHT corner. The VLM crop panel (what the VLM actually judged) is only
-    appended when the VLM was consulted (cameras disagreed).
-
-    Panels are normalised to a common height (the tallest frame, kept as-is) and
-    concatenated horizontally."""
-    panels = [r for r in (head_res, arm_res) if r.get('rgb') is not None]
+def _compose_detection_vis(rgb, camera, panels):
+    """One annotated frame for a single camera's detection: every object's box
+    (red=lying, green=standing) with a short name + score, the grasp overlay on
+    the wrist camera, and a per-object islying legend in the bottom-right."""
     if not panels:
         return None
-    target_h = max(int(r['rgb'].shape[0]) for r in panels)
-    imgs = []
-    for res in panels:
-        im = np.ascontiguousarray(res['rgb'][:, :, :3]).copy()
-        box, vote = res.get('box'), res.get('vote')
+    im = np.ascontiguousarray(rgb[:, :, :3]).copy()
+    for p in panels:
+        box = p.get('box')
         if box is not None:
             x0, y0, x1, y1 = [int(v) for v in box]
-            cv2.rectangle(im, (x0, y0), (x1, y1), _LY_COLOR if vote else _ST_COLOR, 3)
-            if res.get('name'):    # grounding-dino style: short name + detection score
-                blbl = f"{res['name'][:2]} {res.get('score', 0.0):.2f}"
-                cv2.putText(im, blbl, (x0, max(22, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 4)
-                cv2.putText(im, blbl, (x0, max(22, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
-        if res.get('grasp_line') is not None:        # grasppose on the arm panel
-            _draw_grasp(im, res['grasp_line'], res.get('grasp_label', ''))
-        h, w = im.shape[:2]
-        if h != target_h:
-            im = cv2.resize(im, (max(1, int(w * target_h / h)), target_h))
-        # Camera label at the TOP-left (the bottom-left holds the UI "log_image" badge).
-        tag = f"{res['camera']}: {_vlabel(vote)}"
-        cv2.putText(im, tag, (8, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 5)
-        cv2.putText(im, tag, (8, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
-        imgs.append(im)
+            cv2.rectangle(im, (x0, y0), (x1, y1), _LY_COLOR if p['vote'] else _ST_COLOR, 3)
+            lbl = f"{p['name'][:2]} {p.get('score', 0.0):.2f}"   # short name + score (box colour = islying)
+            cv2.putText(im, lbl, (x0, max(22, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 4)
+            cv2.putText(im, lbl, (x0, max(22, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+        if p.get('grasp_line') is not None:        # grasppose, wrist camera only
+            _draw_grasp(im, p['grasp_line'], p.get('grasp_label', ''))
 
-    # VLM panel — the exact crop the VLM judged, with a vote-coloured border.
-    # Only when the VLM returned an actual vote (bool); skip for 'timeout'.
-    if isinstance(vlm, bool) and vlm_view is not None:
-        vrgb, vbox = vlm_view
-        cx0, cy0, cx1, cy1 = _vlm_crop_box(vrgb, vbox)
-        crop = np.ascontiguousarray(vrgb[cy0:cy1, cx0:cx1, :3]).copy()
-        if crop.size:
-            crop = cv2.copyMakeBorder(crop, 8, 8, 8, 8, cv2.BORDER_CONSTANT,
-                                      value=(_LY_COLOR if vlm else _ST_COLOR))
-            ch, cw = crop.shape[:2]
-            crop = cv2.resize(crop, (max(1, int(cw * target_h / ch)), target_h))
-            tag = f"vlm: {_vlabel(vlm)}"
-            cv2.putText(crop, tag, (8, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 5)
-            cv2.putText(crop, tag, (8, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
-            imgs.append(crop)
-    comp = np.concatenate(imgs, axis=1)
+    cv2.putText(im, camera, (8, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 5)
+    cv2.putText(im, camera, (8, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
 
-    lines = [f"head: {_vlabel(head_res['vote'])}",
-             f"arm:  {_vlabel(arm_res['vote'])}"]
-    if vlm is not None:
-        lines.append(f"vlm:  {vlm if isinstance(vlm, str) else _vlabel(vlm)}")
-    lines.append(f"FUSED: {_vlabel(fused)}")
-    # Bottom-right corner (top-right is hidden by the UI Save/Clear buttons).
-    x = comp.shape[1] - 260
-    y0 = comp.shape[0] - 16 - (len(lines) - 1) * 32
-    for i, t in enumerate(lines):
-        y = y0 + i * 32
-        cv2.putText(comp, t, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 6)
-        cv2.putText(comp, t, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
-    return comp
-
-
-def _emit_islying_vis(node, name, head_res, arm_res, fused, vlm=None, vlm_view=None):
-    """Push the side-by-side islying debug image to the execution panel (log_image)."""
-    try:
-        comp = _compose_islying_vis(head_res, arm_res, fused, vlm=vlm, vlm_view=vlm_view)
-        if comp is not None:
-            log_data({'log_image': comp})
-    except Exception:
-        pass
-
-
-def _compose_multi_islying_vis(head_rgb, arm_rgb, panels):
-    """Single shared [head | arm] image with EVERY object's box (coloured by its
-    fused islying), the per-object grasp on the arm panel, and a per-object vote
-    legend (head/arm/vlm/fused) in the bottom-right. Used when `find` runs on
-    multiple objects so the log_image shows all of them, not just the last."""
-    if not panels:
-        return None
-    frames = [im for im in (head_rgb, arm_rgb) if im is not None]
-    if not frames:
-        return None
-    target_h = max(int(im.shape[0]) for im in frames)
-
-    def draw(rgb, kind):
-        im = np.ascontiguousarray(rgb[:, :, :3]).copy()
-        for p in panels:
-            box = p.get(f'{kind}_box')
-            if box is not None:
-                x0, y0, x1, y1 = [int(v) for v in box]
-                cv2.rectangle(im, (x0, y0), (x1, y1), _LY_COLOR if p['fused'] else _ST_COLOR, 3)
-                lbl = f"{p['name'][:2]} {p.get('score', 0.0):.2f}"   # short name + detection score (box colour = islying)
-                cv2.putText(im, lbl, (x0, max(22, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 4)
-                cv2.putText(im, lbl, (x0, max(22, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
-            if kind == 'arm' and p.get('grasp_line') is not None:
-                _draw_grasp(im, p['grasp_line'], p.get('grasp_label', ''))
-        h, w = im.shape[:2]
-        if h != target_h:
-            im = cv2.resize(im, (max(1, int(w * target_h / h)), target_h))
-        cv2.putText(im, kind, (8, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 5)
-        cv2.putText(im, kind, (8, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
-        return im
-
-    cols = [draw(im, k) for im, k in ((head_rgb, 'head'), (arm_rgb, 'arm')) if im is not None]
-    comp = np.concatenate(cols, axis=1)
-
-    def short(v):
-        if isinstance(v, str):
-            return 'TO' if v == 'timeout' else v[:2].upper()
-        return 'na' if v is None else ('LY' if v else 'ST')
-    lines = [f"{p['name']} h:{short(p.get('head_vote'))} a:{short(p.get('arm_vote'))} "
-             f"v:{short(p.get('vlm'))} ->{short(p['fused'])}" for p in panels]
-    x = comp.shape[1] - 430
-    y0 = comp.shape[0] - 14 - (len(lines) - 1) * 28
+    lines = [f"{p['name']} {_vlabel(p['vote'])}" for p in panels]
+    x = im.shape[1] - 260
+    y0 = im.shape[0] - 14 - (len(lines) - 1) * 28
     for i, t in enumerate(lines):
         y = y0 + i * 28
-        cv2.putText(comp, t, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 5)
-        cv2.putText(comp, t, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-    return comp
+        cv2.putText(im, t, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 5)
+        cv2.putText(im, t, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    return im
 
 
-def _emit_multi_islying_vis(node, head_rgb, arm_rgb, panels):
-    """Compose + push the shared multi-object islying/grasp debug image."""
+def _emit_detection_vis(node, rgb, camera, panels):
+    """Compose + push the single-camera detection debug image (log_image)."""
     try:
-        comp = _compose_multi_islying_vis(head_rgb, arm_rgb, panels)
+        comp = _compose_detection_vis(rgb, camera, panels)
         if comp is not None:
             log_data({'log_image': comp})
     except Exception:
         pass
-
-
-# ── VLM tie-breaker (local Ollama vision model) ──────────────────────────────
-_VLM_ENABLED = True
-_VLM_URL     = 'http://192.168.1.200:11535/api/chat'
-_VLM_MODEL   = 'qwen2.5vl:3B'
-_VLM_WAIT    = 8.0     # seconds the consensus waits for the VLM (on disagreement).
-                       # Sized to cover a cold model load (~8s); warm calls ~2.5s.
-                       # Pre-warm (below) keeps the model hot so this rarely bites.
-_VLM_HTTP_TO = 30.0    # the request itself runs longer (warms the model for next time)
-_VLM_KEEPALIVE_S = 480 # pre-warm re-ping period (s); must stay < the 10m keep_alive
-# NOTE: this exact wording (the "Decide its orientation:" framing + the trailing
-# "reason" field) is what makes the small 3B model answer reliably — shorter
-# prompts or dropping "reason" flip its answers. Keep it verbatim.
-_VLM_PROMPT  = ('The image shows a {obj}. Decide its orientation: is it LYING DOWN on its side '
-                '(its long axis horizontal / fallen over) or STANDING UPRIGHT (its long axis '
-                'vertical, resting on its base)? Respond ONLY JSON: '
-                '{"islying": true_or_false, "reason": "<short>"}.')
-
-
-def _vlm_crop_box(rgb, box):
-    """Padded crop box for the VLM (proportional context). A *tight* crop of a
-    flat lying object reads as 'standing' to the model; surrounding table context
-    fixes it. Used for both the VLM query and its debug panel (kept consistent)."""
-    h, w = rgb.shape[:2]
-    x0, y0, x1, y1 = [int(v) for v in box]
-    pad = max(28, int(0.35 * max(x1 - x0, y1 - y0)))
-    return max(0, x0 - pad), max(0, y0 - pad), min(w, x1 + pad), min(h, y1 + pad)
-
-
-def _vlm_islying(rgb, box, obj_name):
-    """Ask the local VLM whether the boxed object is lying. None on any failure."""
-    try:
-        cx0, cy0, cx1, cy1 = _vlm_crop_box(rgb, box)
-        crop = rgb[cy0:cy1, cx0:cx1]
-        if crop.size == 0:
-            return None
-        crop_bgr = cv2.cvtColor(np.ascontiguousarray(crop[:, :, :3]), cv2.COLOR_RGB2BGR)
-        ok, buf = cv2.imencode('.jpg', crop_bgr)
-        if not ok:
-            return None
-        b64 = base64.b64encode(buf).decode()
-        body = json.dumps({
-            'model': _VLM_MODEL, 'stream': False, 'format': 'json', 'keep_alive': '10m',
-            'options': {'temperature': 0},
-            'messages': [{'role': 'user', 'content': _VLM_PROMPT.replace('{obj}', obj_name.strip()),
-                          'images': [b64]}],
-        }).encode()
-        req = urllib.request.Request(_VLM_URL, data=body, headers={'Content-Type': 'application/json'})
-        r = json.load(urllib.request.urlopen(req, timeout=_VLM_HTTP_TO))
-        v = json.loads(r['message']['content']).get('islying')
-        return None if v is None else bool(v)
-    except Exception:
-        return None
-
-
-# ── VLM pre-warm (keep the model hot so cold-load never bites _VLM_WAIT) ──────
-_PREWARM_STARTED = False
-_PREWARM_LOCK = threading.Lock()
-
-
-def _vlm_ping() -> bool:
-    """Load the islying model into VRAM and refresh its keep_alive. Best-effort, silent."""
-    try:
-        body = json.dumps({
-            'model': _VLM_MODEL, 'stream': False, 'keep_alive': '10m',
-            'messages': [{'role': 'user', 'content': 'ok'}],
-        }).encode()
-        req = urllib.request.Request(_VLM_URL, data=body, headers={'Content-Type': 'application/json'})
-        urllib.request.urlopen(req, timeout=_VLM_HTTP_TO)
-        return True
-    except Exception:
-        return False
-
-
-def prewarm_vlm():
-    """Start a daemon at bootstrap that loads the islying VLM and re-pings it every
-    `_VLM_KEEPALIVE_S` (< the 10m keep_alive), so the first `find` after an idle gap
-    finds the model already hot and stays within `_VLM_WAIT`. Idempotent; no-op when
-    the VLM is disabled. Failures are silent (the consensus already degrades to the
-    camera vote when the VLM is unreachable)."""
-    global _PREWARM_STARTED
-    if not _VLM_ENABLED:
-        return
-    with _PREWARM_LOCK:
-        if _PREWARM_STARTED:
-            return
-        _PREWARM_STARTED = True
-
-    def _loop():
-        while True:
-            _vlm_ping()
-            time.sleep(_VLM_KEEPALIVE_S)
-
-    threading.Thread(target=_loop, daemon=True, name='vlm-prewarm').start()
-
-
-def _islying_consensus(node, name, *, min_conf=0.0, seed=None, emit_vis=True, disagree_trust='arm', use_vlm=True) -> bool:
-    """Fuse the lying/standing belief across head + arm cameras, with a VLM tiebreak.
-
-      • both agree       → that value (VLM launched but ignored — no wait)
-      • only one detects → use it (the other is out of FOV)
-      • disagree         → wait up to `_VLM_WAIT`s for the VLM and take the majority
-                           of (head, arm, vlm); VLM unavailable → trust the arm.
-
-    The VLM runs speculatively in parallel from the start (on the `seed` view), so
-    in the common agreeing case it adds ZERO wall-clock — we never await it. A
-    single detection round (no retry). `seed = (camera, value, rgb, box)` reuses
-    the primary detection as that camera's vote (only the other camera is run)."""
-    det_configs, select_configs = _object_det_select_configs()
-
-    def run_cam(cam):
-        return _islying_one_cam(node, name, cam, det_configs, select_configs, min_conf=min_conf)
-
-    # Fire-and-forget VLM (daemon thread): only awaited if the cameras disagree.
-    vlm_holder = {'vote': None}
-    vlm_done = threading.Event()
-    vlm_on = _VLM_ENABLED and use_vlm
-    if vlm_on and seed is not None:
-        srgb, sbox = seed[2], seed[3]
-        def _vlm_task():
-            try: vlm_holder['vote'] = _vlm_islying(srgb, sbox, name)
-            finally: vlm_done.set()
-        threading.Thread(target=_vlm_task, daemon=True).start()
-    else:
-        vlm_done.set()
-
-    # Single round: head + arm (seed reuses the primary camera's vote).
-    if seed is not None:
-        scam, sval, srgb, sbox = seed
-        seed_res = {'camera': scam, 'vote': sval, 'rgb': srgb, 'box': sbox}
-        other_res = run_cam('arm' if scam == 'head' else 'head')
-        head_res, arm_res = (seed_res, other_res) if scam == 'head' else (other_res, seed_res)
-    else:
-        head_res, arm_res = run_parallel(funcs=[lambda: run_cam('head'), lambda: run_cam('arm')])
-
-    hv, av = head_res['vote'], arm_res['vote']
-    votes = [v for v in (hv, av) if v is not None]
-    vlm_vote = None
-    vlm_disp = None        # None=not consulted, bool=vote, 'timeout'=consulted but no reply
-    if not votes:
-        fused = False
-    elif len(votes) == 1:
-        fused = votes[0]
-    elif hv == av:
-        fused = hv                                   # agree → ignore VLM (no wait)
-    else:
-        vlm_done.wait(timeout=_VLM_WAIT)             # disagree → consult the VLM
-        vlm_vote = vlm_holder['vote']
-        if vlm_vote is not None:
-            fused = (int(bool(hv)) + int(bool(av)) + int(bool(vlm_vote))) >= 2   # majority of 3
-            vlm_disp = vlm_vote
-        else:
-            fused = bool(av) if disagree_trust == 'arm' else bool(hv)             # VLM down → trust chosen cam
-            vlm_disp = 'timeout' if (vlm_on and seed is not None) else None
-
-    if emit_vis:
-        vlm_view = (seed[2], seed[3]) if (seed is not None and vlm_vote is not None) else None
-        _emit_islying_vis(node, name, head_res, arm_res, fused, vlm=vlm_disp, vlm_view=vlm_view)
-    return fused
-
-
-def _reconcile_grasp_islying(node, name, islying_arm, islying_kw, _missing, *, seed=None, disagree_trust='arm') -> bool:
-    """`_detect_grasps` islying decision: trust the caller's value when it
-    matches the arm's own estimate, otherwise fall back to a full cross-camera
-    consensus. With no caller value, go straight to consensus. `seed` is the arm
-    panel ``(camera, vote, rgb, box)`` reused for the consensus / debug viz."""
-    if islying_kw is not _missing and bool(islying_kw) == bool(islying_arm):
-        # agree → trust it, but still show the arm panel for debugging.
-        arm_res = ({'camera': seed[0], 'vote': seed[1], 'rgb': seed[2], 'box': seed[3]}
-                   if seed is not None else _none_res('arm'))
-        _emit_islying_vis(node, name, _none_res('head'), arm_res, bool(islying_arm))
-        return bool(islying_arm)
-    return _islying_consensus(node, name, seed=seed, disagree_trust=disagree_trust)
-
-
-# ── Parallel head-detect ∥ arm-grasp ∥ VLM (find's fused path) ────────────────
-def _spawn_vlm(rgb, box, obj_name):
-    """Launch the VLM islying query in a daemon thread → (holder, done_event)."""
-    holder = {'vote': None}
-    done = threading.Event()
-    if not _VLM_ENABLED:
-        done.set()
-        return holder, done
-
-    def task():
-        try:
-            holder['vote'] = _vlm_islying(rgb, box, obj_name)
-        finally:
-            done.set()
-    threading.Thread(target=task, daemon=True).start()
-    return holder, done
-
-
-def _arm_grasp_branch(node, name, *, keep_orientation=False, cam=None):
-    """Wrist-camera grasp detection (grasp-gd) → {grasp, vote, rgb, box, camera}
-    or None when the arm can't see the object (best-effort during `find`).
-    Pass a pre-fetched `cam` to share one arm frame across multiple objects."""
-    try:
-        select_target_object, select_target_grasp = _vs_postprocess()
-        if cam is None:
-            cam = _fetch_arm(node)
-        rgb, depth, cam_params = cam.rgb, cam.depth, cam.cam_params
-        h, w = rgb.shape[:2]
-        configs = FIND_CONFIGS['detect_grasp']
-        det_configs    = {k: v for k, v in configs.items() if k in ('model', 'min_size', 'max_size', 'text_threshold', 'box_theshold')}
-        select_configs = {k: v for k, v in configs.items() if k in ('near_point', 'target_distance', 'distance_sigma')}
-        grasp_configs  = {k: v for k, v in configs.items() if k in ('gripper_min', 'gripper_max')}
-        res = _vs_client().predict(image=rgb, prompt=_prompt([name]), **det_configs)
-        if len(res.detections) == 0:
-            return None
-        obj = select_target_object(res, cls=name, image_size=(w, h),
-                                   depth_result=depth, intrinsics=cam_params, **select_configs)
-        if obj is None:
-            return None
-        x0, y0, dx, dy = [int(el) for el in obj.bbox]
-        arm_box = [x0, y0, x0 + dx, y0 + dy]
-        grasp, obj_mask = _grasp_from_box(node, obj, rgb, depth, cam_params, grasp_configs,
-                                          keep_orientation=keep_orientation,
-                                          select_target_grasp=select_target_grasp)
-        gravity = _gravity_in_cam(node, use_head=False, horizon_yz=_arm_horizon_yz(node))
-        vote = _box_islying_pca(name, arm_box, depth, cam_params, gravity, mask=obj_mask)
-        return {'grasp': grasp, 'vote': vote, 'rgb': rgb, 'box': arm_box, 'camera': 'arm'}
-    except Exception:
-        return None
-
-
-def _fused_head_arm(node, name, *, rgb, depth, cam_params, cam, use_head,
-                    det_configs, select_configs, min_conf, keep_orientation=False,
-                    emit_vis=True, disagree_trust='arm', arm_cam=None, use_vlm=True):
-    """Run HEAD detection ∥ ARM grasp-gd ∥ speculative VLM concurrently, then fuse
-    islying. Returns the merged per-object dict (with `grasp` from the arm when
-    visible) — including a `panel` for shared multi-object visualisation — or None
-    when HEAD detection fails. Pass `arm_cam` to share one arm frame across objects;
-    `emit_vis=False` suppresses the per-object log_image (caller composes instead)."""
-    h, w = rgb.shape[:2]
-    select_target_object, _ = _vs_postprocess()
-    holders = {'head': None, 'arm': None}
-    vlm = {'holder': {'vote': None}, 'done': threading.Event(), 'started': False}
-
-    def head_branch():
-        try:
-            res = _predict_detect(rgb, f'{name.strip()}.', det_configs)
-            if min_conf > 0:
-                res = res.filter_by_conf(min_conf=min_conf)
-            if len(res.detections) == 0:
-                return
-            target = select_target_object(res, cls=name, image_size=(w, h),
-                                          depth_result=depth, intrinsics=cam_params, **select_configs)
-            if target is None:
-                return
-            box = _bbox_to_xyxy(target.bbox)
-            # speculative VLM as soon as the head box is known (overlaps the arm branch).
-            if use_vlm:
-                vlm['holder'], vlm['done'] = _spawn_vlm(rgb, box, name)
-                vlm['started'] = True
-            mask = _mask_for_target(res, target, w, h)
-            islying_head = _box_islying_pca(name, box, depth, cam_params,
-                                            _cam_gravity(node, cam, use_head), mask=mask)
-            box_depths = _box_depths(depth, box)
-            pose = _object_pose_3d(node, box, box_depths, depth, cam_params, use_head=use_head)
-            holders['head'] = {'res': res, 'target': target, 'box': box, 'pose': pose,
-                               'box_depths': box_depths, 'vote': islying_head}
-        except Exception:
-            holders['head'] = None
-
-    def arm_branch():
-        holders['arm'] = _arm_grasp_branch(node, name, keep_orientation=keep_orientation, cam=arm_cam)
-
-    th = threading.Thread(target=head_branch)
-    ta = threading.Thread(target=arm_branch)
-    th.start(); ta.start(); th.join(); ta.join()
-    if not vlm['started']:
-        vlm['done'].set()
-
-    head = holders['head']
-    if head is None:
-        return None
-    arm = holders['arm']
-    hv = head['vote']
-    av = arm['vote'] if arm else None
-
-    vlm_vote = None
-    vlm_disp = None        # None=not consulted, bool=vote, 'timeout'=consulted but no reply
-    if av is None or av == hv:
-        islying = hv if hv is not None else (av if av is not None else False)
-    else:
-        vlm['done'].wait(timeout=_VLM_WAIT)
-        vlm_vote = vlm['holder']['vote']
-        if vlm_vote is not None:
-            islying = (int(bool(hv)) + int(bool(av)) + int(bool(vlm_vote))) >= 2   # majority of 3
-            vlm_disp = vlm_vote
-        else:
-            islying = bool(av) if disagree_trust == 'arm' else bool(hv)            # VLM down → trust chosen cam
-            vlm_disp = 'timeout' if vlm['started'] else None
-
-    if emit_vis:
-        head_panel = {'camera': 'head', 'vote': hv, 'rgb': rgb, 'box': head['box'],
-                      'name': name, 'score': float(getattr(head['target'], 'conf', 0.0))}
-        arm_panel = ({'camera': 'arm', 'vote': av, 'rgb': arm['rgb'], 'box': arm['box'],
-                      'grasp_line': arm['grasp'].get('line'), 'grasp_label': _grasp_label(arm['grasp'])}
-                     if arm else _none_res('arm'))
-        vlm_view = (rgb, head['box']) if vlm_vote is not None else None
-        _emit_islying_vis(node, name, head_panel, arm_panel, islying, vlm=vlm_disp, vlm_view=vlm_view)
-
-    head['islying'] = islying
-    head['grasp'] = arm['grasp'] if arm else None
-    # Per-object annotations for the shared multi-object composite (drawn on the
-    # single head + arm frames by `_compose_multi_islying_vis`).
-    head['panel'] = {
-        'name': name, 'fused': islying,
-        'score': float(getattr(head['target'], 'conf', 0.0)),
-        'head_box': head['box'], 'head_vote': hv,
-        'arm_box': arm['box'] if arm else None, 'arm_vote': av,
-        'grasp_line': arm['grasp'].get('line') if arm else None,
-        'grasp_label': _grasp_label(arm['grasp']) if arm else '',
-        'vlm': vlm_disp,
-    }
-    return head
 
 
 # ── Object pose / approach / grasp builders (pulled out of recognition.py) ────
@@ -1044,7 +585,7 @@ def _object_pose_3d(node, box, box_depths, depth, cam_params, *, use_head):
 def _build_approach_pose(pose, islying, robot_mode) -> dict:
     """Approach geometry for a found object (lying vs standing branch)."""
     ap = list(pose)
-    lift_to = ap[-1] + 0.1
+    lift_to = ap[-1] + 0.05
     if islying:
         ap[-1] += 0.2
         ap[1] -= 0.1 if robot_mode == 'right' else -0.1
@@ -1096,11 +637,13 @@ def _grasp_from_box(node, obj, rgb, depth, cam_params, grasp_configs, *,
         keep_orientation=keep_orientation)
     box = [float(min(gx0, gx1)), float(min(gy0, gy1)),
            float(max(gx0, gx1)), float(max(gy0, gy1))]
+
+    pose_3d = get3d_arm(node=node,points=[[(gx0+gx1)/2,(gy0+gy1)/2]])['pose'].tolist()[0]
     return {
         'duration_ms': gs.duration_ms,
         'device':      gs.device,
         'grasppose':   grasppose,
-        'pose_3d':     [grasppose[0], grasppose[1], depth_final],
+        'pose_3d':     pose_3d,
         'box':         box,
         'line':        [float(gx0), float(gy0), float(gx1), float(gy1)],   # jaw line (pixels)
         'score':       float(getattr(g, 'quality', 0.0)),

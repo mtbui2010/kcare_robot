@@ -29,7 +29,7 @@
     },
     "ry": {
       "up": 10,
-      "straight": -30,
+      "straight": -40,
       "down": -50
     }
   },
@@ -205,22 +205,22 @@
         -10
       ],
       "left": [
-        50,
-        -14,
-        -22.9,
-        9.4,
-        -49.9,
-        95.2,
-        -17
+        82.75220873842167,
+        -26.259632150976163,
+        -32.94722746168656,
+        17.842784914127574,
+        -41.129295483552426,
+        104.7276115626965,
+        -14.829346433452967
       ],
       "right": [
-        -50,
-        0,
-        23.3,
-        9.7,
-        -308,
-        80,
-        6.6
+        -76.25895963035481,
+        -35.633824315103126,
+        31.37629419786738,
+        21.483215977589133,
+        -313.3162407767658,
+        110.09322375955092,
+        23.492944499352024
       ]
     },
     "unfold": {
@@ -292,24 +292,44 @@
         -185.5
       ]
     },
-    "approach_drawer": {
+    "approach_standing": {
       "right": [
-        -4.387060385976809,
-        65.2560439718412,
-        -17.813452666736953,
-        65.32877182612349,
-        -280.2778234594704,
-        106.07761211252786,
-        -1.7433105898841976
+        36.430907682150696,
+        33.89414098255503,
+        -31.20457641194409,
+        51.74252835934931,
+        -295.6459403372958,
+        99.96921684343455,
+        13.196118429308688
       ],
       "left": [
-        1.3618652287499071,
-        66.41202616810916,
-        20.1290404746276,
-        67.01517285295631,
-        -78.33306951523424,
-        108.39781371320285,
-        1.8354859137242239
+        -39.71862719505864,
+        30.56703972462593,
+        36.299706287476845,
+        45.17457405723544,
+        -58.420349669357414,
+        99.99019918456483,
+        -5.605114914535039
+      ]
+    },
+    "approach_drawer": {
+      "right": [
+        -6.211779573691565,
+        81.90505354547581,
+        -15.779663096075398,
+        80.38103343597086,
+        -277.14880451766084,
+        105.36503896698794,
+        -3.078588880403007
+      ],
+      "left": [
+        3.834008869823475,
+        82.74111651120957,
+        17.51407523013154,
+        81.91691758406412,
+        -81.43637962500787,
+        107.12427713112979,
+        2.9979493191843094
       ]
     },
     "pre_pick": {
@@ -338,7 +358,7 @@
     "l_arm_accel": 1200,
     "tool_radius": 0.05,
     "tool_length": 0.26,
-    "wrist_tool_length": 0.166,
+    "wrist_tool_length": 0.17,
     "approach_wrist_angle": 45,
     "place_liftup": 0.13
   },
@@ -475,11 +495,11 @@
   },
   "FIND_CONFIGS": {
     "detect_object": {
-      "model": "grounded-sam",
+      "model": "rfdetr-gdino-sam-etri",
       "min_size": 0,
-      "max_size": 30,
-      "box_threshold": 0.3,
-      "text_threshold": 0.15,
+      "max_size": 50,
+      "box_threshold": 0.35,
+      "text_threshold": 0.3,
       "target_distance": 0.9,
       "distance_sigma": 0.01,
       "near_point": "center",
@@ -487,50 +507,39 @@
         "quality": 0.8,
         "distance": 0.1,
         "near": 0.1
-      },
-      "fuse_islying": true,
-      "disagree_trust": "head"
+      }
     },
     "detect_grasp": {
-      "model": "grounding-dino",
+      "model": "rfdetr-gdino-sam-etri",
       "min_size": 0,
-      "max_size": 30,
+      "max_size": 50,
       "box_threshold": 0.3,
       "text_threshold": 0.15,
       "target_distance": 0.3,
       "distance_sigma": 0.01,
       "near_point": "center",
       "weight": {
-        "quality": 0.7,
+        "quality": 0.78,
         "distance": 0.2,
-        "near": 0.1
+        "near": 0.02
       },
       "gripper_min": 10,
-      "gripper_max": 200,
-      "fuse_islying": true,
-      "disagree_trust": "arm"
+      "gripper_max": 500
     },
     "detect_background": {
       "use": true,
-      "model": "background",
-      "bg_min_area": 0,
-      "bg_max_area": 80,
-      "method": "automask",
-      "roi": [
-        222,
-        100,
-        900,
-        650
-      ],
       "stride": 20,
-      "dilate": -60,
+      "avoid_model": "grounding-dino",
+      "avoid_prompt": "object.",
+      "avoid_conf": 0.15,
+      "avoid_pad": 20,
+      "avoid_max_area": 0.1,
       "place_height_band": 0.05,
       "place_margin_cells": 2,
-      "avoid_model": "rfdetr-gdino-etri",
-      "avoid_prompt": "object.",
-      "avoid_conf": 0.25,
-      "avoid_pad": 8,
-      "avoid_max_area": 0.15
+      "calib_tune": {
+        "dx": 0.03,
+        "dy": 0.05
+      }
     },
     "grasp_check_roi": [
       415,

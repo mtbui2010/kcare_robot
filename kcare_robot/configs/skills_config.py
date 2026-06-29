@@ -53,4 +53,5 @@ SKILL_CONFIGS: dict[str, tuple[str, str]] = {
     'find_place': (f'{_PKG}.recognition', 'find_place'),
     'approach_pick': (f'{_PKG}.pick', 'approach_pick'),
     'approach_place': (f'{_PKG}.place', 'approach_place'),
+    'get3d_arm': (f'{_PKG}.pointcloud', 'get3d_arm'),
 }

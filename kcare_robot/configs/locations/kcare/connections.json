@@ -102,7 +102,7 @@
     "type": "ros_topic",
     "name": "arm_rgb",
     "config": {
-      "conn_name": "/hand/d405/color/image_raw/compressed",
+      "conn_name": "/hand/camera/color/image_raw/compressed",
       "conn_type": "ros_topic",
       "is_client": true,
       "agent_name": "arm_rgb",
@@ -193,11 +193,11 @@
     "type": "ros_topic",
     "name": "arm_cam_params",
     "config": {
-      "conn_name": "/hand/d405/depth/camera_info",
-      "agent_name": "arm_cam_params",
+      "conn_name": "/hand/camera/depth/camera_info",
       "conn_type": "ros_topic",
-      "data_interface": "sensor_msgs/msg/CameraInfo",
       "is_client": true,
+      "agent_name": "arm_cam_params",
+      "data_interface": "sensor_msgs/msg/CameraInfo",
       "decode_func": "def decode_func(msg):\n    from pyconnect.ros.utils import decode_caminfomsg\n    return decode_caminfomsg(msg)"
     }
   },
@@ -267,7 +267,7 @@
     "type": "ros_topic",
     "name": "arm_depth",
     "config": {
-      "conn_name": "/hand/d405/depth/image_rect_raw",
+      "conn_name": "/hand/camera/depth/image_rect_raw",
       "conn_type": "ros_topic",
       "is_client": true,
       "agent_name": "arm_depth",

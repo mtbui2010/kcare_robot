@@ -16,11 +16,12 @@ connection (see robot_agent device_manager). The legacy side-pose flow
 (``get_side_pose_3d``) still uses the 'vlms' TCP detector for fastsam.
 
 The utility/helper functions live in `_recognition_helpers.py`; this module
-keeps the registered skills plus the two orchestrators (`_detect_objects`,
-`_detect_grasps`).
+keeps the registered skills plus the single detection orchestrator
+(`_detect_objects`), which serves both cameras (the wrist camera additionally
+runs grasp-gd for a `grasppose`).
 """
 
-import numpy as np, time, copy, cv2
+import numpy as np, time, copy, cv2, threading
 
 from visionserve.utils import show_box_on_rgb, get_valid_depth_locs
 from visionserve.postprocess import select_target_object, select_target_grasp
@@ -35,10 +36,10 @@ from kcare_robot.skills.arm import movej
 
 from kcare_robot.skills._recognition_helpers import (
     fetch_camera_data, _fetch_head, _fetch_arm,
-    _vs_client, _prompt, _log_annotated, _get_placepose,
-    _bbox_to_xyxy, _box_islying_pca, _gravity_in_cam, _box_depths,
-    _arm_horizon_yz, _cam_gravity, _object_det_select_configs, _islying_consensus, _reconcile_grasp_islying,
-    _mask_for_target, _emit_islying_vis, _emit_multi_islying_vis, _none_res, _predict_detect, _fused_head_arm,
+    _vs_client, _get_placepose,
+    _bbox_to_xyxy, _box_islying_pca, _box_depths,
+    _cam_gravity, _object_det_select_configs, _grasp_configs,
+    _mask_for_target, _emit_detection_vis, _predict_detect,
     _object_pose_3d, _build_approach_pose, _grasp_from_box, _grasp_label,
     _parse_obj_names,
     call_detector, make_side_box, _head_calib_func_factory, is_inside_workspace_box,
@@ -59,7 +60,7 @@ def _detect_nearest(node, pose, **kwargs) -> dict:
         return pose
     stride       = configs['stride']
     band         = configs.get('place_height_band', 0.05)            # ±m around the target support height
-    avoid_model  = configs.get('avoid_model', 'rfdetr-gdino-etri')   # open-vocab detector for objects to avoid
+    avoid_model  = configs.get('avoid_model', 'grounding-dino')   # open-vocab detector for objects to avoid
     avoid_prompt = configs.get('avoid_prompt', 'object.')            # class-agnostic: any object, flat or tall
     avoid_conf   = configs.get('avoid_conf', 0.25)
     avoid_pad    = configs.get('avoid_pad', 8)                       # enlarge each object box (px) before excluding
@@ -138,158 +139,88 @@ def _detect_nearest(node, pose, **kwargs) -> dict:
     return cand_P[argmin].tolist()
 
 
-# ── Core: grasp detection (grasp-gd) ─────────────────────────────────────────
-_MISSING = object()
-
-
-def _detect_grasps(node, obj_names, **kwargs: dict) -> dict:
-    """grasp-gd on the wrist camera → per-object 3D grasp pose.
-
-    `islying` is reconciled per `_reconcile_grasp_islying`: the arm camera always
-    produces its own estimate; a caller-supplied `islying` (from the prior `find`)
-    is trusted only when it agrees, otherwise a cross-camera consensus runs.
-    """
-    kwargs.pop('camera', 'arm')
-    keep_orientation = kwargs.pop('keep_orientation', False)
-    islying_kw = kwargs.pop('islying', _MISSING)
-    fuse = FIND_CONFIGS.get('fuse_islying', False)   # False → arm camera only (no head cross-check)
-    disagree_trust = FIND_CONFIGS.get('disagree_trust', 'arm')   # cam to trust if VLM unavailable on disagreement
-
-    cam = _fetch_arm(node)
-    rgb, depth, cam_params = cam.rgb, cam.depth, cam.cam_params
-    h, w = rgb.shape[:2]
-
-    configs = FIND_CONFIGS['detect_grasp']
-    det_configs    = {k:v for k,v in configs.items() if k in ['model','min_size', 'max_size', 'text_threshold', 'box_theshold']}
-    select_configs = {k:v for k,v in configs.items() if k in ['near_point', 'target_distance', 'distance_sigma']}
-    grasp_configs  = {k:v for k,v in configs.items() if k in ['gripper_min', 'gripper_max']}
-
-    res = _vs_client().predict(image=rgb, prompt=_prompt(obj_names), **det_configs)
-
-    _log_annotated(res, rgb)
-    assert len(res.detections) > 0, f'No object detected'
-
-    gravity_cam = _gravity_in_cam(node, use_head=False,
-                                  horizon_yz=_arm_horizon_yz(node))
-
-    out: dict = {}
-    for name in obj_names:
-        obj = select_target_object(res, cls=name, image_size=(w, h),
-            depth_result=depth, intrinsics=cam_params, **select_configs)
-        # assert obj is not None, f"failed to select target object"
-
-        if obj is None:
-            continue
-
-        x0, y0, dx, dy = [int(el) for el in obj.bbox]
-        arm_box = [x0, y0, x0+dx, y0+dy]
-
-        # Grasp first (emits its own annotated log_image + the object mask), then
-        # islying last so the islying debug view is the visible log_image.
-        grasp, obj_mask = _grasp_from_box(node, obj, rgb, depth, cam_params, grasp_configs,
-                                          keep_orientation=keep_orientation,
-                                          select_target_grasp=select_target_grasp)
-        islying_arm = _box_islying_pca(name, arm_box, depth, cam_params, gravity_cam, mask=obj_mask)
-
-        if fuse:
-            islying = _reconcile_grasp_islying(node, name, islying_arm, islying_kw, _MISSING,
-                                               seed=('arm', islying_arm, rgb, arm_box),
-                                               disagree_trust=disagree_trust)
-        else:
-            islying = islying_arm
-            _emit_islying_vis(node, name, _none_res('head'),
-                              {'camera': 'arm', 'vote': islying_arm, 'rgb': rgb, 'box': arm_box,
-                               'grasp_line': grasp.get('line'), 'grasp_label': _grasp_label(grasp)},
-                              islying)
-        out[name] = {**grasp, 'islying': islying, 'mass_percents': [50, 50]}
-
-    save_detection_dataset(rgb=rgb, depth=depth, results=out, tag='grasp')
-    return {'isdone': len(out) > 0, 'ins': out}
-
-
-# ── Core: object detection (grounding-dino) ──────────────────────────────────
+# ── Core: object detection (grounding-dino) + wrist grasp (grasp-gd) ─────────
 def _detect_objects(node, obj_names, **kwargs) -> dict:
-    """grounding-dino on `camera`. Head → 3D via get3d (base frame); wrist →
-    3D via Ixy2xyz (camera frame, metres)."""
-    simple_return = kwargs.pop('simple_return', False)
-    camera = kwargs.pop('camera', 'head')
-    fuse = kwargs.get('fuse_islying', FIND_CONFIGS['detect_object']['fuse_islying'])   # False → `camera` only (no cross-check)
-    disagree_trust = kwargs.get('disagree_trust', FIND_CONFIGS['detect_object']['disagree_trust'])   # cam to trust if VLM unavailable on disagreement
-    use_vlm = kwargs.get('use_vlm', FIND_CONFIGS['detect_object'].get('use_vlm', False))   # False → skip the VLM tie-breaker entirely
+    """Detect `obj_names` on one camera and return a per-object entry.
+
+    Both cameras run the same grounding-dino detector; the camera selects the
+    geometry, and the wrist additionally runs grasp-gd:
+
+      head → object pose in the BASE frame (`get3d`) + an approach pose.
+      arm  → object pose in the CAMERA frame (`Ixy2xyz`, metres) AND — unless
+             ``estimate_grasp=False`` — a grasp-gd ``grasppose`` for the same box.
+
+    `islying` is the single-camera PCA estimate (no cross-camera fusion / VLM).
+
+    Returns ``{'isdone', 'ins': {name: {pose_3d, approach_pose, lift_to, mforward,
+    base_rotate, approach_lying, box, score, islying, mass_percents, depths,
+    grasppose?, grasp_score?}}}`` (or ``{pose, islying, grasppose?}`` when
+    ``simple_return``)."""
+    simple_return    = kwargs.pop('simple_return', False)
+    camera           = kwargs.pop('camera', 'head')
+    estimate_grasp   = kwargs.pop('estimate_grasp', False)
+    keep_orientation = kwargs.pop('keep_orientation', False)
+    use_head   = 'head' in camera
+    with_grasp = (not use_head) and estimate_grasp     # grasp-gd: wrist camera only
     robot_mode = get_robot_mode(node=node)
-    use_head = 'head' in camera
 
     cam = fetch_camera_data(node, camera)
     rgb, depth, cam_params = cam.rgb, cam.depth, cam.cam_params
     h, w = rgb.shape[:2]
+    gravity_cam = _cam_gravity(node, cam, use_head)
 
     min_conf = kwargs.pop('min_conf', 0.1 if any('handle' in n for n in obj_names) else 0.0)
-    det_configs, select_configs = _object_det_select_configs(kwargs)
+    # Grasp selection uses the closer `detect_grasp` profile; plain detection the
+    # default `detect_object` profile.
+    cfg_key = 'detect_grasp' if with_grasp else 'detect_object'
+    det_configs, select_configs = _object_det_select_configs(kwargs, cfg_key=cfg_key)
     if 'box_threshold' in kwargs:
-        det_configs['box_threshold'] = kwargs['box_threshold'] 
+        det_configs['box_threshold'] = kwargs['box_threshold']
+    grasp_configs = _grasp_configs() if with_grasp else None
 
     out: dict = {}
-    fused_head = fuse and use_head
-    # One shared arm frame across all objects (so the multi-object composite draws
-    # everyone on the same head|arm pair); `multi` → suppress per-object emits and
-    # push one combined log_image at the end.
-    arm_cam = _fetch_arm(node) if fused_head else None
-    multi = fused_head and len(obj_names) > 1
     panels: list = []
     for name in obj_names:
-        grasp = None
-        nf_panel = None        # non-fused per-object viz panel (drawn at the end)
-        if fused_head:
-            # HEAD detection ∥ ARM grasp-gd ∥ speculative VLM, run concurrently.
-            # The arm branch also yields a `grasppose` (best-effort, None if the
-            # wrist camera can't see the object yet).
-            fr = _fused_head_arm(node, name, rgb=rgb, depth=depth, cam_params=cam_params, cam=cam,
-                                 use_head=use_head, det_configs=det_configs, select_configs=select_configs,
-                                 min_conf=min_conf, disagree_trust=disagree_trust,
-                                 arm_cam=arm_cam, emit_vis=not multi, use_vlm=use_vlm)
-            assert fr is not None, f'No object detected'
-            res, target, box = fr['res'], fr['target'], fr['box']
-            pose, box_depths, islying = fr['pose'], fr['box_depths'], fr['islying']
-            grasp = fr.get('grasp')
-            if multi:
-                panels.append(fr['panel'])
+        res = _predict_detect(rgb, f'{name.strip()}.', det_configs)
+        if min_conf > 0:
+            res = res.filter_by_conf(min_conf=min_conf)
+        if len(res.detections) == 0:
+            continue
+        target = select_target_object(
+            res, cls=name, image_size=(w, h), depth_result=depth, 
+            intrinsics=cam_params, **select_configs)
+        if target is None:
+            continue
+
+        det_box = _bbox_to_xyxy(target.bbox)        # object bbox → islying + viz
+
+        # Wrist camera: grasp-gd on the box also yields the grasppose, a base-frame
+        # pose_3d (get3d_arm) and the grasped-object mask (a better islying source
+        # than the bbox).
+        grasp, obj_mask = (None, None)
+        if with_grasp:
+            grasp, obj_mask = _grasp_from_box(node, target, rgb, depth, cam_params, grasp_configs,
+                                              keep_orientation=keep_orientation,
+                                              select_target_grasp=select_target_grasp)
+        mask = obj_mask if obj_mask is not None else _mask_for_target(res, target, w, h)
+        islying = _box_islying_pca(name, det_box, depth, cam_params, gravity_cam, mask=mask)
+
+        panels.append({
+            'name': name, 'box': det_box, 'vote': islying,
+            'score': float(getattr(target, 'conf', 0.0)),
+            'grasp_line':  grasp.get('line') if grasp else None,
+            'grasp_label': _grasp_label(grasp) if grasp else '',
+        })
+
+        # Entry geometry: the grasp (pose_3d in the BASE frame, jaw box, grasp
+        # quality) when grasp-gd ran; else the detection box (head → base frame via
+        # get3d, wrist coarse → camera frame via Ixy2xyz).
+        if grasp is not None:
+            pose, ebox, escore, box_depths = grasp['pose_3d'], grasp['box'], grasp['score'], grasp['depths']
         else:
-            # Single-camera (or arm-primary) path with grounded-sam fallback.
-            res = _predict_detect(rgb, f'{name.strip()}.', det_configs)
-            if min_conf > 0:
-                res = res.filter_by_conf(min_conf=min_conf)
-            assert len(res.detections) > 0, f'No object detected'
-            target = select_target_object(
-                res, cls=name, image_size=(w, h), depth_result=depth, intrinsics=cam_params, **select_configs)
-            # assert target is not None, f'Failed to select target object'
-            if target is None:
-                continue
-
-            box = _bbox_to_xyxy(target.bbox)
-            box_depths = _box_depths(depth, box)
-            pose = _object_pose_3d(node, box, box_depths, depth, cam_params, use_head=use_head)
-
-            pmask = _mask_for_target(res, target, w, h)
-            islying_primary = _box_islying_pca(name, box, depth, cam_params,
-                                               _cam_gravity(node, cam, use_head), mask=pmask)
-            pcam = 'head' if use_head else 'arm'
-            if fuse:
-                islying = _islying_consensus(node, name, min_conf=min_conf,
-                                             seed=(pcam, islying_primary, rgb, box),
-                                             disagree_trust=disagree_trust,
-                                             use_vlm=use_vlm, emit_vis=False)
-            else:
-                islying = islying_primary
-            # Accumulate one panel per object; every object is drawn on the single
-            # detection frame at the end (grounding-dino style: short name + score,
-            # box colour = islying) so a multi-object find no longer overwrites the
-            # log_image down to just the last object.
-            nf_panel = {
-                'name': name, 'fused': islying,
-                'score': float(getattr(target, 'conf', 0.0)),
-                f'{pcam}_box': box, f'{pcam}_vote': islying_primary,
-                'vlm': None,
-            }
+            box_depths = _box_depths(depth, det_box)
+            pose   = _object_pose_3d(node, det_box, box_depths, depth, cam_params, use_head=use_head)
+            ebox, escore = det_box, float(getattr(target, 'conf', 0.0))
 
         if simple_return:
             entry = {'pose': pose, 'islying': islying}
@@ -298,17 +229,13 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
             out[name] = entry
             continue
 
-        if nf_panel is not None:
-            panels.append(nf_panel)
-
-        approach = _build_approach_pose(pose, islying, robot_mode)
         entry = {
             'duration_ms':   res.duration_ms,
             'device':        res.device,
             'pose_3d':       pose,
-            **approach,
-            'box':           box,
-            'score':         float(getattr(target, 'conf', 0.0)),
+            **_build_approach_pose(pose, islying, robot_mode),
+            'box':           ebox,
+            'score':         escore,
             'islying':       islying,
             'mass_percents': [50, 50],
             'depths':        box_depths,
@@ -317,15 +244,9 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
             entry['grasppose']   = grasp['grasppose']
             entry['grasp_score'] = grasp['score']
         out[name] = entry
-    # One shared composite with EVERY object's box (short name + score, coloured by
-    # islying). Fused-head multi → head|arm frames; non-fused → the single detection
-    # frame (head or arm). A fused single object keeps its richer per-object view
-    # emitted inside `_fused_head_arm`.
-    if panels:
-        if fused_head:
-            _emit_multi_islying_vis(node, rgb, arm_cam.rgb if arm_cam is not None else None, panels)
-        else:
-            _emit_multi_islying_vis(node, rgb if use_head else None, None if use_head else rgb, panels)
+
+    # One annotated frame for this camera with every object's box + grasp.
+    _emit_detection_vis(node, rgb, camera, panels)
     save_detection_dataset(rgb=rgb, depth=depth, results=out, tag=camera)
     return {'isdone': len(out) > 0, 'ins': out}
 
@@ -346,25 +267,56 @@ def detect(node, **kwargs):
 
 @exception_handler
 def find_once(node, **kwargs):
-    fuse_islying = kwargs.get('fuse_islying', FIND_CONFIGS['detect_object']['fuse_islying'])
+    """Detect on the head and wrist cameras concurrently, then merge per object,
+    preferring the wrist (arm) result whenever it sees the object.
+
+    The head tilts to `view` (down) while the arm moves to `pre_pick`, so both
+    cameras frame the workspace; one detection request then goes to each camera.
+    An arm entry carries a grasp-gd `grasppose`, so a downstream pick prefers it;
+    the head entry (base-frame pose + approach) is the fallback used only for
+    objects the wrist camera missed."""
+    cameras = kwargs.pop("cameras", "arm, head")
+    cameras = [el.strip().lower() for el in cameras.split(',')]
+    priority_cam, secondary_cam = (cameras[0], None) if len(cameras)==1 else cameras[:2]
+
     loc = kwargs.get('loc', None)
-    camera = kwargs.pop('camera', 'head')
     if loc is not None:
         ret = move(node=node, inputs=loc)
         if not ret['isdone']:
             return ret
-    if 'head' in camera:
-        view = kwargs.pop('view', 'down')
-        ret = run_parallel_check(funcs=[
-            lambda: (moveh(node=node, ry=view),time.sleep(1))[0],
-            lambda: movej(node=node, inputs='pre_pick') if fuse_islying else {'isdone': True} 
-        ])
-        # moveh(node=node, ry=view)
-        # time.sleep(1)
+
+    # Aim both cameras at the workspace (head down ∥ arm to pre_pick) before detect.
+    view = kwargs.pop('view', 'down')
 
     obj_names = _parse_obj_names(kwargs.get('inputs', None), kwargs.pop('obj_names', None))
-    ret = _detect_objects(node, obj_names, camera=camera, **kwargs)
-    moveh(node=node, ry='straight')
+    kwargs.pop('camera', None)        # camera is fixed per branch below
+
+    results = {}
+    def detect_on(camera):
+        # A camera that fails to detect (or whose grasp estimation raises) must not
+        # sink the other camera — degrade to an empty result instead.
+        try:
+            if camera=='head':
+                ret = moveh(node=node, inputs=view)
+                assert ret['isdone'], f'{ret}'
+                time.sleep(1)
+            results[camera] = _detect_objects(node, obj_names, camera=camera, **kwargs)
+            if camera=='head':
+                ret = moveh(node=node, ry='straight')
+                assert ret['isdone'], f'{ret}'
+        except Exception:
+            results[camera] = {'isdone': False, 'ins': {}}
+
+    if secondary_cam is not None:
+        detect_head_thread = threading.Thread(target=detect_on, args=(secondary_cam,), daemon=True)
+        detect_head_thread.start()
+
+    detect_on(priority_cam)
+    ret = results[priority_cam]
+    if not ret['isdone'] and secondary_cam is not None:
+        detect_head_thread.join()
+        ret = results[secondary_cam]
+
     return ret
 
 
@@ -418,21 +370,14 @@ def find(node, **kwargs):
 
 @exception_handler
 def find_grasp(node, **kwargs):
-    """From the wrist camera:
+    """Wrist-camera detection of `inputs` (object name):
       - estimate_grasp=True (default) → grasp-gd grasp pose (`grasppose`).
-      - estimate_grasp=False          → grounding-dino object location (`loc_3d`)."""
+      - estimate_grasp=False          → object location only (no grasp).
+    Grasp gripper bounds come from the `detect_grasp` config profile."""
     obj_names = _parse_obj_names(kwargs.get('inputs', None), kwargs.pop('obj_names', None))
-    estimate_grasp = kwargs.pop('estimate_grasp', True)
-
-    if not estimate_grasp:
-        kwargs.pop('detector', None)
-        return _detect_objects(node, obj_names, **kwargs)
-
-    to_find_handle = any('handle' in n for n in obj_names)
-    kwargs.setdefault('gripper_min', 20)
-    kwargs.setdefault('gripper_max', 200 if to_find_handle else 400)
+    kwargs['estimate_grasp'] = True
     kwargs.pop('detector', None)
-    return _detect_grasps(node, obj_names, **kwargs)
+    return _detect_objects(node, obj_names, camera='arm', **kwargs)
 
 
 @exception_handler

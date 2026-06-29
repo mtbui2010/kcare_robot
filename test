@@ -12,12 +12,10 @@
       "quality": 0.8,
       "distance": 0.1,
       "near": 0.1
-    },
-    "fuse_islying": false,
-    "disagree_trust": "arm"
+    }
   },
   "detect_grasp": {
-    "model": "rfdetr-gdino-etri",
+    "model": "rfdetr-gdino-sam-etri",
     "min_size": 0,
     "max_size": 50,
     "box_threshold": 0.3,
@@ -31,9 +29,7 @@
       "near": 0.02
     },
     "gripper_min": 10,
-    "gripper_max": 500,
-    "fuse_islying": true,
-    "disagree_trust": "arm"
+    "gripper_max": 500
   },
   "detect_background": {
     "use": true,
