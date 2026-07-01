@@ -10,7 +10,7 @@ from kcare_robot.skills.arm import movet, movel, movelf, movej, arm_pose
 from kcare_robot.skills.lift import lift, dlift
 from kcare_robot.skills.grip import grip
 from kcare_robot.skills.mobile import forward
-from kcare_robot.skills.recognition import find_grasp, find, grasp_succeed
+from kcare_robot.skills.recognition import find_grasp , grasp_succeed, detect
 
 
 # Drawer pull/push distance and drawer-handle search window.
@@ -64,7 +64,7 @@ def split_loc(loc_name):
 def compute_drawer_mforward(node, handle_name, robot_mode):
     """Locate the handle, then return how far the base should drive forward to
     centre it within `DRAWER_RANGE`. Returns `(err_or_None, mforward)`."""
-    ret = find(node=node, inputs=handle_name, camera='arm')
+    ret = detect(node=node, inputs=handle_name, camera='arm')
     if not ret['isdone']:
         return ret, 0
     return None, 0

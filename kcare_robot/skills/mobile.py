@@ -158,6 +158,7 @@ def move(node, **kwargs):
     if not run_parallel_check(funcs=[
         lambda : lift(node=node, inputs='home', mode='front'),
         # lambda : movej(node=node, inputs='fold', mode=robot_mode),
+        lambda : movej(node=node, inputs='fold', mode='front'),
         lambda : moveb(node=node, **kwargs) ,
     ]) ['isdone']:
         raise  Exception('moveh/lift/moveb failed ...')
@@ -175,7 +176,8 @@ def move(node, **kwargs):
     ret =  run_parallel_check(funcs=[
         lambda: turn(node=node, inputs=turn_deg),
         lambda : moveh(node=node, ry='straight', rz=robot_mode, wait=True),
-        lambda : movej(node=node, inputs='fold', mode=robot_mode, wait=True),
+        # lambda : movej(node=node, inputs='fold', mode=robot_mode, wait=True),
+        lambda : movej(node=node, inputs='give', mode=robot_mode, wait=True),
     ])
     assert ret['isdone'], f'{ret}'
     

@@ -421,6 +421,10 @@ def _islying_estimate(obj_name: str, box, depth, cam_params, gravity_cam, mask=N
 def _box_islying_pca(obj_name: str, box, depth, cam_params, gravity_cam, mask=None) -> bool:
     """Backward-compatible bool wrapper around `_islying_estimate` (drops the
     confidence). Existing callers expect a plain bool."""
+    if obj_name in FIND_CONFIGS['lying_obj_names']:
+        return True
+    if obj_name in FIND_CONFIGS['standing_obj_names']:
+        return False
     return _islying_estimate(obj_name, box, depth, cam_params, gravity_cam, mask=mask)[0]
 
 
@@ -575,11 +579,11 @@ def _emit_detection_vis(node, rgb, camera, panels):
 def _object_pose_3d(node, box, box_depths, depth, cam_params, *, use_head):
     """Box centre → 3D pose. Head: base frame via get3d. Wrist: camera frame (m)."""
     cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
-    if use_head:
-        return get3d(node=node, points=[[cx, cy, box_depths['obj_median']]])['pose'][0, :].tolist()
-    Z = _sample_depth(depth, cx, cy)
-    px, py, pz = Ixy2xyz(Ix=cx, Iy=cy, Z=Z, cam_params=cam_params)
-    return [float(px) / 1000., float(py) / 1000., float(pz) / 1000.]
+    func = get3d if use_head else get3d_arm
+    return func(node=node, points=[[cx, cy, box_depths['obj_median']]])['pose'][0, :].tolist()
+    # Z = _sample_depth(depth, cx, cy)
+    # px, py, pz = Ixy2xyz(Ix=cx, Iy=cy, Z=Z, cam_params=cam_params)
+    # return [float(px) / 1000., float(py) / 1000., float(pz) / 1000.]
 
 
 def _build_approach_pose(pose, islying, robot_mode) -> dict:
@@ -599,7 +603,7 @@ def _build_approach_pose(pose, islying, robot_mode) -> dict:
         ap[1] += (-dd if robot_mode == 'right' else dd) * cost
         ap += [-180, -75, 100 + ry if robot_mode == 'right' else -100 - ry]
         approach_lying = False
-    mforward = ap[0] - np.clip(ap[0], 0.15, 0.4)
+    mforward = ap[0] - np.clip(ap[0], 0.15, 0.7 if islying else 0.4)
     mforward = 0 if abs(mforward) < 0.1 else mforward
     ap[0] -= mforward
     approach_pose = {k: v for k, v in zip(['x', 'y', 'z', 'rx', 'ry', 'rz'], ap)}
@@ -638,7 +642,8 @@ def _grasp_from_box(node, obj, rgb, depth, cam_params, grasp_configs, *,
     box = [float(min(gx0, gx1)), float(min(gy0, gy1)),
            float(max(gx0, gx1)), float(max(gy0, gy1))]
 
-    pose_3d = get3d_arm(node=node,points=[[(gx0+gx1)/2,(gy0+gy1)/2]])['pose'].tolist()[0]
+    # pose_3d = get3d_arm(node=node,points=[[(gx0+gx1)/2,(gy0+gy1)/2]])['pose'].tolist()[0]
+    pose_3d = grasppose[:3]
     return {
         'duration_ms': gs.duration_ms,
         'device':      gs.device,

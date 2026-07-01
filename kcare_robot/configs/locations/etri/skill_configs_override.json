@@ -46,14 +46,14 @@
       "default_mode": "left",
       "height": 0.762,
       "placepose": {
-        "dy": 0
+        "dy": -0.1
       },
       "loc": {
         "x": 2.4,
         "y": -0.809,
         "rz": -90
       },
-      "dforward": 0,
+      "dforward": 0.2,
       "dshift": -0.15
     },
     "drawer@main room": {
@@ -63,14 +63,15 @@
       "handle_height": 0.415,
       "height": 0.566,
       "placepose": {
-        "dy": -0.1
+        "dx": 0.2,
+        "dy": 0
       },
       "loc": {
         "x": 1.322,
         "y": -0.809,
         "rz": -90
       },
-      "dforward": 0.15,
+      "dforward": 0,
       "dshift": -0.3
     },
     "bed@main room": {
@@ -85,14 +86,14 @@
         "y": 0.28,
         "rz": 90
       },
-      "dforward": 0.15
+      "dforward": 0
     },
     "table@living room": {
       "label": "\uac70\uc2e4 \ud14c\uc774\ube14",
       "default_mode": "left",
       "placepose": {
         "dx": 0.05,
-        "dy": -0.1
+        "dy": 0
       },
       "height": 0.456,
       "loc": {
@@ -101,7 +102,7 @@
         "rz": -90
       },
       "dshift": -0.2,
-      "dforward": 0
+      "dforward": 0.05
     },
     "wait@living room": {
       "label": "living_room_wait",
@@ -144,7 +145,7 @@
         "rz": 90
       },
       "dforward": 0,
-      "dshift": 0
+      "dshift": -0.1
     },
     "sink@kitchen": {
       "label": "\uc2f1\ud06c\ub300",
@@ -155,15 +156,15 @@
         "y": -2.355,
         "rz": 180
       },
-      "dforward": 0.15,
+      "dforward": 0,
       "dshift": -0.2
     },
     "table@kitchen": {
       "label": "\uc2dd\ud0c1",
       "default_mode": "right",
       "height": 0.755,
-      "grasppose": {
-        "dy": -0.05
+      "placepose": {
+        "dy": -0.1
       },
       "loc": {
         "x": -2.5,
@@ -180,16 +181,16 @@
       "handle_height": 0.415,
       "height": 0.566,
       "placepose": {
-        "dx": -0.5,
-        "dy": -0.2
+        "dx": 0.2,
+        "dy": -0.1
       },
       "loc": {
         "x": -1.8,
         "y": -2.2,
         "rz": 90
       },
-      "dshift": 0,
-      "dforward": -0.03
+      "dshift": -0.1,
+      "dforward": -0.1
     },
     "wait": {
       "default_mode": "front",
@@ -367,23 +368,32 @@
       ]
     },
     "give": {
+      "front": [
+        90,
+        0,
+        20,
+        12,
+        -40,
+        97,
+        -10
+      ],
       "left": [
-        -17.7,
-        -10.5,
-        23.7,
-        7.3,
-        -77,
-        73.7,
-        -16.8
+        85.48,
+        -18.89,
+        -60.75,
+        6.83,
+        -61.65,
+        66.94,
+        -8.34
       ],
       "right": [
-        13.9,
-        -8.2,
-        -20.4,
-        8,
-        -279.3,
-        74.3,
-        18
+        -76.71,
+        1.5,
+        58.34,
+        17.97,
+        -303.07,
+        51.41,
+        21.41
       ]
     },
     "approach_lying": {
@@ -621,12 +631,10 @@
         "quality": 0.8,
         "distance": 0.1,
         "near": 0.1
-      },
-      "fuse_islying": false,
-      "disagree_trust": "arm"
+      }
     },
     "detect_grasp": {
-      "model": "rfdetr-gdino-etri",
+      "model": "rfdetr-gdino-sam-etri",
       "min_size": 0,
       "max_size": 50,
       "box_threshold": 0.3,
@@ -640,21 +648,18 @@
         "near": 0.02
       },
       "gripper_min": 10,
-      "gripper_max": 500,
-      "fuse_islying": true,
-      "disagree_trust": "arm"
+      "gripper_max": 500
     },
     "detect_background": {
       "use": true,
-      "model": "background",
-      "fg_min_area": 0,
-      "bg_max_area": 7,
-      "method": "automask",
       "stride": 20,
-      "dilate": -50,
+      "avoid_model": "grounding-dino",
+      "avoid_prompt": "object.",
+      "avoid_conf": 0.15,
+      "avoid_pad": 20,
+      "avoid_max_area": 0.1,
       "place_height_band": 0.05,
       "place_margin_cells": 2,
-      "avoid_max_area": 0.15,
       "calib_tune": {
         "dx": 0.03,
         "dy": 0.05
@@ -670,6 +675,8 @@
       "cup"
     ],
     "lying_obj_names": [
+      "orange",
+      "apple",
       "phone",
       "fork",
       "spoon",

@@ -102,7 +102,7 @@
     "type": "ros_topic",
     "name": "arm_rgb",
     "config": {
-      "conn_name": "/hand/d405/color/image_raw/compressed",
+      "conn_name": "/hand/camera/color/image_raw/compressed",
       "conn_type": "ros_topic",
       "is_client": true,
       "agent_name": "arm_rgb",
@@ -193,11 +193,11 @@
     "type": "ros_topic",
     "name": "arm_cam_params",
     "config": {
-      "conn_name": "/hand/d405/depth/camera_info",
-      "agent_name": "arm_cam_params",
+      "conn_name": "/hand/camera/depth/camera_info",
       "conn_type": "ros_topic",
-      "data_interface": "sensor_msgs/msg/CameraInfo",
       "is_client": true,
+      "agent_name": "arm_cam_params",
+      "data_interface": "sensor_msgs/msg/CameraInfo",
       "decode_func": "def decode_func(msg):\n    from pyconnect.ros.utils import decode_caminfomsg\n    return decode_caminfomsg(msg)"
     }
   },
@@ -254,6 +254,19 @@
     }
   },
   {
+    "type": "ros_service",
+    "name": "get3d_tool",
+    "config": {
+      "conn_name": "/create_tool_marker",
+      "conn_type": "ros_service",
+      "is_client": true,
+      "agent_name": "get3d_tool",
+      "data_interface": "kaair_msgs/srv/CreateObjectMarker",
+      "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'x': res.x_array, 'y':res.y_array, 'z': res.z_array, 'msg': res.message}"
+    }
+  },
+  {
     "type": "tcp",
     "name": "vlms",
     "config": {
@@ -267,7 +280,7 @@
     "type": "ros_topic",
     "name": "arm_depth",
     "config": {
-      "conn_name": "/hand/d405/depth/image_rect_raw",
+      "conn_name": "/hand/camera/depth/image_rect_raw",
       "conn_type": "ros_topic",
       "is_client": true,
       "agent_name": "arm_depth",

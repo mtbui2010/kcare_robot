@@ -32,7 +32,7 @@ from robot_agent.skills import log_data
 from kcare_robot.skills.head import moveh, get_robot_mode
 from kcare_robot.skills.mobile import move
 from kcare_robot.skills.pointcloud import get3d
-from kcare_robot.skills.arm import movej
+from kcare_robot.skills.arm import movej, movet, movel
 
 from kcare_robot.skills._recognition_helpers import (
     fetch_camera_data, _fetch_head, _fetch_arm,
@@ -157,16 +157,17 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     grasppose?, grasp_score?}}}`` (or ``{pose, islying, grasppose?}`` when
     ``simple_return``)."""
     simple_return    = kwargs.pop('simple_return', False)
-    camera           = kwargs.pop('camera', 'head')
+    camera           = kwargs.pop('camera', 'arm')
     estimate_grasp   = kwargs.pop('estimate_grasp', False)
     keep_orientation = kwargs.pop('keep_orientation', False)
+    num_trials = kwargs.pop('num_trials', 3)
     use_head   = 'head' in camera
     with_grasp = (not use_head) and estimate_grasp     # grasp-gd: wrist camera only
     robot_mode = get_robot_mode(node=node)
 
     cam = fetch_camera_data(node, camera)
     rgb, depth, cam_params = cam.rgb, cam.depth, cam.cam_params
-    h, w = rgb.shape[:2]
+    # h, w = rgb.shape[:2]
     gravity_cam = _cam_gravity(node, cam, use_head)
 
     min_conf = kwargs.pop('min_conf', 0.1 if any('handle' in n for n in obj_names) else 0.0)
@@ -181,9 +182,16 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     out: dict = {}
     panels: list = []
     for name in obj_names:
-        res = _predict_detect(rgb, f'{name.strip()}.', det_configs)
-        if min_conf > 0:
-            res = res.filter_by_conf(min_conf=min_conf)
+        for _ in range(num_trials):
+            cam = fetch_camera_data(node, camera)
+            rgb, depth, cam_params = cam.rgb, cam.depth, cam.cam_params
+            h, w = rgb.shape[:2]
+            
+            res = _predict_detect(rgb, f'{name.strip()}.', det_configs)
+            if min_conf > 0:
+                res = res.filter_by_conf(min_conf=min_conf)
+            if len(res.detections) != 0:
+                break
         if len(res.detections) == 0:
             continue
         target = select_target_object(
@@ -233,7 +241,7 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
             'duration_ms':   res.duration_ms,
             'device':        res.device,
             'pose_3d':       pose,
-            **_build_approach_pose(pose, islying, robot_mode),
+            **({} if with_grasp else _build_approach_pose(pose, islying, robot_mode)),
             'box':           ebox,
             'score':         escore,
             'islying':       islying,
@@ -261,7 +269,7 @@ def detect(node, **kwargs):
     Required (one of): inputs='obj1,obj2,...'  OR  obj_names=[...].
     Returns ``{'isdone', 'ins': {name: {...}}}``."""
     obj_names = _parse_obj_names(kwargs.pop('inputs', None), kwargs.pop('obj_names', None))
-    camera = kwargs.pop('camera', FIND_CONFIGS['camera'])
+    camera = kwargs.pop('camera', 'arm')
     return _detect_objects(node, obj_names, camera=camera, **kwargs)
 
 
@@ -275,6 +283,10 @@ def find_once(node, **kwargs):
     An arm entry carries a grasp-gd `grasppose`, so a downstream pick prefers it;
     the head entry (base-frame pose + approach) is the fallback used only for
     objects the wrist camera missed."""
+
+    robot_mode = get_robot_mode(node=node)
+  
+    move_arm = kwargs.pop("move_arm", True)
     cameras = kwargs.pop("cameras", "arm, head")
     cameras = [el.strip().lower() for el in cameras.split(',')]
     priority_cam, secondary_cam = (cameras[0], None) if len(cameras)==1 else cameras[:2]
@@ -300,11 +312,16 @@ def find_once(node, **kwargs):
                 ret = moveh(node=node, inputs=view)
                 assert ret['isdone'], f'{ret}'
                 time.sleep(1)
+            else: 
+                if move_arm:
+                    ret = movej(node=node, inputs='give')
+                    assert ret['isdone'], f'{ret}'
+                
             results[camera] = _detect_objects(node, obj_names, camera=camera, **kwargs)
             if camera=='head':
                 ret = moveh(node=node, ry='straight')
                 assert ret['isdone'], f'{ret}'
-        except Exception:
+        except Exception as e:
             results[camera] = {'isdone': False, 'ins': {}}
 
     if secondary_cam is not None:
@@ -492,13 +509,13 @@ def find_place(node, **kwargs) -> dict:
         # branch 1:
         env = get_env_specs(inputs, ENV)
         if len(env)==0: 
-            target_obj = inputs.split('@')[0]
-            ret = find(node=node, inputs=inputs, simple_return=True)
-            point3d = ret['ins'][target_obj]['pose']
-            place_beside = placeside is not None
-        # branch 2:
+            splits = inputs.split('@')
+            dest_obj, dest_loc = (splits[0], '@'.join(splits[1:])) if len(splits)>1 else (inputs, None)
+            env = get_env_specs(dest_loc, ENV)
         else:
-            # env = get_env_specs(env, ENV)
+            dest_obj, dest_loc = None, inputs
+        #
+        if len(env)>0:
             target_height = env.get('height', 0.75)
             robot_mode = env['default_mode']
             placepose = dict(env.get('placepose', None) or {})
@@ -507,6 +524,16 @@ def find_place(node, **kwargs) -> dict:
                 placepose or None, target_height, robot_mode,
                 islying,
             )
+        #
+        if dest_obj is not None: 
+            ret = find(node=node, inputs=dest_obj, cameras="head", simple_return=True)
+            p3 = ret['ins'][dest_obj]['pose']
+            if point3d is None:
+                point3d = p3
+            else:
+                point3d[:2] = p3[:2]
+            place_beside = placeside is not None
+
 
     # avoid obstacle
     if place_beside and 'trash' not in inputs and 'sink' not in inputs:

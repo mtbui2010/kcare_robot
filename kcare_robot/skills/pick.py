@@ -230,7 +230,7 @@ def open_drawer(**kwargs):
 
     kwargs.update({
         'isdone':             True,
-        'object_from_drawer': True,
+        # 'object_from_drawer': True,
         'pose_after_open':    pose_after_open,
         'lift_after_open':    lift_after_open,
         'forward_after_open': forward_after_open,
@@ -538,6 +538,7 @@ def stack(**kwargs):
 @arm_exception_handler
 def approach_pick(node, **kwargs) -> dict:
     robot_mode = get_robot_mode(node=node)
+    # object_from_drawer = kwargs.pop('object_from_drawer', False)
     inp = kwargs.pop('inputs')
     splits = inp.split('@')
     obj_name, target_loc = (splits[0], '@'.join(splits[1:])) if  len(splits)>0 else (splits[0], None)
@@ -550,10 +551,13 @@ def approach_pick(node, **kwargs) -> dict:
     ret = find(node=node, inputs=inp, **kwargs)
     assert ret['isdone'], f'{ret}'
 
+    # if kwargs.pop("object_from_drawer", False):
+    #     return ret
+
     kwargs.update(ret['ins'][obj_name])
     ret = run_parallel_check(funcs=[
         lambda: forward(node=node, inputs=kwargs['mforward'], wait=True),
-        # lambda: movej(node=node, dr0=kwargs['base_rotate'], wait=True),
+        lambda: movej(node=node, inputs='give', wait=True),
         lambda: lift(node=node, inputs=kwargs['lift_to'], wait=True)
     ])
     assert ret['isdone'], f'{ret}'
@@ -571,15 +575,10 @@ def approach_pick(node, **kwargs) -> dict:
     ret = movel(node=node, inputs='give')
     assert ret['isdone'], f'{ret}'
 
-    ret = run_parallel_check(funcs=[
-        lambda: movej(node=node, inputs='approach_lying' if kwargs['islying'] else 'approach_standing', wait=True) ,
-        lambda: forward(node=node, inputs=kwargs['mforward'] , wait=True)
-    ])
-    assert ret['isdone'], f'{ret}'
-    
-    # if kwargs['islying']:
-    #     ret = movel(node=node, y=y)
-    #     assert ret['isdone'], f'{ret}'
+    if kwargs['islying']:
+        ret = movej(node=node, inputs="approach_lying")
+        assert ret['isdone'], f'{ret}'
+
 
     ret = movel(node=node, **kwargs['approach_pose'])
     assert ret['isdone'], f'{ret}'
@@ -600,19 +599,21 @@ def pick(node, **kwargs):
     announce_picking(caption)
     if not NO_ACTION:
 
-        if kwargs.pop("object_from_drawer", False):
-            ret = movej(node=node, inputs="give")
-            assert ret['isdone'], f'{ret}'
-            ret = movej(node=node, inputs="approach_lying")
-            assert ret['isdone'], f'{ret}'
+        # if kwargs.pop("object_from_drawer", False):
+        #     ret = movej(node=node, inputs="give")
+        #     assert ret['isdone'], f'{ret}'
+        #     ret = movej(node=node, inputs="approach_lying")
+        #     assert ret['isdone'], f'{ret}'
             
-            ret = movet(node=node, dx=-0.3, dy=0.15) if robot_mode=='left' else movet(node=node, dx=0.3, dy=-0.15)
-            assert ret['isdone'], f'{ret}'
+        #     ret = movet(node=node, dx=-0.3, dy=0.15) if robot_mode=='left' else movet(node=node, dx=0.3, dy=-0.15)
+        #     assert ret['isdone'], f'{ret}'
             
-            kwargs['islying'] = True
-        else:
-            kwargs.update(approach_pick(node=node, inputs=loc_name, **kwargs))
-            assert  kwargs['isdone'], f'{kwargs}'
+        #     kwargs['islying'] = True
+        # else:
+        #     kwargs.update(approach_pick(node=node, inputs=loc_name, **kwargs))
+        #     assert  kwargs['isdone'], f'{kwargs}'
+        kwargs.update(approach_pick(node=node, inputs=loc_name, **kwargs))
+        assert  kwargs['isdone'], f'{kwargs}'
 
         kwargs['inputs'] = caption
         kwargs.update(fine_move(node=node, num_trials=num_trials, **kwargs))
@@ -622,13 +623,13 @@ def pick(node, **kwargs):
         assert  ret['isdone'], f'{ret}'
 
         if kwargs['islying']:
-            ret = movej(node=node, inputs='approach_lying')
+            ret = movej(node=node, inputs='approach_lying', wait=True)
             assert  ret['isdone'], f'{ret}'
 
-        ret = movej(node=node, inputs='give')
+        ret = movej(node=node, inputs='give', wait=True)
         assert  ret['isdone'], f'{ret}'
 
-        ret = movej(node=node, inputs='fold')
+        ret = movej(node=node, inputs='fold', wait=True)
         assert  ret['isdone'], f'{ret}'
 
         ret = forward(node=node, inputs=-kwargs.get('mforward', 0 )) 

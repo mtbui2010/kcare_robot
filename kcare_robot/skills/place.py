@@ -37,7 +37,19 @@ calib = Head2BaseCalibration()
 
 def approach_place(node, **kwargs) -> dict:
     inp = kwargs.pop('inputs')
-    obj_name = inp.split('@')[0]
+    # obj_name = inp.split('@')[0]
+
+    env = get_env_specs(inp, ENV)
+    if len(env)==0:
+        splits = inp.split('@')
+        dest_loc = None if len(splits)==1 else '@'.join(splits[1:])
+        env = get_env_specs(dest_loc, ENV)
+    else: 
+        dest_loc = inp
+    
+    if dest_loc is not None:
+        ret = move(node=node, inputs=dest_loc, **kwargs)
+        assert ret['isdone'], f'{ret}'
 
     kwargs.update(find_place(node=node, inputs=inp, **kwargs))
     assert kwargs['isdone'], f'{kwargs}'
@@ -82,12 +94,6 @@ def place(node, **kwargs):
     if target is not None:
         kwargs.update(pick(node=node, inputs=target,  **kwargs))
         assert kwargs['isdone'], f'{kwargs}'
-
-
-    env = get_env_specs(destination, ENV)
-    if len(env)>0:
-        ret = move(node=node, inputs=destination, **kwargs)
-        assert ret['isdone'], f'{ret}'
     
     kwargs.update(approach_place(node=node, inputs=destination, **kwargs))
     assert kwargs['isdone'], f'{kwargs}'
@@ -113,8 +119,9 @@ def place(node, **kwargs):
     # ret = movet(node=node, dz=kwargs['dz_up']/2) if kwargs['islying'] else movel(node=node, dz=-kwargs['dz_up'])
     # assert ret['isdone'], f'{ret}'
 
-    ret = movel(node=node, dz=0.15)
-    assert  ret['isdone'], f'{ret}'
+    if not kwargs['islying']:
+        ret = movel(node=node, dz=0.25)
+        assert  ret['isdone'], f'{ret}'
 
     if kwargs['islying']:
         ret = movej(node=node, inputs='approach_lying')
@@ -231,28 +238,16 @@ def wipe(node, **kwargs):
     if not grasp_succeed(node=node)['isdone']:
         kwargs.update(pick(node=node, inputs=target,  **kwargs))
         assert kwargs['isdone'], f'{kwargs}'
-
-    # move to 
-    env = get_env_specs(destination, ENV)
-    if len(env)>0:
-        dest_obj, dest_loc = None, destination
-    else:
-        splits = inp.split('@')
-        dest_obj, dest_loc = (splits[0], '@'.join(splits[1:])) if len(splits)>=2 else (splits[0], None)
-    if dest_loc is not None:
-        ret = move(node=node, inputs=dest_loc, **kwargs)
-        assert ret['isdone'], f'{ret}'
-    
     #
     kwargs['islying'] = False
-    kwargs.update(approach_place(node=node, inputs=dest_loc if dest_obj is None else dest_obj, **kwargs))
+    kwargs.update(approach_place(node=node, inputs=destination, **kwargs))
     assert kwargs['isdone'], f'{kwargs}'
 
 
     ret = movet(node=node, dz=kwargs['dapproach'], wait=True)
     assert ret['isdone'], f'{ret}'
 
-    movel(node=node, dz=-kwargs['dz_up'] + 0.015)
+    movel(node=node, dz=-kwargs['dz_up'])
 
     #wipe here
     mul = 1 if robot_mode=='right' else -1
