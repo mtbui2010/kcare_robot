@@ -104,12 +104,8 @@ def place(node, **kwargs):
         ret = movet(node=node, dz=kwargs['dapproach'], wait=True)
         assert ret['isdone'], f'{ret}'
 
-    def slow_place():
-        time.sleep(0.5)
-        return movet(node=node, dz=kwargs['dz_up']/2) if kwargs['islying'] else movel(node=node, dz=-kwargs['dz_up'])
-
     ret = run_parallel_check(funcs=[
-        lambda: slow_place(),
+        lambda: (time.sleep(0.5), movet(node=node, dz=kwargs['dz_up']/2) if kwargs['islying'] else movel(node=node, dz=-kwargs['dz_up']))[-1],
         lambda: grip(node=node, inputs='open', wait=True)
     ])
     assert ret['isdone'], f'{ret}'

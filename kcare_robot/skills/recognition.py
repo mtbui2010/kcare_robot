@@ -60,32 +60,44 @@ def _detect_nearest(node, pose, **kwargs) -> dict:
         return pose
     stride       = configs['stride']
     band         = configs.get('place_height_band', 0.05)            # ±m around the target support height
-    avoid_model  = configs.get('avoid_model', 'grounding-dino')   # open-vocab detector for objects to avoid
+    avoid_model  = configs.get('avoid_model', 'rfdetr-gdino-sam-etri')   # open-vocab + mask detector for objects to avoid
     avoid_prompt = configs.get('avoid_prompt', 'object.')            # class-agnostic: any object, flat or tall
     avoid_conf   = configs.get('avoid_conf', 0.25)
     avoid_pad    = configs.get('avoid_pad', 8)                       # enlarge each object box (px) before excluding
     avoid_max    = configs.get('avoid_max_area', 0.15)              # ignore boxes larger than this fraction of the image: "object." also boxes the empty TABLE/couch itself — those are the SURFACE, not an obstacle
 
     # Two cheap, complementary filters so a place point never lands on an object:
-    #   1) detect objects (open-vocab "object.") and exclude their boxes — catches
-    #      FLAT objects (phone/card) a height test can't, ~0.24s and reliable
-    #      (vs ~7.7s for a MobileSAM grid-32 segment-everything that still merges
-    #      objects into the table at smaller grids).
+    #   1) detect objects (open-vocab "object.") and exclude their footprint —
+    #      catches FLAT objects (phone/card) a height test can't, ~0.3s. When the
+    #      detector returns SEGMENTATION masks (e.g. rfdetr-gdino-sam-etri) the
+    #      tight per-object mask is used instead of the bbox, so round/irregular
+    #      objects don't blank out the surrounding table; else fall back to boxes.
     #   2) height band around the target support height `pose[2]` — rejects the
     #      floor/couch (lower) and any TALL object the detector missed (higher);
     #      free, since get3d is run anyway.
     objects = np.zeros((h, w), bool)
     od = None
+    max_px = avoid_max * h * w        # a footprint bigger than this is the SURFACE (empty table/couch), not an obstacle
     try:
         od = _vs_client().predict(model=avoid_model, image=cam.rgb, prompt=avoid_prompt,
                                   box_threshold=avoid_conf, text_threshold=0.2)
-        for d in od.detections:
-            bx, by, bw, bh = [int(v) for v in d.bbox]
-            if bw * bh > avoid_max * h * w:        # a whole-surface box (empty table/couch) → not an obstacle
-                continue
-            x0, y0 = max(0, bx - avoid_pad), max(0, by - avoid_pad)
-            x1, y1 = min(w, bx + bw + avoid_pad), min(h, by + bh + avoid_pad)
-            objects[y0:y1, x0:x1] = True
+        masks = od.masks or []
+        if masks:
+            for m in masks:
+                mm = m.to_ndarray(width=w, height=h) > 0
+                if mm.sum() > max_px:              # whole-surface mask → not an obstacle
+                    continue
+                if avoid_pad:
+                    mm = cv2.dilate(mm.astype('uint8'), np.ones((avoid_pad, avoid_pad), 'uint8')).astype(bool)
+                objects |= mm
+        else:
+            for d in od.detections:
+                bx, by, bw, bh = [int(v) for v in d.bbox]
+                if bw * bh > max_px:               # whole-surface box → not an obstacle
+                    continue
+                x0, y0 = max(0, bx - avoid_pad), max(0, by - avoid_pad)
+                x1, y1 = min(w, bx + bw + avoid_pad), min(h, by + bh + avoid_pad)
+                objects[y0:y1, x0:x1] = True
     except Exception:
         pass
 

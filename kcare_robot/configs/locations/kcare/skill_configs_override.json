@@ -529,7 +529,7 @@
     "detect_background": {
       "use": true,
       "stride": 20,
-      "avoid_model": "grounding-dino",
+      "avoid_model": "rfdetr-gdino-sam-etri",
       "avoid_prompt": "object.",
       "avoid_conf": 0.15,
       "avoid_pad": 20,

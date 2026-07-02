@@ -4,7 +4,7 @@ from kcare_robot.skills.head import moveh, get_robot_mode
 from kcare_robot.skills.lift import lift
 from robot_agent.skill_configs import ENV, LIFT_CONFIGS, MOBILE_CONFIGS, HOME_LOC
 from pyconnect.utils import update_dict
-import numpy as np, threading
+import numpy as np, threading, time
 from robot_agent.utils import quaternion2deg, deg2quaternion
 
 def check_current_loc(node, loc):
@@ -158,7 +158,7 @@ def move(node, **kwargs):
     if not run_parallel_check(funcs=[
         lambda : lift(node=node, inputs='home', mode='front'),
         # lambda : movej(node=node, inputs='fold', mode=robot_mode),
-        lambda : movej(node=node, inputs='fold', mode='front'),
+        lambda : (time.sleep(3), movej(node=node, inputs='fold', mode='front'))[-1],
         lambda : moveb(node=node, **kwargs) ,
     ]) ['isdone']:
         raise  Exception('moveh/lift/moveb failed ...')
