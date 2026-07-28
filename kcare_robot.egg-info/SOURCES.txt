@@ -10,6 +10,7 @@ kcare_robot.egg-info/entry_points.txt
 kcare_robot.egg-info/requires.txt
 kcare_robot.egg-info/top_level.txt
 kcare_robot/configs/__init__.py
+kcare_robot/configs/grace_namemap.py
 kcare_robot/configs/guide.py
 kcare_robot/configs/guide_short.py
 kcare_robot/configs/guide_struct.py
@@ -21,6 +22,7 @@ kcare_robot/skills/__init__.py
 kcare_robot/skills/_approach_helpers.py
 kcare_robot/skills/_pick_helpers.py
 kcare_robot/skills/_place_helpers.py
+kcare_robot/skills/_recognition_helpers.py
 kcare_robot/skills/approach.py
 kcare_robot/skills/arm.py
 kcare_robot/skills/calibrattion.py
@@ -31,10 +33,12 @@ kcare_robot/skills/head.py
 kcare_robot/skills/inform.py
 kcare_robot/skills/lift.py
 kcare_robot/skills/mobile.py
+kcare_robot/skills/new_skill.py
 kcare_robot/skills/pick.py
 kcare_robot/skills/place.py
 kcare_robot/skills/pointcloud.py
 kcare_robot/skills/recognition.py
+kcare_robot/skills/rest_detect.py
 kcare_robot/skills/select.py
 kcare_robot/skills/template.py
 kcare_robot/skills/vla.py

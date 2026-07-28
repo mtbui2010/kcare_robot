@@ -350,16 +350,6 @@
     }
   },
   {
-    "type": "llm",
-    "name": "llama",
-    "config": {
-      "name": "llama",
-      "agent_name": "llama",
-      "url": "http://192.168.1.11:11434",
-      "is_active": true
-    }
-  },
-  {
     "type": "ros_service",
     "name": "/create_tool_marker",
     "config": {
@@ -383,6 +373,28 @@
       "data_interface": "kaair_msgs/srv/CreateObjectMarker",
       "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'x': res.x_array, 'y': res.y_array, 'z': res.z_array, 'msg': res.message}"
+    }
+  },
+  {
+    "type": "llm",
+    "name": "qwen2.5:7b",
+    "config": {
+      "name": "llama",
+      "agent_name": "qwen2.5:7b",
+      "url": "http://192.168.1.11:11434",
+      "model": "qwen2.5:7b",
+      "is_active": false
+    }
+  },
+  {
+    "type": "llm",
+    "name": "ollama",
+    "config": {
+      "name": "llama",
+      "agent_name": "ollama",
+      "url": "http://192.168.1.11:11434",
+      "model": "qwen2.5:7b",
+      "is_active": true
     }
   }
 ]

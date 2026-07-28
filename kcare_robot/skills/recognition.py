@@ -60,7 +60,7 @@ def _detect_nearest(node, pose, **kwargs) -> dict:
         return pose
     stride       = configs['stride']
     band         = configs.get('place_height_band', 0.05)            # ±m around the target support height
-    avoid_model  = configs.get('avoid_model', 'rfdetr-gdino-sam-etri')   # open-vocab + mask detector for objects to avoid
+    avoid_model  = configs.get('avoid_model', 'grounded-sam')   # open-vocab + mask detector for objects to avoid
     avoid_prompt = configs.get('avoid_prompt', 'object.')            # class-agnostic: any object, flat or tall
     avoid_conf   = configs.get('avoid_conf', 0.25)
     avoid_pad    = configs.get('avoid_pad', 8)                       # enlarge each object box (px) before excluding
@@ -605,5 +605,3 @@ def find_place(node, **kwargs) -> dict:
 
 if __name__ == '__main__':
     pass
-
-

@@ -12,7 +12,7 @@
       1.1
     ],
     "home": {
-      "front": 0.8,
+      "front": 0.6,
       "left": 0.8,
       "right": 0.8
     }
@@ -253,23 +253,32 @@
       ]
     },
     "give": {
+      "front": [
+        90,
+        0,
+        20,
+        12,
+        -40,
+        97,
+        -10
+      ],
       "left": [
-        -17.7,
-        -10.5,
-        23.7,
-        7.3,
-        -77,
-        73.7,
-        -16.8
+        96.85,
+        18.01,
+        -49.85,
+        14.47,
+        -33.29,
+        53.71,
+        -14.79
       ],
       "right": [
-        13.9,
-        -8.2,
-        -20.4,
-        8,
-        -279.3,
-        74.3,
-        18
+        -78.91,
+        24.26,
+        45.87,
+        24.81,
+        -318.36,
+        52.09,
+        20.36
       ]
     },
     "approach_lying": {
@@ -529,7 +538,7 @@
     "detect_background": {
       "use": true,
       "stride": 20,
-      "avoid_model": "rfdetr-gdino-sam-etri",
+      "avoid_model": "grounding-dino",
       "avoid_prompt": "object.",
       "avoid_conf": 0.15,
       "avoid_pad": 20,
@@ -551,6 +560,8 @@
       "cup"
     ],
     "lying_obj_names": [
+      "orange",
+      "apple",
       "phone",
       "fork",
       "spoon",
