@@ -26,7 +26,9 @@ def arm_pose(node, **kwargs):
 
 @exception_handler
 def movel(node, **kwargs):
-    
+    out = {}
+    out['velocity_scale'] = kwargs.get('speed', 1.0)
+    out['acceleration_scale'] = kwargs.get('acc', 0.35)
 
     x0, y0, z0, rx0, ry0, rz0 = arm_pose(node=node)['pose']
     x, y, z  = kwargs.pop('x', x0), kwargs.pop('y', y0), kwargs.pop('z', z0)
@@ -39,8 +41,8 @@ def movel(node, **kwargs):
 
     qx, qy, qz,qw = deg2quaternion(rx, ry, rz)
     
-    out = {'x': x, 'y': y, 'z': z, 
-           'qx': qx, 'qy': qy, 'qz': qz, 'qw': qw}
+    out.update({'x': x, 'y': y, 'z': z, 
+           'qx': qx, 'qy': qy, 'qz': qz, 'qw': qw})
     
 
     out['base_frame'] = 'base_footprint'
@@ -52,6 +54,10 @@ def movel(node, **kwargs):
 fix_angle = lambda angle: angle-360 if angle>=360 else angle+360 if angle<=-360 else angle
 @exception_handler
 def movej(**kwargs):
+    inputs = {}
+    inputs['velocity_scale'] = kwargs.get('speed', 1.0)
+    inputs['acceleration_scale'] = kwargs.get('acc', 0.4)
+
     node = kwargs.pop('node', None)
     agents = node.agents
     # inputs = kwargs.pop('inputs')
@@ -60,7 +66,7 @@ def movej(**kwargs):
     # robot_mode = "left"
 
     # inputs = {'relative': 'inputs' not in kwargs}
-    inputs = {}
+    # inputs = {}
     dangles = {f'dr{i}': kwargs[f'dr{i}'] if f'dr{i}' in kwargs else 0. for i in range(7)}
     if 'inputs' in kwargs:
         angles = kwargs['inputs']
@@ -100,6 +106,10 @@ def movej(**kwargs):
 
 @exception_handler
 def movet(node, **kwargs):
+    inputs = {}
+    inputs['velocity_scale'] = kwargs.get('speed', 1.0)
+    inputs['acceleration_scale'] = kwargs.get('acc', 0.35)
+
     agents = node.agents
     
     # angle_list = ['rx', 'ry', 'rz']
@@ -108,9 +118,10 @@ def movet(node, **kwargs):
     qx, qy, qz, qw = deg2quaternion(kwargs.get('rx',0.), kwargs.get('ry',0.), kwargs.get('rz',0.))
     dx, dy, dz = float(kwargs.get('dx', 0.)), float(kwargs.get('dy', 0.)), float(kwargs.get('dz', 0.))
     
+    inputs.update({'dx': -dy, 'dy': dx,'dz': dz, 
+                    'qx': qx, 'qy': qy, 'qz': qz, 'qw': qw})
 
-    return agents['arm_movet'].send({'dx': -dy, 'dy': dx,'dz': dz, 
-                                     'qx': qx, 'qy': qy, 'qz': qz, 'qw': qw})
+    return agents['arm_movet'].send(inputs)
 
 def get_wrist_angle(node, **kwargs):
     ry = arm_pose(node=node)['pose'][4]

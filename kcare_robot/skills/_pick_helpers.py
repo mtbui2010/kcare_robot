@@ -177,14 +177,14 @@ def execute_fine_grasp(node, dx, dy, dz, angle, width, dpull, pull_speed=1.0):
 
     ret = run_parallel_check(funcs=[
         lambda: grip(node=node, inputs=width + 0.02, wait=False),
-        lambda: movet(node=node, dx=dx, dy=dy, wait=True)
+        lambda: (movet(node=node, dx=dx, dy=dy, wait=True), movej(node=node, dr6=angle, wait=True))[-1]
     ])
     assert ret['isdone'], f'{ret}'
     
-    ret = movej(node=node, dr6=angle, wait=True)
-    assert ret['isdone'], f'{ret}'
+    # ret = movej(node=node, dr6=angle, wait=True)
+    # assert ret['isdone'], f'{ret}'
 
-    ret = movet(node=node, dz=dz, speed=0.5, wait=True)
+    ret = movet(node=node, dz=dz, acc=0.25, wait=True)
     assert ret['isdone'], f'{ret}'
 
     ret = grip(node=node, inputs='close', wait=True)
@@ -193,5 +193,5 @@ def execute_fine_grasp(node, dx, dy, dz, angle, width, dpull, pull_speed=1.0):
         
     return run_parallel_check(funcs=[
         lambda: grip(node=node, inputs='close', wait=False),
-        lambda: movet(node=node, dz=-dpull, speed=pull_speed, wait=True),
+        lambda: movet(node=node, dz=-dpull, acc=0.25, wait=True),
     ])

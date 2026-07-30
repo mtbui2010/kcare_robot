@@ -47,7 +47,10 @@
       "Bash(nvidia-smi --query-gpu=memory.used,utilization.gpu --format=csv,noheader)",
       "Bash(python3 -u -)",
       "Bash(python3 -c \"import json;d=json.load\\(open\\('kcare_robot/configs/locations/kcare/skill_configs_override.json'\\)\\);print\\(json.dumps\\({k:v for k,v in d.items\\(\\) if 'find' in k.lower\\(\\) or 'FIND' in k}, indent=2, ensure_ascii=False\\)\\)\")",
-      "Bash(python3 -m py_compile kcare_robot/skills/recognition.py kcare_robot/skills/_recognition_helpers.py kcare_robot/skills/__init__.py kcare_robot/skills/pick.py)"
+      "Bash(python3 -m py_compile kcare_robot/skills/recognition.py kcare_robot/skills/_recognition_helpers.py kcare_robot/skills/__init__.py kcare_robot/skills/pick.py)",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s -m8 http://127.0.0.1:8001/skills/status)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('find_place' in d, d.get\\('find_place'\\)\\)\")"
     ]
   }
 }

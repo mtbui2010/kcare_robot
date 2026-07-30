@@ -105,8 +105,8 @@ def place(node, **kwargs):
         assert ret['isdone'], f'{ret}'
 
     ret = run_parallel_check(funcs=[
-        lambda: (time.sleep(0.5), movet(node=node, dz=kwargs['dz_up']/2) if kwargs['islying'] else movel(node=node, dz=-kwargs['dz_up']))[-1],
-        lambda: grip(node=node, inputs='open', wait=True)
+        lambda: (time.sleep(0. if kwargs['islying'] else 0.13), movet(node=node, dz=kwargs['dz_up']/2) if kwargs['islying'] else movel(node=node, dz=-kwargs['dz_up'],acc= 0.3 if kwargs['islying'] else 0.2))[-1],
+        lambda: (time.sleep(0.3 if kwargs['islying'] else 0.), grip(node=node, inputs='open', wait=True))
     ])
     assert ret['isdone'], f'{ret}'
     # ret = grip(node=node, inputs='open')
@@ -115,22 +115,28 @@ def place(node, **kwargs):
     # ret = movet(node=node, dz=kwargs['dz_up']/2) if kwargs['islying'] else movel(node=node, dz=-kwargs['dz_up'])
     # assert ret['isdone'], f'{ret}'
 
-    if not kwargs['islying']:
-        ret = movel(node=node, dz=0.25)
-        assert  ret['isdone'], f'{ret}'
+
+    ret = movel(node=node, dz=0.15 if kwargs['islying'] else 0.25)
+    assert  ret['isdone'], f'{ret}'
 
     if kwargs['islying']:
         ret = movej(node=node, inputs='approach_lying')
         assert  ret['isdone'], f'{ret}'
 
-    ret = movej(node=node, inputs='give')
-    assert ret['isdone'], f'{ret}'
-
-    ret = movej(node=node, inputs='fold')
+    ret = run_parallel_check(funcs={
+        lambda: (movej(node=node, inputs='give'), movej(node=node, inputs='fold', wait=True))[-1],
+        lambda: forward(node=node, inputs=-kwargs.get('mforward', 0 )) 
+    })
     assert  ret['isdone'], f'{ret}'
 
-    ret = forward(node=node, inputs=-kwargs.get('mforward', 0 )) 
-    assert  ret['isdone'], f'{ret}'
+    # ret = movej(node=node, inputs='give')
+    # assert ret['isdone'], f'{ret}'
+
+    # ret = movej(node=node, inputs='fold')
+    # assert  ret['isdone'], f'{ret}'
+
+    # ret = forward(node=node, inputs=-kwargs.get('mforward', 0 )) 
+    # assert  ret['isdone'], f'{ret}'
 
 
     return kwargs
@@ -251,8 +257,8 @@ def wipe(node, **kwargs):
     
     movel(node=node, dy=dy, dx=-dx)
     for i in range(3):
-        movel(node=node, dx=2*dx, dy=-dy)
-        movel(node=node, dx=-2*dx)
+        movel(node=node, dx=2*dx, dy=-dy, acc=0.25)
+        movel(node=node, dx=-2*dx, acc=0.25)
     #
 
     ret = movel(node=node, dz=0.15)

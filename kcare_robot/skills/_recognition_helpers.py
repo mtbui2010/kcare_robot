@@ -488,12 +488,12 @@ def _predict_detect(rgb, prompt, det_configs):
     """Object detection predict with a reliability fallback: if the configured
     model (e.g. grounded-sam, which can OOM the server's SAM decoder) fails,
     retry with grounding-dino (box only, no mask → islying uses the bbox)."""
-    try:
-        return _vs_client().predict(image=rgb, prompt=prompt, **det_configs)
-    except Exception as e:
-        if det_configs.get('model') in (None, 'grounding-dino'):
-            raise
-        return _vs_client().predict(image=rgb, prompt=prompt, **{**det_configs, 'model': 'grounding-dino'})
+    # try:
+    return _vs_client().predict(image=rgb, prompt=prompt, **det_configs)
+    # except Exception as e:
+    #     if det_configs.get('model') in (None, 'grounding-dino'):
+    #         raise
+    #     return _vs_client().predict(image=rgb, prompt=prompt, **{**det_configs, 'model': 'grounding-dino'})
 
 
 # ── islying debug visualisation ──────────────────────────────────────────────

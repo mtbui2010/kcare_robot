@@ -325,7 +325,7 @@ def close_drawer(**kwargs):
         # assert ret['isdone'], f'{ret}'
         
 
-    ret = movet(node=node, dz=dpush)
+    ret = movet(node=node, dz=dpush, acc=0.25)
     assert ret['isdone'], f'{ret}'
 
     ret = movet(node=node, dz=-0.2, wait=False)
@@ -619,21 +619,28 @@ def pick(node, **kwargs):
         kwargs.update(fine_move(node=node, num_trials=num_trials, **kwargs))
         assert  kwargs['isdone'], f'{kwargs}'
 
-        ret = movel(node=node, dz=0.15)
-        assert  ret['isdone'], f'{ret}'
+        # if not kwargs['islying']:
+        #     ret = movel(node=node, dz=0.05)
+        #     assert  ret['isdone'], f'{ret}'
 
         if kwargs['islying']:
             ret = movej(node=node, inputs='approach_lying', wait=True)
             assert  ret['isdone'], f'{ret}'
 
-        ret = movej(node=node, inputs='give', wait=True)
+        ret = run_parallel_check(funcs={
+            lambda: (movej(node=node, inputs='give'), movej(node=node, inputs='fold', wait=True))[-1],
+            lambda: forward(node=node, inputs=-kwargs.get('mforward', 0 )) 
+        })
         assert  ret['isdone'], f'{ret}'
 
-        ret = movej(node=node, inputs='fold', wait=True)
-        assert  ret['isdone'], f'{ret}'
+        # ret = movej(node=node, inputs='give', wait=True)
+        # assert  ret['isdone'], f'{ret}'
 
-        ret = forward(node=node, inputs=-kwargs.get('mforward', 0 )) 
-        assert  ret['isdone'], f'{ret}'
+        # ret = movej(node=node, inputs='fold', wait=True)
+        # assert  ret['isdone'], f'{ret}'
+
+        # ret = forward(node=node, inputs=-kwargs.get('mforward', 0 )) 
+        # assert  ret['isdone'], f'{ret}'
         
         kwargs.pop('inputs', None)
         return kwargs

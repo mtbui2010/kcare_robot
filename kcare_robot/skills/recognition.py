@@ -122,6 +122,32 @@ def _detect_nearest(node, pose, **kwargs) -> dict:
     on_plane = valid & (np.abs(P_full[:, 2] - pose[2]) < band)
 
     place_grid = on_plane.reshape(gh, gw).astype('uint8')
+
+    # Other surfaces (a couch cushion, a shelf) can sit at nearly the same height
+    # as the target table, so the raw height-band can span several disconnected
+    # regions. Keep only the connected blob that is both a real surface (enough
+    # cells) and NEAREST the robot base — the actual target support is always the
+    # close one; a couch a metre further back is not. Falls back to the full band
+    # if there's only one component (or none pass the size filter).
+    min_comp = configs.get('place_min_component_cells', 6)
+    num_cc, labels_cc, stats_cc, _ = cv2.connectedComponentsWithStats(place_grid, connectivity=8)
+    if num_cc > 2:   # background (0) + more than one candidate component
+        P_grid = P_full.reshape(gh, gw, 3)
+        best_label, best_dist = None, None
+        for lbl in range(1, num_cc):
+            if stats_cc[lbl, cv2.CC_STAT_AREA] < min_comp:
+                continue
+            comp = labels_cc == lbl
+            pts3 = P_grid[comp]
+            pv = ~np.isnan(pts3).any(axis=-1)
+            if not pv.any():
+                continue
+            dist = float(np.nanmean(np.linalg.norm(pts3[pv][:, :2], axis=-1)))   # planar distance from robot base
+            if best_dist is None or dist < best_dist:
+                best_dist, best_label = dist, lbl
+        if best_label is not None:
+            place_grid = (labels_cc == best_label).astype('uint8')
+
     if margin_cells > 0:
         k = 2 * margin_cells + 1
         eroded = cv2.erode(place_grid, np.ones((k, k), 'uint8'))

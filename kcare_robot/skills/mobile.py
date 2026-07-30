@@ -156,18 +156,18 @@ def move(node, **kwargs):
     # move
     kwargs.update({'wait':True})
     if not run_parallel_check(funcs=[
-        lambda : (time.sleep(2),lift(node=node, inputs='home', mode='front'))[-1],
+        lambda : (time.sleep(5),lift(node=node, inputs='home', mode='front'), time.sleep(3), lift(node=node, inputs=lift_height, mode=robot_mode, wait=True))[-1],
         # lambda : movej(node=node, inputs='fold', mode=robot_mode),
-        lambda : (time.sleep(2), movej(node=node, inputs='fold', mode='front'))[-1],
-        lambda : moveb(node=node, **kwargs) ,
+        lambda : ( movej(node=node, inputs='fold', mode=prev_robot_mode),time.sleep(2), movej(node=node, inputs='fold', mode='front'))[-1],
+        lambda : (moveb(node=node, **kwargs), forward(node=node, inputs=dforward, wait=True))[-1] ,
     ]) ['isdone']:
         raise  Exception('moveh/lift/moveb failed ...')
     
-    ret = lift(node=node, inputs=lift_height, mode=robot_mode, wait=True)
-    assert ret['isdone'], f'{ret}'
+    # ret = lift(node=node, inputs=lift_height, mode=robot_mode, wait=True)
+    # assert ret['isdone'], f'{ret}'
 
-    ret = forward(node=node, inputs=dforward, wait=True)
-    assert ret['isdone'], f'{ret}'
+    # ret = forward(node=node, inputs=dforward, wait=True)
+    # assert ret['isdone'], f'{ret}'
     
     # text2voice(translate(f'I am arrived at {loc2text(env_name)}', to_language='korean'))
     announce_arrived()
@@ -177,7 +177,7 @@ def move(node, **kwargs):
         lambda: turn(node=node, inputs=turn_deg),
         lambda : moveh(node=node, ry='straight', rz=robot_mode, wait=True),
         # lambda : movej(node=node, inputs='fold', mode=robot_mode, wait=True),
-        lambda : (time.sleep(0.5), movej(node=node, inputs='give', mode=robot_mode, wait=True))[-1],
+        lambda : (time.sleep(1), movej(node=node, inputs='give', mode=robot_mode, wait=True))[-1],
     ])
     assert ret['isdone'], f'{ret}'
     

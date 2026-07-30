@@ -46,7 +46,7 @@
       "default_mode": "left",
       "height": 0.762,
       "placepose": {
-        "dy": -0.1
+        "dy": -0.05
       },
       "loc": {
         "x": 2.4,
@@ -64,14 +64,14 @@
       "height": 0.566,
       "placepose": {
         "dx": 0.2,
-        "dy": 0
+        "dy": -0.1
       },
       "loc": {
-        "x": 1.322,
+        "x": 1.38,
         "y": -0.809,
         "rz": -90
       },
-      "dforward": 0,
+      "dforward": 0.15,
       "dshift": -0.3
     },
     "bed@main room": {
@@ -80,7 +80,7 @@
       "placepose": {
         "dy ": -0.1
       },
-      "height": 0.32,
+      "height": 0.4,
       "loc": {
         "x": 2.305,
         "y": 0.28,
@@ -92,8 +92,8 @@
       "label": "\uac70\uc2e4 \ud14c\uc774\ube14",
       "default_mode": "left",
       "placepose": {
-        "dx": 0.05,
-        "dy": -0.05
+        "dx": 0,
+        "dy": -0.1
       },
       "height": 0.456,
       "loc": {
@@ -102,7 +102,7 @@
         "rz": -90
       },
       "dshift": -0.2,
-      "dforward": 0.05
+      "dforward": 0.15
     },
     "wait@living room": {
       "label": "living_room_wait",
@@ -181,16 +181,16 @@
       "handle_height": 0.415,
       "height": 0.566,
       "placepose": {
-        "dx": 0.2,
-        "dy": -0.1
+        "dx": 0.25,
+        "dy": -0.15
       },
       "loc": {
-        "x": -1.8,
+        "x": -2.4,
         "y": -2.2,
         "rz": 90
       },
-      "dshift": -0.1,
-      "dforward": -0.1
+      "dshift": -0.15,
+      "dforward": 0
     },
     "wait": {
       "default_mode": "front",
@@ -653,13 +653,14 @@
     "detect_background": {
       "use": true,
       "stride": 20,
-      "avoid_model": "rfdetr-gdino-sam-etri",
+      "avoid_model": "grounding-dino",
       "avoid_prompt": "object.",
-      "avoid_conf": 0.15,
+      "avoid_conf": 0.3,
       "avoid_pad": 20,
       "avoid_max_area": 0.1,
-      "place_height_band": 0.05,
+      "place_height_band": 0.1,
       "place_margin_cells": 2,
+      "place_min_component_cells": 6,
       "calib_tune": {
         "dx": 0.03,
         "dy": 0.05
