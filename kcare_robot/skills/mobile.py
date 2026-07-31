@@ -84,7 +84,7 @@ def move(node, **kwargs):
     
     if 'home' in env_name:
         moveh(node=node, inputs='front', wait=False)
-        return moveb(node=node, wait=True, **HOME_LOC)   
+        return moveb(node=node, wait=True, x=0.5, y=0, rz=0) 
 
     if 'base' in env_name:
         moveh(node=node, inputs='front', wait=False) 
@@ -156,7 +156,7 @@ def move(node, **kwargs):
     # move
     kwargs.update({'wait':True})
     if not run_parallel_check(funcs=[
-        lambda : (time.sleep(5),lift(node=node, inputs='home', mode='front'), time.sleep(3), lift(node=node, inputs=lift_height, mode=robot_mode, wait=True))[-1],
+        lambda : (time.sleep(4),lift(node=node, inputs='home', mode='front'), time.sleep(3), lift(node=node, inputs=lift_height, mode=robot_mode, wait=True))[-1],
         # lambda : movej(node=node, inputs='fold', mode=robot_mode),
         lambda : ( movej(node=node, inputs='fold', mode=prev_robot_mode),time.sleep(2), movej(node=node, inputs='fold', mode='front'))[-1],
         lambda : (moveb(node=node, **kwargs), forward(node=node, inputs=dforward, wait=True))[-1] ,

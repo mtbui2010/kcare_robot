@@ -47,19 +47,33 @@ def _require(value, agent_name: str):
 
 
 def _fetch_head(node) -> CameraData:
-    """head_cam — used by `find`."""
+    """Fetch data from the head camera used by `find`."""
     a = node.agents
-    rgb, depth, cam_params, head_state = run_parallel(funcs=[
-        lambda: a['head_rgb'].get(),
-        lambda: a['head_depth'].get(),
-        lambda: a['head_cam_params'].get(),
-        lambda: get_head_state(node=node),
-    ])
-    _require(rgb,        'head_rgb')
-    _require(depth,      'head_depth')
-    _require(cam_params, 'head_cam_params')
-    return CameraData(rgb=rgb['im'], depth=depth['im'],
-                      cam_params=cam_params['cam_params'], head_state=head_state)
+
+    for _ in range(3):
+        rgb, depth, cam_params, head_state = run_parallel(funcs=[
+            lambda: a["head_rgb"].get(),
+            lambda: a["head_depth"].get(),
+            lambda: a["head_cam_params"].get(),
+            lambda: get_head_state(node=node),
+        ])
+
+        _require(rgb, "head_rgb")
+        _require(depth, "head_depth")
+        _require(cam_params, "head_cam_params")
+
+        if rgb["im"].shape[:2] == depth["im"].shape[:2]:
+            return CameraData(
+                rgb=rgb["im"],
+                depth=depth["im"],
+                cam_params=cam_params["cam_params"],
+                head_state=head_state,
+            )
+
+    raise ValueError(
+        f"RGB image shape {rgb['im'].shape[:2]} does not match "
+        f"depth image shape {depth['im'].shape[:2]}."
+    )
 
 
 def _fetch_arm(node) -> CameraData:

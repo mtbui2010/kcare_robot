@@ -87,6 +87,6 @@
   {
     "id": "df121d60b9ee",
     "label": "go home",
-    "plan": "moveb::x=0.5,y=0, rz=0"
+    "plan": "move::home"
   }
 ]

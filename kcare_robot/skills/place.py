@@ -105,7 +105,7 @@ def place(node, **kwargs):
         assert ret['isdone'], f'{ret}'
 
     ret = run_parallel_check(funcs=[
-        lambda: (time.sleep(0. if kwargs['islying'] else 0.13), movet(node=node, dz=kwargs['dz_up']/2) if kwargs['islying'] else movel(node=node, dz=-kwargs['dz_up'],acc= 0.3 if kwargs['islying'] else 0.2))[-1],
+        lambda: (time.sleep(0. if kwargs['islying'] else 0.2), movet(node=node, dz=kwargs['dz_up']/2) if kwargs['islying'] else movel(node=node, dz=-kwargs['dz_up'],acc= 0.3 if kwargs['islying'] else 0.2))[-1],
         lambda: (time.sleep(0.3 if kwargs['islying'] else 0.), grip(node=node, inputs='open', wait=True))
     ])
     assert ret['isdone'], f'{ret}'
