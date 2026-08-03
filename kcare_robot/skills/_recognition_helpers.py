@@ -31,11 +31,7 @@ from robot_agent.utils import deg2quaternion
 import cv2
 
 def _normalize_orientation(theta):
-    # Normalize to (-180, 180]
-    theta = ((theta + 180) % 360) - 180
-    # Remove 180° ambiguity
-    theta += (180 if theta <= -90 else 180)
-    return theta
+    return 90.0 - (90.0 - theta) % 180.0
 
 
 @dataclass
@@ -704,6 +700,7 @@ def _line_to_grasppose(node, line, *, cam_params, depths: dict,
     rz = np.arctan2(y1 - y0, x1 - x0) * 180 / np.pi
     if not keep_orientation:
         rz = rz if to_pick_lying_obj else 0
+    rz = _normalize_orientation(rz)
 
     depth_final = depth_value / 1000. - ARM_CONFIGS['wrist_tool_length']  # m
     return [float(x), float(y), float(depth_final), float(rz), float(width)], float(depth_final)
