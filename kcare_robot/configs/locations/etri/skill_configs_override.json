@@ -190,7 +190,7 @@
         "rz": 90
       },
       "dshift": -0.15,
-      "dforward": 0
+      "dforward": 0.05
     },
     "wait": {
       "default_mode": "front",
@@ -250,7 +250,7 @@
       "lying": 45,
       "standing": 10
     },
-    "approach_d": 0.12,
+    "approach_d": 0.08,
     "home": {
       "front": [
         0,
@@ -656,7 +656,7 @@
       "avoid_model": "grounding-dino",
       "avoid_prompt": "object.",
       "avoid_conf": 0.3,
-      "avoid_pad": 20,
+      "avoid_pad": 17,
       "avoid_max_area": 0.1,
       "place_height_band": 0.1,
       "place_margin_cells": 2,

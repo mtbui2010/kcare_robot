@@ -13,6 +13,8 @@ def get3d(node, **kwargs):
         out['d_array'] = [float(p[2]/1000.) for p in p2]
 
     ret =  node.agents['get3d'].send(out)
+    assert ret['isdone'], f'{ret}'
+
     ret['pose'] = np.stack(
         (np.asarray(ret.pop('x')),
         np.asarray(ret.pop('y')),
@@ -34,6 +36,8 @@ def get3d_arm(node, **kwargs):
         out['d_array'] = [float(p[2]/1000.) for p in p2]
 
     ret =  node.agents['get3d_tool'].send(out)
+    assert ret['isdone'], f'{ret}'
+    
     ret['pose'] = np.stack(
         (np.asarray(ret.pop('x')),
         np.asarray(ret.pop('y')),

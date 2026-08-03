@@ -9,7 +9,7 @@ import `recognition` back (no import cycle)."""
 from dataclasses import dataclass
 from typing import Optional, Callable
 
-import numpy as np, threading, json, time
+import numpy as np, threading, json, time, cv2
 
 from pyconnect.utils import run_parallel
 from visionserve.utils import (
@@ -29,6 +29,13 @@ from kcare_robot.skills.pointcloud import get3d, get3d_arm
 from kcare_robot.skills.arm import get_wrist_angle, arm_pose
 from robot_agent.utils import deg2quaternion
 import cv2
+
+def _normalize_orientation(theta):
+    # Normalize to (-180, 180]
+    theta = ((theta + 180) % 360) - 180
+    # Remove 180° ambiguity
+    theta += (180 if theta <= -90 else 180)
+    return theta
 
 
 @dataclass
@@ -50,30 +57,22 @@ def _fetch_head(node) -> CameraData:
     """Fetch data from the head camera used by `find`."""
     a = node.agents
 
-    for _ in range(3):
-        rgb, depth, cam_params, head_state = run_parallel(funcs=[
-            lambda: a["head_rgb"].get(),
-            lambda: a["head_depth"].get(),
-            lambda: a["head_cam_params"].get(),
-            lambda: get_head_state(node=node),
-        ])
+    rgb, depth, cam_params, head_state = run_parallel(funcs=[
+        lambda: a["head_rgb"].get(),
+        lambda: a["head_depth"].get(),
+        lambda: a["head_cam_params"].get(),
+        lambda: get_head_state(node=node),
+    ])
 
-        _require(rgb, "head_rgb")
-        _require(depth, "head_depth")
-        _require(cam_params, "head_cam_params")
+    _require(rgb, "head_rgb")
+    _require(depth, "head_depth")
+    _require(cam_params, "head_cam_params")
 
-        if rgb["im"].shape[:2] == depth["im"].shape[:2]:
-            return CameraData(
-                rgb=rgb["im"],
-                depth=depth["im"],
-                cam_params=cam_params["cam_params"],
-                head_state=head_state,
-            )
 
-    raise ValueError(
-        f"RGB image shape {rgb['im'].shape[:2]} does not match "
-        f"depth image shape {depth['im'].shape[:2]}."
-    )
+    if rgb["im"].shape[:2] != depth["im"].shape[:2]:
+        depth["im"] = cv2.resize(depth["im"], dsize=rgb["im"].shape[:2][::-1], interpolation=cv2.INTER_NEAREST)
+
+    return CameraData(rgb=rgb["im"], depth=depth["im"],  cam_params=cam_params["cam_params"], head_state=head_state)
 
 
 def _fetch_arm(node) -> CameraData:

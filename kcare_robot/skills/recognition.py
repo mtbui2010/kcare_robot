@@ -43,7 +43,7 @@ from kcare_robot.skills._recognition_helpers import (
     _object_pose_3d, _build_approach_pose, _grasp_from_box, _grasp_label,
     _parse_obj_names,
     call_detector, make_side_box, _head_calib_func_factory, is_inside_workspace_box,
-    save_detection_dataset,
+    save_detection_dataset, _normalize_orientation
 )
 
 def _detect_nearest(node, pose, **kwargs) -> dict:
@@ -558,6 +558,7 @@ def find_place(node, **kwargs) -> dict:
             robot_mode = env['default_mode']
             placepose = dict(env.get('placepose', None) or {})
             placepose.update(kwargs.pop('placepose', {}) or {})
+            placepose['dy'] = placepose.get('dy', 0) + (0.03 if islying else -0.03)
             point3d = _get_placepose(
                 placepose or None, target_height, robot_mode,
                 islying,

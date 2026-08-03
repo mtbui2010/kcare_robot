@@ -91,7 +91,7 @@ def place(node, **kwargs):
 
     splits = inputs.split('>>')
     target, destination = splits  if len(splits)==2 else (None, splits[-1])
-    if target is not None:
+    if target is not None or not grasp_succeed(node=node):
         kwargs.update(pick(node=node, inputs=target,  **kwargs))
         assert kwargs['isdone'], f'{kwargs}'
     
@@ -105,7 +105,7 @@ def place(node, **kwargs):
         assert ret['isdone'], f'{ret}'
 
     ret = run_parallel_check(funcs=[
-        lambda: (time.sleep(0. if kwargs['islying'] else 0.2), movet(node=node, dz=kwargs['dz_up']/2) if kwargs['islying'] else movel(node=node, dz=-kwargs['dz_up'],acc= 0.3 if kwargs['islying'] else 0.2))[-1],
+        lambda: (time.sleep(0. if kwargs['islying'] else 0.15), movet(node=node, dz=kwargs['dz_up']/2) if kwargs['islying'] else movel(node=node, dz=-kwargs['dz_up'],acc= 0.3 if kwargs['islying'] else 0.2))[-1],
         lambda: (time.sleep(0.3 if kwargs['islying'] else 0.), grip(node=node, inputs='open', wait=True))
     ])
     assert ret['isdone'], f'{ret}'
