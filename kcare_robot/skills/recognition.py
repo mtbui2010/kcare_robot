@@ -291,9 +291,10 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
             entry['grasp_score'] = grasp['score']
         out[name] = entry
 
-    # One annotated frame for this camera with every object's box + grasp.
-    _emit_detection_vis(node, rgb, camera, panels)
-    save_detection_dataset(rgb=rgb, depth=depth, results=out, tag=camera)
+    # One annotated frame for this camera with every object's box + grasp —
+    # captured alongside the raw inputs so a logged case shows what was detected.
+    vis = _emit_detection_vis(node, rgb, camera, panels)
+    save_detection_dataset(rgb=rgb, depth=depth, results=out, annotated=vis, tag=camera)
     return {'isdone': len(out) > 0, 'ins': out}
 
 

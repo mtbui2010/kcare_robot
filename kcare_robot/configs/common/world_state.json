@@ -1,1 +1,1 @@
-{"arrived": "wait@living room", "found": null, "holding": null, "opened": ["drawer2", "drawer@kitchen", "inputs=\"drawer@kitchen\",stay_here=True", "remote"], "on": [], "holding_since": null, "found_pose": null, "holding_pose": null}
+{"arrived": "table@living room", "found": null, "holding": null, "opened": ["drawer2", "drawer@kitchen", "inputs=\"drawer@kitchen\",stay_here=True", "remote"], "on": [], "holding_since": null, "found_pose": null, "holding_pose": null}

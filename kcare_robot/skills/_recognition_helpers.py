@@ -107,10 +107,56 @@ def log_result_data(node, data):
     node.agents['screen_log'].log_msg(data)
 
 
-def save_detection_dataset(rgb=None, depth=None, results=None, annotated=None, tag=''):
-    """If a per-run capture dir is active (UI "log data" on), persist vision
-    detection inputs/outputs: rgb(png), depth(npy), results(json), annotated(png).
+def _stream_detection_dataset(rgb=None, depth=None, results=None, annotated=None, tag=''):
+    """Push the vision inputs/outputs to the dashboard through ``log_data`` so
+    the browser can save them (frontend log target — backend writes nothing).
+
+    rgb / annotated → base64 PNG; depth → zlib-compressed uint16 LE + shape (the
+    dashboard already decodes this shape for its depth stream); results → JSON.
     Best-effort — never raises into the skill."""
+    try:
+        import base64, zlib, cv2, time
+        payload = {'tag': tag or '', 'ts': time.time()}
+
+        def _png_b64(img, rgb_order=True):
+            a = np.asarray(img)
+            if a.ndim == 3 and a.shape[2] == 3 and rgb_order:
+                a = cv2.cvtColor(a, cv2.COLOR_RGB2BGR)
+            ok, buf = cv2.imencode('.png', a)
+            return base64.b64encode(buf.tobytes()).decode() if ok else None
+
+        if rgb is not None:
+            payload['rgb'] = _png_b64(rgb)
+        if annotated is not None:
+            payload['annotated'] = _png_b64(annotated)
+        if depth is not None:
+            d16 = np.asarray(depth)
+            payload['depth_h'], payload['depth_w'] = int(d16.shape[0]), int(d16.shape[1])
+            payload['depth'] = base64.b64encode(
+                zlib.compress(np.ascontiguousarray(d16.astype('<u2')).tobytes())).decode()
+        if results is not None:
+            payload['results'] = results
+        log_data({'dataset': payload})
+    except Exception as e:
+        print(f'[recognition] dataset stream failed: {e}')
+
+
+def save_detection_dataset(rgb=None, depth=None, results=None, annotated=None, tag=''):
+    """Persist vision detection inputs/outputs for the active log target:
+
+    - backend target (a per-run capture dir is set) → write files to disk
+      (rgb.png / depth.npy / results.json / annotated.png);
+    - frontend target (streaming on) → push them over the agent WebSocket so
+      the dashboard saves them under its own ``robotapp_logs`` folder.
+
+    Best-effort — never raises into the skill."""
+    try:
+        from robot_agent.skills import stream_dataset
+        if stream_dataset():
+            _stream_detection_dataset(rgb=rgb, depth=depth, results=results,
+                                      annotated=annotated, tag=tag)
+    except Exception:
+        pass
     try:
         from robot_agent.skills import dataset_dir
         d = dataset_dir()
@@ -575,13 +621,17 @@ def _compose_detection_vis(rgb, camera, panels):
 
 
 def _emit_detection_vis(node, rgb, camera, panels):
-    """Compose + push the single-camera detection debug image (log_image)."""
+    """Compose + push the single-camera detection debug image (log_image).
+
+    Returns the composed frame so callers can also persist it (dataset capture)
+    without re-drawing; ``None`` when nothing was drawn."""
     try:
         comp = _compose_detection_vis(rgb, camera, panels)
         if comp is not None:
             log_data({'log_image': comp})
+        return comp
     except Exception:
-        pass
+        return None
 
 
 # ── Object pose / approach / grasp builders (pulled out of recognition.py) ────
