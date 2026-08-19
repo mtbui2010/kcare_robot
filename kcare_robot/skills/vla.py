@@ -1,5 +1,5 @@
 from robot_agent.skill_configs import VLA_CLIENTS
-from pyconnect.utils import init_detect_client
+from robot_agent.connect import init_detect_client
 from robot_agent.utils import exception_handler
 import numpy as np
 

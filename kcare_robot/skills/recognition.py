@@ -27,7 +27,8 @@ from visionserve.utils import show_box_on_rgb, get_valid_depth_locs
 from visionserve.postprocess import select_target_object, select_target_grasp
 
 from robot_agent.skill_configs import FIND_CONFIGS, ARM_CONFIGS, ENV
-from robot_agent.utils import exception_handler, get_env_specs, run_parallel_check
+from robot_agent.utils import exception_handler, run_parallel_check
+from kcare_robot.utils import get_env_specs
 from robot_agent.skills import log_data
 from kcare_robot.skills.head import moveh, get_robot_mode
 from kcare_robot.skills.mobile import move
@@ -295,7 +296,10 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     # captured alongside the raw inputs so a logged case shows what was detected.
     vis = _emit_detection_vis(node, rgb, camera, panels)
     save_detection_dataset(rgb=rgb, depth=depth, results=out, annotated=vis, tag=camera)
-    return {'isdone': len(out) > 0, 'ins': out}
+    ret = {'isdone': len(out) > 0, 'ins': out}
+    if 'head' in camera:
+        ret['log_image'] = vis
+    return ret
 
 
 
@@ -372,6 +376,9 @@ def find_once(node, **kwargs):
     if not ret['isdone'] and secondary_cam is not None:
         detect_head_thread.join()
         ret = results[secondary_cam]
+        log_data(ret)
+        # if 'vis' in ret:
+        #     log_data({'log_image': ret['vis']})
 
     return ret
 

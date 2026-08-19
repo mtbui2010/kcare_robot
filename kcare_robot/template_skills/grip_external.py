@@ -7,7 +7,7 @@ Two files in this template:
     1. The FastAPI server below (`uvicorn grip_external:app --port 9000`)
     2. A one-shot registration call (curl example at the bottom)
 
-Pros : no robot_agent / pyconnect import, any language, any ROS_DOMAIN_ID,
+Pros : no robot_agent import, any language, any ROS_DOMAIN_ID,
        crash isolation, custom timeout/headers via SkillDef.
 Cons : extra process, HTTP overhead (~ms), no streaming feedback.
 """
@@ -21,7 +21,7 @@ from rosinterfaces.srv import SendStringData
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from pyconnect.utils import dict2str, str2dict
+from robot_agent.connect.serde import dict2str, str2dict
 
 
 class GripNode(Node):

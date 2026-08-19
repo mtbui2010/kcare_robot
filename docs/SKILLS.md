@@ -9,7 +9,7 @@
 
 ```python
 def my_skill(node, **params) -> dict:
-    # node = pyconnect.ros.custom_node.CustomNode (already spinning)
+    # node = robot_agent.connect.ros.node.CustomNode (already spinning)
     # params = kwargs parsed from the caller (CLI "skill::inputs key=val" → {'inputs': ..., 'key': val})
     return {'isdone': bool, ...}   # MUST include 'isdone'; may add payload (ins, pose, dd, ...)
 ```

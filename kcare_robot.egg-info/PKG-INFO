@@ -2,3 +2,9 @@ Metadata-Version: 2.4
 Name: kcare_robot
 Version: 0.1.0
 Requires-Dist: robot_agent
+Requires-Dist: visionserve
+Requires-Dist: numpy==1.26.4
+Requires-Dist: opencv-python<5
+Requires-Dist: scipy
+Provides-Extra: all
+Requires-Dist: robot_agent[all]; extra == "all"

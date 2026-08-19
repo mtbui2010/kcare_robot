@@ -1,1 +1,8 @@
 robot_agent
+visionserve
+numpy==1.26.4
+opencv-python<5
+scipy
+
+[all]
+robot_agent[all]

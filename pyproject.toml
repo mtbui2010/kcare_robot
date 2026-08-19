@@ -5,12 +5,31 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kcare_robot"
 version = "0.1.0"
+# Robot-specific skills and configs for the KCare mobile manipulator.
+#
+# ROS 2 (rclpy, cv_bridge, sensor_msgs, std_msgs) and the local `rosinterfaces`
+# ament package are NOT pip-installable — they come from the sourced ROS distro
+# and your colcon workspace. `make doctor` checks for them.
+#
+# `robot_agent` and `visionserve` are local sibling repos, editable-installed by
+# `make install` before this package; listing them here only records the
+# requirement (pip finds them already satisfied).
+#
+# numpy is pinned to 1.26.4 to stay on the ABI that ROS 2's compiled extensions
+# (rclpy, cv_bridge) were built against — numpy 2.x breaks them at import.
+# opencv-python is capped below 5 because 5.x requires numpy>=2; 4.11.0.86 is
+# the newest release that resolves against the pin.
 dependencies = [
     "robot_agent",
+    "visionserve",
+    "numpy==1.26.4",
+    "opencv-python<5",
+    "scipy",
 ]
-# Robot-specific skills and configs for the KCare mobile manipulator.
-# Requires robot_agent, ROS2, pyconnect in the environment.
-# Install with: pip install -e .
+
+[project.optional-dependencies]
+# Pull in every robot_agent extra (transports + LLM backends + TTS).
+all = ["robot_agent[all]"]
 
 [project.scripts]
 kcare_robot = "kcare_robot.__main__:cli"

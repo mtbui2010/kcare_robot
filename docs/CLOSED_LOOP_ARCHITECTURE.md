@@ -109,7 +109,7 @@ optional (only `GraceBackend` ever imports it, lazily).
   `recontruct_plan` → parse `action::inputs && …` into PlanStep dicts) behind
   the same Protocol. `obs`/`visible_objects` are accepted but unused. It has no
   true suffix replan: `replan` re-runs a full `generate_plan` with the failure
-  context appended to the task. `pyconnect` imports are lazy.
+  context appended to the task. LLM-client imports are lazy.
 - **Optional extra.** `robot_agent/pyproject.toml` declares
   `[project.optional-dependencies] grace = ["pyplanner"]`. The core install does
   **not** depend on pyplanner; use `pip install -e ".[grace]"` (and
@@ -252,7 +252,7 @@ dashboard — see `TRACKING_VERIFY_VOICE.md` §5.
 | `base.py` | `Planner` Protocol + `WorldState` dataclass + `PlanStep` alias. No `pyplanner` import. |
 | `registry.py` | `get_planner(name, **cfg)` — lazy backend dispatch; keeps the planning package import-clean. |
 | `backends/pyplanner_grace.py` | `GraceBackend` — adapts pyplanner's GRACE; lazy `import pyplanner`, kwarg filtering, metrics→dict, optional `record_episode`. |
-| `backends/llm_direct.py` | `LlmDirectBackend` — legacy direct-LLM flow behind the Protocol; lazy `pyconnect`; naive full re-plan on `replan`. |
+| `backends/llm_direct.py` | `LlmDirectBackend` — legacy direct-LLM flow behind the Protocol; lazy LLM imports; naive full re-plan on `replan`. |
 | `loop.py` | `ClosedLoop` — the driver: ground → generate_plan → screen → map → exec → check → replan → record, streaming events; `run_blocking(task, lang, plan_only)`. |
 | `mapper.py` | `ActionMapper` (`to_skill`, `apply_effect`, `screen`) + `Unmappable`. Robot-agnostic; pulls specifics from the NameMap. |
 | `verify.py` | `StepVerifier` (isdone → symbolic → VLM) + `VerifyResult` + `verdict()`. |

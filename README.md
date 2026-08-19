@@ -115,7 +115,7 @@ run_parallel_check([
 ])
 ```
 
-`run_parallel_check()` (from `pyconnect`) fires ROS actions in parallel and
+`run_parallel_check()` (from `robot_agent.connect.parallel`) fires ROS actions in parallel and
 waits for all to converge before continuing — drops a typical pick from
 ~7 s sequential to ~3 s.
 
@@ -159,9 +159,132 @@ arbitration layer.
 ## Quick start
 
 ```bash
-make install           # editable-install pyconnect, robot_agent, kcare_robot
+make install           # creates conda env 'kcare' + installs ALL dependencies
+make doctor            # pre-flight: ROS 2, rosinterfaces, 49 skill imports
 make run               # uvicorn kcare_robot.main:app --port 8001
                        # auto-sources /opt/ros/humble/setup.bash
+```
+
+`make install` is idempotent — re-run it any time to pick up new dependencies.
+
+It starts with **`make check-deps`**, which verifies every sibling repo it is
+about to editable-install is present in `../` *and* is a buildable project
+(has `pyproject.toml`/`setup.py`) — so a missing checkout fails immediately,
+before an env is created or anything is downloaded:
+
+```
+  [ OK ] robot_agent  ../robot_agent
+  [ OK ] pyplanner    ../pyplanner
+  [ -- ] visionserve  from PyPI (no local checkout)
+```
+
+The "is it buildable" half matters: a directory that exists but whose package
+source is gitignored installs *successfully* as an empty module, and `pip list`
+will happily show it. `make install` finishes by importing every non-ROS
+dependency for the same reason.
+
+The env is created with **the same CPython version ROS was built for** (probed
+from `/opt/ros/$ROS_DISTRO/lib/python3.*`), because `rclpy` is a compiled
+extension and will not import under a mismatched interpreter.
+
+**numpy is pinned to 1.26.4** for that same ABI reason: ROS 2's `rclpy` and
+`cv_bridge` are built against numpy 1.x and fail at import under 2.x. That in
+turn caps `opencv-python` below 5 (5.x requires `numpy>=2`), so the resolved
+set is numpy 1.26.4 + opencv-python 4.11.0.86.
+
+What it does and does not install:
+
+| | |
+|---|---|
+| conda env + native libs | python, `portaudio` (TTS playback), `ffmpeg` (mp3 decode) |
+| editable, from sibling repos | `robot_agent`, `pyplanner` (GRACE planner) |
+| from PyPI | `visionserve`, numpy, opencv, scipy + every `robot_agent` extra (transports, LLM backends, TTS) |
+| **not installed** — you provide | **ROS 2** (`rclpy`, `cv_bridge`, `sensor_msgs`) and the **`rosinterfaces`** ament package (`colcon build`, then source the workspace) |
+
+Useful overrides:
+
+### Installing into an existing env
+
+By default `make install` targets an env named **`kcare`** and creates it if it
+is not there. To install into an env you already have:
+
+```bash
+make install CONDA_ENV=myenv                  # by name (still created if absent)
+make install CONDA_ENV=myenv USE_EXISTING=1   # by name, must already exist
+make install ENV_PREFIX=/path/to/env USE_EXISTING=1        # conda env by path
+```
+
+### Installing into the python that is active right now
+
+`USE_CURRENT=1` skips conda entirely and targets whatever `python3` is first on
+your PATH — an activated conda env, a venv, pyenv, anything:
+
+```bash
+conda activate myenv          # or: source .venv/bin/activate
+make install USE_CURRENT=1
+make run     USE_CURRENT=1    # run/cli/doctor take the same flag
+
+make install PYTHON=/opt/py310/bin/python     # exact interpreter (implies USE_CURRENT)
+```
+
+Behaviour in this mode:
+
+- **Nothing is ever created** — the interpreter must already exist.
+- **conda base and the system python are refused** unless you add `FORCE=1`;
+  forgetting to activate is exactly how ~40 packages end up somewhere painful.
+- `portaudio`/`ffmpeg` are conda-installed only when the target *is* a conda
+  env; for a venv/system python you get an
+  `sudo apt install portaudio19-dev ffmpeg` hint instead (TTS stays silent
+  without them, everything else works).
+- The ROS python-version check still runs and warns on mismatch.
+- `make env-recreate` refuses to operate — it only manages conda envs this
+  Makefile created.
+
+`USE_EXISTING=1` turns "env not found" into a hard error that lists your envs,
+instead of quietly building a new one — worth using whenever you type a name,
+since a typo would otherwise cost you a full fresh install. It also blocks
+`make env-recreate`, so the env you asked to reuse cannot be deleted by it.
+
+`ENV_PREFIX` takes any path, so prefix envs (`conda create -p ...`) and envs
+outside the conda base directory work too; every conda call uses `-p`.
+
+Two things to know when reusing an env:
+
+- **Python version is checked, not changed.** If the env's interpreter differs
+  from the one ROS was built for, install prints a warning — `rclpy` is a
+  compiled extension and will not import there. `make doctor` confirms it.
+- **`portaudio` + `ffmpeg` are conda-installed into it.** To leave the env's
+  conda packages alone, pass `CONDA_SYS_LIBS=` (TTS then degrades to silent).
+
+### Running without `make install`
+
+`run`, `cli`, `doctor` and the skill-scaffolding targets do **not** require the
+conda env to exist. When it is missing they fall back to the python currently on
+PATH and say so:
+
+```
+[kcare_robot] conda env 'kcare' not found -- using current python: /path/to/python (/path)
+```
+
+That makes the repo usable on a machine whose environment was prepared some
+other way. If that python does not have `kcare_robot` installed either, you get
+an actionable error instead of a bare `ModuleNotFoundError`. Pass
+`USE_CURRENT=1` to make the choice explicit and silence the notice.
+
+`install`, `install-deps` and `env` never fall back — creating and populating
+the env is their job.
+
+### Other overrides
+
+```bash
+make install PYTHON_VERSION=3.11        # force an interpreter for a new env
+make install ROBOT_AGENT_DIR=/path/to/robot_agent    # repos live elsewhere
+make install PYPLANNER_DIR=             # skip it (no GRACE planner)
+make install VISIONSERVE_DIR=/path/to/src            # local instead of PyPI
+make run     ROS_DISTRO=jazzy           # different ROS distro
+make check-deps                         # just the sibling-repo preflight
+make env-info                           # show every resolved path
+make env-recreate                       # wipe the env and rebuild
 ```
 
 Open <https://robot.aistations.org>, click **Guide**, paste
@@ -219,7 +342,7 @@ kcare_robot/
     │   ├── mobile.py         Nav2 + parallel lift coordination
     │   ├── grip.py · lift.py · arm.py · head.py · place.py · vlm.py …
     └── template_skills/      three reference patterns (NOT auto-registered)
-        ├── grip_pyconnect.py     Pattern 1 — pyconnect NodeAgent (90 % of skills)
+        ├── grip_node_agent.py    Pattern 1 — connect-layer NodeAgent (90 % of skills)
         ├── grip_pure_ros2.py     Pattern 2 — raw rclpy + custom QoS / feedback
         └── grip_external.py     Pattern 3 — separate process, registered by URL
 ```

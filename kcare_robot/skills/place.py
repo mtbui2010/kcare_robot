@@ -12,7 +12,8 @@ orchestration only — flow matches the original module 1:1.
 import time
 
 from robot_agent.skill_configs import ENV, ME
-from robot_agent.utils import get_closest_loc, run_parallel_check, get_env_specs
+from robot_agent.utils import run_parallel_check
+from kcare_robot.utils import get_closest_loc, get_env_specs
 from kcare_robot.skills.head import get_robot_mode
 
 from kcare_robot.skills.calibrattion import Head2BaseCalibration
@@ -249,7 +250,7 @@ def wipe(node, **kwargs):
     ret = movet(node=node, dz=kwargs['dapproach'], wait=True)
     assert ret['isdone'], f'{ret}'
 
-    movel(node=node, dz=-kwargs['dz_up'])
+    movel(node=node, dz=-kwargs['dz_up']+0.005)
 
     #wipe here
     mul = 1 if robot_mode=='right' else -1

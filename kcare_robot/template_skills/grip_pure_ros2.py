@@ -8,14 +8,14 @@ already spinning, so we just `call_async` and poll the future.
 Pros : full rclpy control (timeout, retry, custom request shape, error fields
        beyond `isdone/msg`); no extra connection setup.
 Cons : skill is responsible for future handling and timing out; bypasses
-       pyconnect's log_msg.
+       the connect layer's log_msg.
 """
 
 import time
 import rclpy
 from rosinterfaces.srv import SendStringData
 
-from pyconnect.utils import dict2str, str2dict
+from robot_agent.connect.serde import dict2str, str2dict
 from robot_agent.utils import exception_handler, refine_inputs
 from robot_agent.skill_configs import GRIP_CONFIGS
 import numpy as np

@@ -1,6 +1,6 @@
 
-from pyconnect.ros.custom_node import CustomNode
-from pyconnect.ros.utils import get_default_service_server, get_default_pub, get_default_service_client
+from robot_agent.connect.ros.node import CustomNode
+from robot_agent.connect.ros.configs import get_default_service_server, get_default_pub, get_default_service_client
 from robot_agent.skill_configs import PROMPT_CONFIGS, OBSERVATION_NODE_CONFIGS, DEVICE_CLIENT_CONFIGS, GUIDE
 from robot_agent.utils import run_parallel_check
 import threading, time
@@ -28,7 +28,8 @@ def run_node():
     from rclpy.executors import MultiThreadedExecutor
     from rosinterfaces.srv import SendStringData
 
-    from pyconnect.utils import str2dict, dict2str, data_info
+    from robot_agent.connect.serde import str2dict, dict2str
+    from robot_agent.connect.helpers import data_info
     # rclpy.init()
 
     class SkillNode(Node):

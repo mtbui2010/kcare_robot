@@ -4,7 +4,7 @@
 _PKG = 'kcare_robot.skills'
 
 SKILL_CONFIGS: dict[str, tuple[str, str]] = {
-    'detect':           (f'{_PKG}.recognition', 'find'),
+    'detect':           (f'{_PKG}.recognition', 'detect'),
     'find':             (f'{_PKG}.recognition', 'find'),
     'find_grasp':         (f'{_PKG}.recognition', 'find_grasp'),
     'grasp_succeed':    (f'{_PKG}.recognition', 'grasp_succeed'),
@@ -54,4 +54,5 @@ SKILL_CONFIGS: dict[str, tuple[str, str]] = {
     'approach_pick': (f'{_PKG}.pick', 'approach_pick'),
     'approach_place': (f'{_PKG}.place', 'approach_place'),
     'get3d_arm': (f'{_PKG}.pointcloud', 'get3d_arm'),
+    'real2sim_capture': (f'{_PKG}.real2sim_capture', 'real2sim_capture'),
 }

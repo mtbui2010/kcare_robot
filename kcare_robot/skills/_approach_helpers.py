@@ -5,7 +5,8 @@ import time
 import numpy as np
 
 from robot_agent.skill_configs import ARM_CONFIGS, LIFT_CONFIGS, ENV, CALIB_PARAMS, MOBILE_CONFIGS
-from robot_agent.utils import get_env_specs, run_parallel_check
+from robot_agent.utils import run_parallel_check
+from kcare_robot.utils import get_env_specs
 
 from kcare_robot.skills.arm import movel, movej, movet, get_wrist_angle, arm_pose
 from kcare_robot.skills.lift import lift, dlift, lift_state

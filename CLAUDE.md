@@ -62,7 +62,7 @@ node) and reconnects from the new site's `connections.json` + global configs.
 
 ```python
 def my_skill(node, **params) -> dict:
-    # node = pyconnect.ros.custom_node.CustomNode (spinning).
+    # node = robot_agent.connect.ros.node.CustomNode (spinning).
     # params = kwargs from caller (HTTP body / CLI key=val / Python kwargs).
     return {'isdone': bool, ...}
 ```

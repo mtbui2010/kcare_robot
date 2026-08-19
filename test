@@ -2,8 +2,8 @@
   "table@living room": {
     "default_mode": "left",
     "placepose": {
-      "dx": -0.05,
-      "dy": -0.15
+      "dx": 0,
+      "dy": -0.1
     },
     "height": 0.72,
     "loc": {
@@ -25,7 +25,7 @@
   "drawer@living room": {
     "default_mode": "left",
     "placepose": {
-      "dx":0,
+      "dx": 0,
       "dy": 0
     },
     "handle": "gray handle",
@@ -54,5 +54,22 @@
     },
     "dshift": -0.25,
     "dforward": -0.1
+  },
+  "drawer3@living room": {
+    "default_mode": "right",
+    "placepose": {
+      "dx": 0.1,
+      "dy": 0
+    },
+    "handle": "gray handle",
+    "handle_height": 0.415,
+    "height": 0.565,
+    "loc": {
+      "x": 1,
+      "y": -0.7,
+      "rz": 0
+    },
+    "dshift": 0,
+    "dforward": 0
   }
 }

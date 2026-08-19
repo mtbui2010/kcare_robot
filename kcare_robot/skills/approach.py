@@ -13,10 +13,10 @@ This file is the orchestration only — the flow matches the original module 1:1
 """
 
 from robot_agent.skill_configs import ARM_CONFIGS, ENV, NO_ACTION
-from robot_agent.utils import (
+from robot_agent.utils import run_parallel_check
+from kcare_robot.utils import (
     get_env_specs,
     get_lift_height,
-    run_parallel_check,
     announce_placing,
     announce_placed,
 )

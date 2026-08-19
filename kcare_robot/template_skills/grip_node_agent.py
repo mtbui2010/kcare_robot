@@ -1,11 +1,12 @@
-"""Pattern 1 -- pyconnect NodeAgent.
+"""Pattern 1 -- robot_agent.connect NodeAgent.
 
 The 'grip' device is registered once via POST /devices (conn_type=ros_service,
 conn_name='grip'). robot_agent's DeviceManager attaches the rclpy client to the
 shared CustomNode and wraps it in a ServiceClientAgent (encode/decode via
 dict2str/str2dict, with logging hooks).
 
-The skill just calls `.send(...)` -- everything else is handled by pyconnect.
+The skill just calls `.send(...)` -- everything else is handled by the
+connect layer (robot_agent.connect.ros.node).
 
 Pros : shortest code, free logging, reuse of registered device.
 Cons : payload bound to SendStringData (req/ret are strings); custom QoS or

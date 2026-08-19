@@ -9,20 +9,20 @@
       "data_interface": "sensor_msgs/msg/CompressedImage",
       "is_client": true,
       "is_camera": true,
-      "decode_func": "def decode_func(msg):\n    from pyconnect.ros.utils import decode_imgmsg\n    return decode_imgmsg(msg)"
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.ros.codecs import decode_imgmsg\n    return decode_imgmsg(msg)"
     }
   },
   {
     "type": "ros_topic",
     "name": "head_depth",
     "config": {
-      "conn_name": "/femto/depth/image_raw/compressedDepth",
-      "agent_name": "head_depth",
+      "conn_name": "/femto/depth/aligned/compressedDepth",
       "conn_type": "ros_topic",
-      "data_interface": "sensor_msgs/msg/CompressedImage",
       "is_client": true,
+      "agent_name": "head_depth",
+      "data_interface": "sensor_msgs/msg/CompressedImage",
       "is_camera": true,
-      "decode_func": "def decode_func(msg):\n    from pyconnect.ros.utils import decode_imgmsg\n    return decode_imgmsg(msg)"
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.ros.codecs import decode_imgmsg\n    return decode_imgmsg(msg)"
     }
   },
   {
@@ -34,7 +34,7 @@
       "conn_type": "ros_topic",
       "data_interface": "sensor_msgs/msg/CameraInfo",
       "is_client": true,
-      "decode_func": "def decode_func(msg):\n    from pyconnect.ros.utils import decode_caminfomsg\n    return decode_caminfomsg(msg)"
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.ros.codecs import decode_caminfomsg\n    return decode_caminfomsg(msg)"
     }
   },
   {
@@ -46,7 +46,7 @@
       "conn_type": "ros_action",
       "data_interface": "kaair_msgs/action/LiftMove",
       "is_client": true,
-      "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'final_height': res.final_height}",
       "timeout": 30.0
     }
@@ -60,7 +60,7 @@
       "is_client": true,
       "agent_name": "joint_states",
       "data_interface": "sensor_msgs/msg/JointState",
-      "decode_func": "def decode_func(msg):\n    from pyconnect.utils import get_attrs\n    # Replace field names with actual message fields\n    ret = get_attrs(msg, ['name', 'position'])\n    ret['isdone'] = True\n    return ret"
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.helpers import get_attrs\n    # Replace field names with actual message fields\n    ret = get_attrs(msg, ['name', 'position'])\n    ret['isdone'] = True\n    return ret"
     }
   },
   {
@@ -72,7 +72,7 @@
       "is_client": true,
       "agent_name": "arm_base_tool_pose",
       "data_interface": "geometry_msgs/msg/PoseStamped",
-      "decode_func": "def decode_func(msg):\n    from pyconnect.utils import get_attrs\n    # Replace field names with actual message fields\n    ret = get_attrs(msg, ['pose'])\n    ret['isdone'] = True\n    return ret"
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.helpers import get_attrs\n    # Replace field names with actual message fields\n    ret = get_attrs(msg, ['pose'])\n    ret['isdone'] = True\n    return ret"
     }
   },
   {
@@ -84,7 +84,7 @@
       "is_client": true,
       "agent_name": "mobile_pose",
       "data_interface": "geometry_msgs/msg/PoseStamped",
-      "decode_func": "def decode_func(msg):\n    from pyconnect.utils import get_attrs\n    # Replace field names with actual message fields\n    ret = get_attrs(msg, ['pose'])\n    ret['isdone'] = True\n    return ret"
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.helpers import get_attrs\n    # Replace field names with actual message fields\n    ret = get_attrs(msg, ['pose'])\n    ret['isdone'] = True\n    return ret"
     }
   },
   {
@@ -96,7 +96,7 @@
       "is_client": true,
       "agent_name": "mobile_base_tool_pose",
       "data_interface": "geometry_msgs/msg/PoseStamped",
-      "decode_func": "def decode_func(msg):\n    from pyconnect.utils import get_attrs\n    # Replace field names with actual message fields\n    ret = get_attrs(msg, ['pose'])\n    ret['isdone'] = True\n    return ret"
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.helpers import get_attrs\n    # Replace field names with actual message fields\n    ret = get_attrs(msg, ['pose'])\n    ret['isdone'] = True\n    return ret"
     }
   },
   {
@@ -109,7 +109,7 @@
       "agent_name": "arm_rgb",
       "data_interface": "sensor_msgs/msg/CompressedImage",
       "is_camera": true,
-      "decode_func": "def decode_func(msg):\n    from pyconnect.ros.utils import decode_imgmsg\n    return decode_imgmsg(msg)"
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.ros.codecs import decode_imgmsg\n    return decode_imgmsg(msg)"
     }
   },
   {
@@ -121,7 +121,7 @@
       "is_client": true,
       "agent_name": "arm_movej",
       "data_interface": "kaair_msgs/action/MoveJoint",
-      "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'msg': 'MoveJ: ' + res.message}",
       "timeout": 20.0
     }
@@ -135,7 +135,7 @@
       "is_client": true,
       "agent_name": "arm_movet",
       "data_interface": "kaair_msgs/action/MoveTool",
-      "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'msg': 'MoveT: ' + res.message}",
       "timeout": 20.0
     }
@@ -149,7 +149,7 @@
       "is_client": true,
       "agent_name": "arm_enable",
       "data_interface": "std_srvs/srv/Trigger",
-      "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success}"
     }
   },
@@ -162,7 +162,7 @@
       "is_client": true,
       "agent_name": "grip",
       "data_interface": "control_msgs/action/GripperCommand",
-      "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req.command, data)\n    return req",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req.command, data)\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': True, 'stalled': res.stalled, 'reached': res.reached_goal}",
       "timeout": 10.0
     }
@@ -176,7 +176,7 @@
       "conn_type": "ros_action",
       "data_interface": "kaair_msgs/action/HeadMove",
       "is_client": true,
-      "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success}",
       "timeout": 10.0
     }
@@ -190,7 +190,7 @@
       "is_client": true,
       "agent_name": "mobile_move",
       "data_interface": "nav2_msgs/action/NavigateToPose",
-      "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    req.pose.header.frame_id = 'map'\n    req.behavior_tree = ''\n\n    req.pose.pose.position.x = data['x']\n    req.pose.pose.position.y = data['y']\n    req.pose.pose.position.z = data['z']\n\n    req.pose.pose.orientation.x = data['qx']\n    req.pose.pose.orientation.y = data['qy']\n    req.pose.pose.orientation.z = data['qz']\n    req.pose.pose.orientation.w = data['qw']\n    return req",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    req.pose.header.frame_id = 'map'\n    req.behavior_tree = ''\n\n    req.pose.pose.position.x = data['x']\n    req.pose.pose.position.y = data['y']\n    req.pose.pose.position.z = data['z']\n\n    req.pose.pose.orientation.x = data['qx']\n    req.pose.pose.orientation.y = data['qy']\n    req.pose.pose.orientation.z = data['qz']\n    req.pose.pose.orientation.w = data['qw']\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': True}",
       "timeout": 120.0
     }
@@ -204,7 +204,7 @@
       "is_client": true,
       "agent_name": "arm_cam_params",
       "data_interface": "sensor_msgs/msg/CameraInfo",
-      "decode_func": "def decode_func(msg):\n    from pyconnect.ros.utils import decode_caminfomsg\n    return decode_caminfomsg(msg)"
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.ros.codecs import decode_caminfomsg\n    return decode_caminfomsg(msg)"
     }
   },
   {
@@ -216,7 +216,7 @@
       "is_client": true,
       "agent_name": "mobile_forward",
       "data_interface": "kaair_msgs/srv/MobileShift",
-      "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.successed}"
     }
   },
@@ -229,7 +229,7 @@
       "is_client": true,
       "agent_name": "mobile_rotate",
       "data_interface": "kaair_msgs/srv/MobileRotate",
-      "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.successed}"
     }
   },
@@ -242,7 +242,7 @@
       "is_client": true,
       "agent_name": "mobile_turn",
       "data_interface": "kaair_msgs/srv/MobileRotate",
-      "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.successed}"
     }
   },
@@ -255,7 +255,7 @@
       "is_client": true,
       "agent_name": "get3d",
       "data_interface": "kaair_msgs/srv/CreateObjectMarker",
-      "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'x': res.x_array, 'y': res.y_array, 'z': res.z_array, 'msg': res.message}"
     }
   },
@@ -279,7 +279,7 @@
       "agent_name": "arm_depth",
       "data_interface": "sensor_msgs/msg/Image",
       "is_camera": true,
-      "decode_func": "def decode_func(msg):\n    from pyconnect.ros.utils import decode_imgmsg\n    return decode_imgmsg(msg)"
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.ros.codecs import decode_imgmsg\n    return decode_imgmsg(msg)"
     }
   },
   {
@@ -291,7 +291,7 @@
       "is_client": true,
       "agent_name": "arm_movel",
       "data_interface": "kaair_msgs/action/MoveLinear",
-      "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'msg': 'MoveL: ' + res.message}",
       "timeout": 15.0
     }
@@ -365,7 +365,7 @@
       "conn_type": "ros_service",
       "data_interface": "kaair_msgs/srv/CreateObjectMarker",
       "is_client": true,
-      "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success}"
     }
   },
@@ -378,7 +378,7 @@
       "is_client": true,
       "agent_name": "get3d_tool",
       "data_interface": "kaair_msgs/srv/CreateObjectMarker",
-      "encode_func": "def encode_func(data, req):\n    from pyconnect.utils import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'x': res.x_array, 'y': res.y_array, 'z': res.z_array, 'msg': res.message}"
     }
   },

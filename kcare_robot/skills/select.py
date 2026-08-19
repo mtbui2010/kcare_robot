@@ -1,4 +1,5 @@
-from robot_agent.utils import text2voice, correct_noun
+from robot_agent.utils import text2voice
+from kcare_robot.utils import correct_noun
 from kcare_robot.skills.place import place
 
 def select_response(**kwargs):

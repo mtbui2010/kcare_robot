@@ -3,6 +3,7 @@ pyproject.toml
 kcare_robot/__init__.py
 kcare_robot/__main__.py
 kcare_robot/main.py
+kcare_robot/utils.py
 kcare_robot.egg-info/PKG-INFO
 kcare_robot.egg-info/SOURCES.txt
 kcare_robot.egg-info/dependency_links.txt
@@ -37,6 +38,7 @@ kcare_robot/skills/new_skill.py
 kcare_robot/skills/pick.py
 kcare_robot/skills/place.py
 kcare_robot/skills/pointcloud.py
+kcare_robot/skills/real2sim_capture.py
 kcare_robot/skills/recognition.py
 kcare_robot/skills/rest_detect.py
 kcare_robot/skills/select.py
@@ -45,5 +47,5 @@ kcare_robot/skills/vla.py
 kcare_robot/skills/vlm.py
 kcare_robot/template_skills/__init__.py
 kcare_robot/template_skills/grip_external.py
+kcare_robot/template_skills/grip_node_agent.py
 kcare_robot/template_skills/grip_pure_ros2.py
-kcare_robot/template_skills/grip_pyconnect.py

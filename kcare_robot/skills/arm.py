@@ -1,7 +1,8 @@
-from robot_agent.utils import exception_handler, get_dtool_next_state, refine_inputs
+from robot_agent.utils import exception_handler, refine_inputs
+from kcare_robot.utils import get_dtool_next_state
 from robot_agent.utils import quaternion2deg, deg2quaternion
 from kcare_robot.skills.head import get_robot_mode
-from pyconnect.utils import update_dict, data_info
+from robot_agent.connect.helpers import update_dict, data_info
 from robot_agent.skill_configs import ARM_CONFIGS
 import numpy as np
 

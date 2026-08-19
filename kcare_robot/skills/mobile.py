@@ -1,9 +1,10 @@
-from robot_agent.utils import run_parallel_check, exception_handler, get_env_specs, get_lift_height, translate, text2voice, loc2text, correct_noun, correct_loc, announce_moving, announce_arrived
+from robot_agent.utils import run_parallel_check, exception_handler, translate, text2voice
+from kcare_robot.utils import get_env_specs, get_lift_height, loc2text, correct_noun, correct_loc, announce_moving, announce_arrived
 from kcare_robot.skills.arm import movej
 from kcare_robot.skills.head import moveh, get_robot_mode
 from kcare_robot.skills.lift import lift
 from robot_agent.skill_configs import ENV, LIFT_CONFIGS, MOBILE_CONFIGS, HOME_LOC
-from pyconnect.utils import update_dict
+from robot_agent.connect.helpers import update_dict
 import numpy as np, threading, time
 from robot_agent.utils import quaternion2deg, deg2quaternion
 
@@ -155,13 +156,13 @@ def move(node, **kwargs):
     
     # move
     kwargs.update({'wait':True})
-    if not run_parallel_check(funcs=[
+    ret = run_parallel_check(funcs=[
         lambda : (time.sleep(4),lift(node=node, inputs='home', mode='front'), time.sleep(3), lift(node=node, inputs=lift_height, mode=robot_mode, wait=True))[-1],
         # lambda : movej(node=node, inputs='fold', mode=robot_mode),
         lambda : ( movej(node=node, inputs='fold', mode=prev_robot_mode),time.sleep(2), movej(node=node, inputs='fold', mode='front'))[-1],
-        lambda : (moveb(node=node, **kwargs), forward(node=node, inputs=dforward, wait=True))[-1] ,
-    ]) ['isdone']:
-        raise  Exception('moveh/lift/moveb failed ...')
+        lambda : (moveb(node=node, **kwargs), forward(node=node, inputs=dforward, wait=True))[-1]
+    ])
+    assert ret['isdone'], f'{ret}'
     
     # ret = lift(node=node, inputs=lift_height, mode=robot_mode, wait=True)
     # assert ret['isdone'], f'{ret}'

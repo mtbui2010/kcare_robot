@@ -11,7 +11,7 @@ from typing import Optional, Callable
 
 import numpy as np, threading, json, time, cv2
 
-from pyconnect.utils import run_parallel
+from robot_agent.connect.parallel import run_parallel
 from visionserve.utils import (
     show_box_on_rgb, Ixy2xyz, show_line_on_rgb,
     get_mask_locs_with_stride, calc_normalvector,

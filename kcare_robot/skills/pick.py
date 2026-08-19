@@ -18,8 +18,8 @@ import math
 import numpy as np
 
 from robot_agent.skill_configs import ENV, ARM_CONFIGS, NO_ACTION
-from robot_agent.utils import (
-    run_parallel_check,
+from robot_agent.utils import run_parallel_check
+from kcare_robot.utils import (
     get_env_specs,
     get_lift_height,
     announce_picked,
@@ -325,7 +325,7 @@ def close_drawer(**kwargs):
         # assert ret['isdone'], f'{ret}'
         
 
-    ret = movet(node=node, dz=dpush, acc=0.25)
+    ret = movet(node=node, dz=dpush, acc=0.2)
     assert ret['isdone'], f'{ret}'
 
     ret = movet(node=node, dz=-0.2, wait=False)
@@ -583,6 +583,7 @@ def approach_pick(node, **kwargs) -> dict:
     ret = movel(node=node, **kwargs['approach_pose'])
     assert ret['isdone'], f'{ret}'
 
+    kwargs['isdone'] = True
     return kwargs
 
 @arm_exception_handler
