@@ -3,11 +3,11 @@
     "type": "ros_topic",
     "name": "head_rgb",
     "config": {
-      "conn_name": "/femto/color/image_raw/compressed",
-      "agent_name": "head_rgb",
+      "conn_name": "/femto/color/image_raw",
       "conn_type": "ros_topic",
-      "data_interface": "sensor_msgs/msg/CompressedImage",
       "is_client": true,
+      "agent_name": "head_rgb",
+      "data_interface": "sensor_msgs/msg/Image",
       "is_camera": true,
       "decode_func": "def decode_func(msg):\n    from robot_agent.connect.ros.codecs import decode_imgmsg\n    return decode_imgmsg(msg)"
     }
@@ -16,11 +16,11 @@
     "type": "ros_topic",
     "name": "head_depth",
     "config": {
-      "conn_name": "/femto/depth/aligned/compressedDepth",
+      "conn_name": "/femto/depth/aligned",
       "conn_type": "ros_topic",
       "is_client": true,
       "agent_name": "head_depth",
-      "data_interface": "sensor_msgs/msg/CompressedImage",
+      "data_interface": "sensor_msgs/msg/Image",
       "is_camera": true,
       "decode_func": "def decode_func(msg):\n    from robot_agent.connect.ros.codecs import decode_imgmsg\n    return decode_imgmsg(msg)"
     }
@@ -163,8 +163,7 @@
       "agent_name": "grip",
       "data_interface": "control_msgs/action/GripperCommand",
       "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req.command, data)\n    return req",
-      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': True, 'stalled': res.stalled, 'reached': res.reached_goal}",
-      "timeout": 10.0
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': True, 'stalled': res.stalled, 'reached': res.reached_goal}"
     }
   },
   {
@@ -402,6 +401,19 @@
       "url": "http://192.168.1.11:11434",
       "model": "qwen2.5:7b",
       "is_active": true
+    }
+  },
+  {
+    "type": "ros_action",
+    "name": "vla_drawer_open",
+    "config": {
+      "conn_name": "/drawer/open",
+      "agent_name": "vla_drawer_open",
+      "conn_type": "ros_action",
+      "data_interface": "max_interfaces/action/OpenDrawer",
+      "is_client": true,
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'msg': res.message}"
     }
   }
 ]

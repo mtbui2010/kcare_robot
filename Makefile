@@ -92,8 +92,10 @@ else
   # Overridable so an env anywhere on disk can be targeted, not just
   # $base/envs/. Every conda call below uses `-p $(ENV_PREFIX)`, which works
   # for both named and prefix envs, so there is a single code path either way.
-  ENV_PREFIX ?= $(CONDA_BASE)/envs/$(CONDA_ENV)
-  ENV_PY     = $(ENV_PREFIX)/bin/python
+  # Empty when conda is absent (e.g. a non-interactive ssh shell that never
+  # sourced conda.sh) rather than the bogus '/envs/<name>'.
+  ENV_PREFIX ?= $(if $(CONDA_BASE),$(CONDA_BASE)/envs/$(CONDA_ENV),)
+  ENV_PY     = $(if $(ENV_PREFIX),$(ENV_PREFIX)/bin/python,)
 endif
 ENV_PIP    = $(ENV_PY) -m pip
 # mamba resolves much faster when it is available.
@@ -143,7 +145,8 @@ export VERIFY_IMPORTS_PY
 
 .PHONY: install install-deps check-deps env _env-current env-recreate env-info run cli terminate doctor \
         skill-generic skill-detect skill-external delete-skill rename-skill \
-        run-external test clean help _require-env _require-run-py
+        run-external test clean help _require-env _require-run-py \
+        new-robot copy-skill
 
 help:
 	@echo "kcare_robot -- robot skills + entry points (UI / CLI / Python API) that use robot_agent"
@@ -187,6 +190,8 @@ help:
 	@echo "  make rename-skill  SKILL=<old> NEW=<new> [YES=1]"
 	@echo "                                        Rename a skill (registry key, def, and its file when dedicated)"
 	@echo ""
+	@echo "  make new-robot NEW=<pkg> [ARGS=...]   Fork this package into a new robot"
+	@echo "  make copy-skill FROM=<pkg> SKILL=<n>  Copy skill(s) from another robot package"
 	@echo "  make clean                            Remove __pycache__ and *.egg-info"
 	@echo ""
 	@echo "Overridables: CONDA_ENV=$(CONDA_ENV)  USE_EXISTING=$(USE_EXISTING)  USE_CURRENT=$(USE_CURRENT)  ROS_DISTRO=$(ROS_DISTRO)"
@@ -549,6 +554,27 @@ rename-skill: _require-run-py
 	else \
 		$(RUN_PY) -m robot_agent.rename_skill kcare_robot $(SKILL) $(NEW); \
 	fi
+
+# Fork this robot package into a new one (same hardware family, diverging).
+# For a robot that shares nothing, use the robot_template cookiecutter instead.
+#   make new-robot NEW=pnp_robot
+#   make new-robot NEW=lab_robot ARGS="--blank-configs --port 8005"
+new-robot: _require-run-py
+	@if [ -z "$(NEW)" ]; then \
+		echo "Usage: make new-robot NEW=<package_name> [ARGS=\"--blank-configs --port N\"]"; \
+		exit 2; \
+	fi
+	@$(RUN_PY) -m robot_agent.new_robot $(NEW) --from kcare_robot $(ARGS)
+
+# Copy skill(s) from another robot package into this one, following whatever
+# they import from that package. Skills are copied, not shared.
+#   make copy-skill FROM=kcare_robot SKILL="inform llm"
+copy-skill: _require-run-py
+	@if [ -z "$(FROM)" ] || [ -z "$(SKILL)" ]; then \
+		echo "Usage: make copy-skill FROM=<src_pkg> SKILL=\"<name> [<name>...]\" [ARGS=--force]"; \
+		exit 2; \
+	fi
+	@$(RUN_PY) -m robot_agent.copy_skill $(SKILL) --from $(FROM) --to kcare_robot $(ARGS)
 
 clean:
 	find $(ROOT) -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true

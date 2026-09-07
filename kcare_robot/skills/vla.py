@@ -2,9 +2,11 @@ from robot_agent.skill_configs import VLA_CLIENTS
 from robot_agent.connect import init_detect_client
 from robot_agent.utils import exception_handler
 import numpy as np
+from robot_agent.skills import log_data
+from kcare_robot.skills.head import get_robot_mode
 
-vla_cfg = VLA_CLIENTS['openpi']
-vla_client = init_detect_client(vla_cfg['url'])
+# vla_cfg = VLA_CLIENTS['openpi']
+# vla_client = init_detect_client(vla_cfg['url'])
 
 
 mean_action = lambda actions, weights: np.divide(np.sum(np.multiply(actions, weights), axis=-1), np.sum(weights, axis=-1))
@@ -37,3 +39,9 @@ def vla(node, **kwargs):
     aa = 1    
     
     
+
+
+def vla_drawer_open(node, **kwargs) -> dict:
+    prompt = kwargs.get('inputs', 'pull the gray handle on the third floor drawer')
+    robot_mode = get_robot_mode(node)
+    return node.agents['vla_drawer_open'].send({'mode':robot_mode, 'prompt': prompt})
