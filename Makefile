@@ -294,11 +294,11 @@ else
 			echo "               On the robot, run this where ROS $(ROS_DISTRO) is installed so the"; \
 			echo "               env python matches rclpy's build, or pass PYTHON_VERSION=<x.y>."; \
 		fi; \
-		$(CONDA_BIN) create -y -p "$(ENV_PREFIX)" -c conda-forge python=$(PYTHON_VERSION); \
+		$(CONDA_BIN) create -y -p "$(ENV_PREFIX)" --override-channels -c conda-forge python=$(PYTHON_VERSION); \
 	fi
 	@if [ -n "$(CONDA_SYS_LIBS)" ]; then \
 		echo "[kcare_robot] ensuring native libs: $(CONDA_SYS_LIBS)"; \
-		$(CONDA_BIN) install -y -p "$(ENV_PREFIX)" -c conda-forge $(CONDA_SYS_LIBS) >/dev/null \
+		$(CONDA_BIN) install -y -p "$(ENV_PREFIX)" --override-channels -c conda-forge $(CONDA_SYS_LIBS) >/dev/null \
 			|| echo "[kcare_robot] WARNING: could not install $(CONDA_SYS_LIBS) -- TTS may be unavailable"; \
 	fi
 endif
@@ -338,7 +338,7 @@ _env-current:
 	@if [ -n "$(CONDA_SYS_LIBS)" ]; then \
 		if [ -d "$(ENV_PREFIX)/conda-meta" ] && [ -n "$(CONDA_BIN)" ]; then \
 			echo "[kcare_robot] conda env detected -- ensuring native libs: $(CONDA_SYS_LIBS)"; \
-			$(CONDA_BIN) install -y -p "$(ENV_PREFIX)" -c conda-forge $(CONDA_SYS_LIBS) >/dev/null \
+			$(CONDA_BIN) install -y -p "$(ENV_PREFIX)" --override-channels -c conda-forge $(CONDA_SYS_LIBS) >/dev/null \
 				|| echo "[kcare_robot] WARNING: could not install $(CONDA_SYS_LIBS) -- TTS may be unavailable"; \
 		else \
 			echo "[kcare_robot] not a conda env -- skipping native libs ($(CONDA_SYS_LIBS))."; \

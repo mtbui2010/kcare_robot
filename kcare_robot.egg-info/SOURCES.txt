@@ -31,6 +31,7 @@ kcare_robot/skills/demo_robotworld.py
 kcare_robot/skills/goto_ready.py
 kcare_robot/skills/grip.py
 kcare_robot/skills/head.py
+kcare_robot/skills/hri.py
 kcare_robot/skills/inform.py
 kcare_robot/skills/lift.py
 kcare_robot/skills/mobile.py

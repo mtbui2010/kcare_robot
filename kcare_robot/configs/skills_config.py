@@ -56,4 +56,6 @@ SKILL_CONFIGS: dict[str, tuple[str, str]] = {
     'get3d_arm': (f'{_PKG}.pointcloud', 'get3d_arm'),
     'real2sim_capture': (f'{_PKG}.real2sim_capture', 'real2sim_capture'),
     'vla_drawer_open': (f'{_PKG}.vla', 'vla_drawer_open'),
+    'reply': (f'{_PKG}.hri', 'reply'),
+    'ask': (f'{_PKG}.hri', 'ask'),
 }
