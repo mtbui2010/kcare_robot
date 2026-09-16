@@ -190,6 +190,7 @@
       "is_client": true,
       "agent_name": "mobile_move",
       "data_interface": "nav2_msgs/action/NavigateToPose",
+      "cancel_func": "def cancel_func(node, agent):\n    for h in list(agent._goal_handles):   # goals this process is waiting on\n        h.cancel_goal_async()\n    return agent.cancel_all_goals()       # + CANCEL_ALL for anything else",
       "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    req.pose.header.frame_id = 'map'\n    req.behavior_tree = ''\n\n    req.pose.pose.position.x = data['x']\n    req.pose.pose.position.y = data['y']\n    req.pose.pose.position.z = data['z']\n\n    req.pose.pose.orientation.x = data['qx']\n    req.pose.pose.orientation.y = data['qy']\n    req.pose.pose.orientation.z = data['qz']\n    req.pose.pose.orientation.w = data['qw']\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': True}",
       "timeout": 120.0

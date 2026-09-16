@@ -171,13 +171,12 @@
     "name": "head_move",
     "config": {
       "conn_name": "/kaair_worker/head_move",
-      "agent_name": "head_move",
       "conn_type": "ros_action",
-      "data_interface": "kaair_msgs/action/HeadMove",
       "is_client": true,
+      "agent_name": "head_move",
+      "data_interface": "kaair_msgs/action/HeadMove",
       "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
-      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success}",
-      "timeout": 10.0
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'msg': res.message}"
     }
   },
   {
@@ -191,7 +190,7 @@
       "data_interface": "nav2_msgs/action/NavigateToPose",
       "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    req.pose.header.frame_id = 'map'\n    req.behavior_tree = ''\n\n    req.pose.pose.position.x = data['x']\n    req.pose.pose.position.y = data['y']\n    req.pose.pose.position.z = data['z']\n\n    req.pose.pose.orientation.x = data['qx']\n    req.pose.pose.orientation.y = data['qy']\n    req.pose.pose.orientation.z = data['qz']\n    req.pose.pose.orientation.w = data['qw']\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': True}",
-      "timeout": 120.0
+      "cancel_func": "def cancel_func(node, agent):\n    for h in list(agent._goal_handles):\n        h.cancel_goal_async()\n    return agent.cancel_all_goals()"
     }
   },
   {

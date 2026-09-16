@@ -145,6 +145,19 @@ location switch via `DeviceManager.reload_from()`). CLI mode blocks until all
 devices are (re)connected so the first skill call has them ready; UI mode loads
 in a background thread for fast uvicorn startup.
 
+### Cancelling a command
+
+`POST /agent/cancel` (dashboard Stop / Cancel) cancels every action goal in
+flight — `arm_moveJ/T/L`, `lift_move`, `head_move`, `navigate_to_pose` all
+accept the cancel and stop the motion — and blocks any further send until the
+next run starts. The three mobile **services** (`mobile/shift_pose`,
+`mobile/rotate`, `mobile/absolute_rotate`) cannot be cancelled: the skill stops
+waiting, but the base finishes the movement the bridge already started. Stopping
+it needs a stop service on the robot, registered here via
+`node.add_cancel_hook(...)`. An action that must be stopped some other way can
+define `cancel_func(node, agent)` in its `connections.json` entry (editable in
+the dashboard's DevicePanel). See robotapp/CLAUDE.md § Cancel / Stop.
+
 ## Debug entry points
 
 ```bash
