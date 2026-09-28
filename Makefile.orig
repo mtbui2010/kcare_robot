@@ -76,12 +76,6 @@ FORCE        ?= 0
 # reports as "installed but not usable". Set empty to leave a pre-existing env's
 # conda packages untouched:  make install USE_EXISTING=1 CONDA_SYS_LIBS=
 CONDA_SYS_LIBS ?= portaudio ffmpeg
-# The same libs as Debian/Ubuntu packages, for a target that is NOT a conda env.
-# The robot's docker container runs the system python, where this step used to
-# print a hint and move on -- leaving `reply` / `ask` to die at runtime.
-# libportaudio2 is the runtime library sounddevice dlopens; the -dev headers are
-# not needed. Set empty to skip:  make install APT_SYS_LIBS=
-APT_SYS_LIBS ?= libportaudio2 ffmpeg
 CONDA_BASE := $(shell conda info --base 2>/dev/null)
 
 ifneq ($(PYTHON),)
@@ -144,34 +138,12 @@ if bad:
     print('[kcare_robot] FAILED -- installed but not importable:')
     print('\n'.join(bad))
     sys.exit(1)
-# HRI (reply / ask) only. Not fatal -- the agent runs fine mute -- but say it
-# here, because utils.py imports these behind a bare try/except and a missing
-# native lib otherwise surfaces much later as "NameError: name 'sd' is not
-# defined" inside record_phrase.
-soft = []
-for m in ('sounddevice', 'gtts', 'pydub', 'langdetect'):
-    try:
-        importlib.import_module(m)
-    except Exception as e:
-        soft.append('    %s: %s: %s' % (m, type(e).__name__, e))
-# pydub imports fine without ffmpeg and only fails when it actually decodes the
-# gTTS mp3, so check for the binary rather than trusting the import.
-try:
-    from pydub.utils import which as _which
-    if not _which('ffmpeg') and not _which('avconv'):
-        soft.append('    ffmpeg: not on PATH -- pydub cannot decode the gTTS mp3')
-except Exception:
-    pass
-if soft:
-    print('[kcare_robot] WARNING -- HRI voice (reply / ask) will NOT work:')
-    print('\n'.join(soft))
-    print('    fix:  make sys-libs        # portaudio / ffmpeg are not pip packages')
 import numpy
 print('[kcare_robot] imports OK (numpy %s)' % numpy.__version__)
 endef
 export VERIFY_IMPORTS_PY
 
-.PHONY: install install-deps sys-libs check-deps env _env-current env-recreate env-info run cli terminate doctor \
+.PHONY: install install-deps check-deps env _env-current env-recreate env-info run cli terminate doctor \
         skill-generic skill-detect skill-external delete-skill rename-skill \
         run-external test clean help _require-env _require-run-py \
         new-robot copy-skill
@@ -191,7 +163,6 @@ help:
 	@echo "  make env-info                         Show resolved env / ROS / python paths"
 	@echo "  make check-deps                       Verify the sibling repos exist in ../ (run by install)"
 	@echo "  make install-deps                     Editable-install sibling repos only"
-	@echo "  make sys-libs                         Install the native libs HRI voice needs (portaudio, ffmpeg)"
 	@echo "  make doctor                           Pre-flight check (verifies env, ROS2, skill imports)"
 	@echo ""
 	@echo "Run:"
@@ -325,7 +296,11 @@ else
 		fi; \
 		$(CONDA_BIN) create -y -p "$(ENV_PREFIX)" --override-channels -c conda-forge python=$(PYTHON_VERSION); \
 	fi
-	@$(MAKE) --no-print-directory sys-libs
+	@if [ -n "$(CONDA_SYS_LIBS)" ]; then \
+		echo "[kcare_robot] ensuring native libs: $(CONDA_SYS_LIBS)"; \
+		$(CONDA_BIN) install -y -p "$(ENV_PREFIX)" --override-channels -c conda-forge $(CONDA_SYS_LIBS) >/dev/null \
+			|| echo "[kcare_robot] WARNING: could not install $(CONDA_SYS_LIBS) -- TTS may be unavailable"; \
+	fi
 endif
 
 # USE_CURRENT=1 — validate the active interpreter instead of creating anything.
@@ -360,36 +335,15 @@ _env-current:
 		echo "    rclpy is a compiled extension -- it will not import in this env."; \
 		echo ""; \
 	fi
-	@$(MAKE) --no-print-directory sys-libs
-
-# Native libraries the HRI skills (reply / ask) need at run time:
-#   portaudio -> sounddevice  (robot mic capture in record_phrase, TTS playback)
-#   ffmpeg    -> pydub        (decodes the gTTS mp3 in text2voice)
-# Neither ships inside the pip wheels. Without them `import sounddevice` raises
-# at import time, robot_agent/utils.py swallows that in its try/except, and the
-# first `reply` fails far away with "NameError: name 'sd' is not defined".
-#
-# Run by `make install`; run it alone to repair an env that already exists --
-# e.g. inside the robot's container:  make sys-libs USE_CURRENT=1
-sys-libs:
-	@if [ -z "$(CONDA_SYS_LIBS)$(APT_SYS_LIBS)" ]; then \
-		echo "[kcare_robot] native libs disabled (CONDA_SYS_LIBS / APT_SYS_LIBS empty)"; \
-		exit 0; \
-	fi; \
-	if [ -n "$(CONDA_SYS_LIBS)" ] && [ -n "$(ENV_PREFIX)" ] && [ -d "$(ENV_PREFIX)/conda-meta" ] && [ -n "$(CONDA_BIN)" ]; then \
-		echo "[kcare_robot] conda env -- ensuring native libs: $(CONDA_SYS_LIBS)"; \
-		$(CONDA_BIN) install -y -p "$(ENV_PREFIX)" --override-channels -c conda-forge $(CONDA_SYS_LIBS) >/dev/null \
-			|| echo "[kcare_robot] WARNING: could not install $(CONDA_SYS_LIBS) -- HRI voice (reply/ask) will fail"; \
-	elif [ -n "$(APT_SYS_LIBS)" ] && command -v apt-get >/dev/null 2>&1; then \
-		if [ "$$(id -u)" = 0 ]; then SUDO=""; \
-		elif command -v sudo >/dev/null 2>&1; then SUDO="sudo"; \
-		else SUDO=""; echo "[kcare_robot] not root and no sudo -- apt-get will probably be refused"; fi; \
-		echo "[kcare_robot] system python -- ensuring native libs with apt: $(APT_SYS_LIBS)"; \
-		$$SUDO apt-get update -qq >/dev/null 2>&1 || true; \
-		$$SUDO apt-get install -y --no-install-recommends $(APT_SYS_LIBS) >/dev/null \
-			|| echo "[kcare_robot] WARNING: apt could not install $(APT_SYS_LIBS) -- by hand: sudo apt install $(APT_SYS_LIBS)"; \
-	else \
-		echo "[kcare_robot] neither a conda env nor apt-get -- install by hand: $(APT_SYS_LIBS)"; \
+	@if [ -n "$(CONDA_SYS_LIBS)" ]; then \
+		if [ -d "$(ENV_PREFIX)/conda-meta" ] && [ -n "$(CONDA_BIN)" ]; then \
+			echo "[kcare_robot] conda env detected -- ensuring native libs: $(CONDA_SYS_LIBS)"; \
+			$(CONDA_BIN) install -y -p "$(ENV_PREFIX)" --override-channels -c conda-forge $(CONDA_SYS_LIBS) >/dev/null \
+				|| echo "[kcare_robot] WARNING: could not install $(CONDA_SYS_LIBS) -- TTS may be unavailable"; \
+		else \
+			echo "[kcare_robot] not a conda env -- skipping native libs ($(CONDA_SYS_LIBS))."; \
+			echo "               For TTS install them system-wide:  sudo apt install portaudio19-dev ffmpeg"; \
+		fi; \
 	fi
 
 # Destructive: refuses to touch an env you asked to reuse.
@@ -502,32 +456,8 @@ run-external: _require-run-py
 	$(ROS_ENV) $(RUN_PY) -m uvicorn kcare_robot.template_skills.grip_external:app --host 0.0.0.0 --port 9000
 
 # Kill whatever is listening on $(PORT): SIGTERM, wait 3s, then SIGKILL if alive.
-# Finding the PID must not depend on lsof: slim containers often ship none of
-# these tools, and `lsof 2>/dev/null` silently yields an empty PID list, which
-# used to make this target report success while killing nothing.
-# Order: lsof -> fuser -> ss -> netstat; pgrep on the uvicorn command line only
-# when none of those exist, so a genuinely free port never kills a bystander.
 terminate:
-	@pids_on_port() { \
-		p=""; tool=0; \
-		if command -v lsof >/dev/null 2>&1; then \
-			tool=1; p=$$(lsof -t -i tcp:$(PORT) -sTCP:LISTEN 2>/dev/null); \
-		fi; \
-		if [ -z "$$p" ] && command -v fuser >/dev/null 2>&1; then \
-			tool=1; p=$$(fuser -n tcp $(PORT) 2>/dev/null | tr -cs '0-9' '\n' | grep -E '^[0-9]+$$'); \
-		fi; \
-		if [ -z "$$p" ] && command -v ss >/dev/null 2>&1; then \
-			tool=1; p=$$(ss -ltnpH "sport = :$(PORT)" 2>/dev/null | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u); \
-		fi; \
-		if [ -z "$$p" ] && command -v netstat >/dev/null 2>&1; then \
-			tool=1; p=$$(netstat -ltnp 2>/dev/null | awk -v port=":$(PORT)$$" '$$4 ~ port { split($$7, a, "/"); if (a[1] ~ /^[0-9]+$$/) print a[1] }' | sort -u); \
-		fi; \
-		if [ -z "$$p" ] && [ "$$tool" = 0 ]; then \
-			p=$$(pgrep -f "[-]m uvicorn .*[-]-port[ =]$(PORT)( |$$)" 2>/dev/null | grep -vx "$$$$"); \
-		fi; \
-		echo $$p; \
-	}; \
-	pids=$$(pids_on_port); \
+	@pids=$$(lsof -t -i tcp:$(PORT) -sTCP:LISTEN 2>/dev/null); \
 	if [ -z "$$pids" ]; then \
 		echo "[kcare_robot] nothing listening on port $(PORT)"; \
 		exit 0; \
@@ -536,7 +466,7 @@ terminate:
 	kill -TERM $$pids 2>/dev/null || true; \
 	for i in 1 2 3; do \
 		sleep 1; \
-		pids=$$(pids_on_port); \
+		pids=$$(lsof -t -i tcp:$(PORT) -sTCP:LISTEN 2>/dev/null); \
 		[ -z "$$pids" ] && break; \
 	done; \
 	if [ -n "$$pids" ]; then \
@@ -544,7 +474,7 @@ terminate:
 		kill -KILL $$pids 2>/dev/null || true; \
 		sleep 1; \
 	fi; \
-	pids=$$(pids_on_port); \
+	pids=$$(lsof -t -i tcp:$(PORT) -sTCP:LISTEN 2>/dev/null); \
 	if [ -z "$$pids" ]; then \
 		echo "[kcare_robot] port $(PORT) is free"; \
 	else \

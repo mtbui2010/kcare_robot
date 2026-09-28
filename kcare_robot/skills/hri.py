@@ -26,7 +26,7 @@ import unicodedata
 
 from robot_agent.skills import log_data
 from robot_agent.utils import (
-    exception_handler, listen_dashboard, record_phrase, say_to_user,
+    exception_handler, listen_dashboard, play_audio, record_phrase, say_to_user,
     speech_to_text,
 )
 
@@ -47,6 +47,10 @@ _PHRASES = {
     'heard_text': {'ko': '"{text}"라고 들었어요',
                    'en': 'I heard: {text}',
                    'vi': 'Đã nghe: {text}'},
+    # Said just before the recording itself is played back (need_confirm).
+    'heard_audio':{'ko': '이렇게 들었어요',
+                   'en': 'This is what I heard:',
+                   'vi': 'Tôi đã nghe thế này:'},
     'not_heard':  {'ko': '잘 못 들었어요',
                    'en': "Sorry, I didn't catch that.",
                    'vi': 'Xin lỗi, tôi chưa nghe rõ.'},
@@ -73,7 +77,7 @@ def _truthy(v) -> bool:
 
 def _common(kwargs: dict):
     lang = str(kwargs.pop('lang', 'ko') or 'ko')
-    source = str(kwargs.pop('source', 'robot') or 'robot').lower()
+    source = str(kwargs.pop('source', 'dashboard') or 'dashboard').lower()
     if source not in SOURCES:
         raise ValueError(f'source must be one of {SOURCES}, got {source!r}')
     listen = {
@@ -92,10 +96,14 @@ def _say(text: str, lang: str, source: str) -> None:
 def _hear(prompt, lang: str, source: str, listen: dict):
     """Say `prompt` (if any), then capture and transcribe one phrase.
 
-    Returns the transcript, or None when nobody answered. On the robot side the
-    prompt is spoken to completion before the mic opens, or the recording would
-    start with the robot's own voice; the browser does the same ordering itself.
+    Returns ``(transcript, audio)``: the transcript is None when nobody
+    answered, and `audio` is the raw recording — only on the robot side, since
+    the dashboard mic hands back text and never the sound. On the robot side
+    the prompt is spoken to completion before the mic opens, or the recording
+    would start with the robot's own voice; the browser does the same ordering
+    itself.
     """
+    audio = None
     if prompt:
         log_data({'msg': f'robot: {prompt}'})
     if source == 'dashboard':
@@ -110,7 +118,7 @@ def _hear(prompt, lang: str, source: str, listen: dict):
         text = speech_to_text(audio, lang=lang) if audio is not None else None
     text = (text or '').strip() or None
     log_data({'msg': f'user: {text}' if text else 'user: (no answer)'})
-    return text
+    return text, audio
 
 
 # ── Matching an answer against options ───────────────────────────────────────
@@ -216,8 +224,11 @@ def reply(node, **kwargs):
     """Listen for what the user says and acknowledge it.
 
     Params:
-        need_confirm (bool): repeat the transcript back ('"<text>"라고 들었어요')
-            instead of a bare '들었어요'. Default False.
+        need_confirm (bool): play the recording back ('이렇게 들었어요' + the
+            person's own voice) instead of a bare '들었어요', so a name the
+            recogniser mangled is still checkable. With the dashboard mic there
+            is no recording, so the transcript is read back instead
+            ('"<text>"라고 들었어요'). Default False.
         inputs (str):  optional line to say before listening.
         source (str):  'robot' (default) or 'dashboard'.
         lang (str):    'ko' (default), 'en' or 'vi' — speech and recognition.
@@ -225,17 +236,28 @@ def reply(node, **kwargs):
 
     Returns ``{'isdone', 'text'}``; isdone is False when nobody spoke.
     """
-    need_confirm = _truthy(kwargs.pop('need_confirm', False))
+    need_confirm = _truthy(kwargs.pop('need_confirm', True))
     prompt = str(kwargs.pop('inputs', '') or '').strip() or None
     lang, source, listen = _common(kwargs)
 
-    text = _hear(prompt, lang, source, listen)
+    text, audio = _hear(prompt, lang, source, listen)
     if not text:
         _say(_phrase('not_heard', lang), lang, source)
         return {'isdone': False, 'msg': 'no speech heard', 'text': ''}
 
-    _say(_phrase('heard_text', lang, text=text) if need_confirm else _phrase('heard', lang),
-         lang, source)
+    if not need_confirm:
+        _say(_phrase('heard', lang), lang, source)
+    else:
+        # Echo the recording rather than the transcript: the person hears what
+        # the microphone actually got, which is checkable even when Whisper
+        # mangled a name. No recording (dashboard mic) or no speaker -> read
+        # the transcript back as before.
+        echoed = False
+        if audio is not None:
+            _say(_phrase('heard_audio', lang), lang, source)
+            echoed = play_audio(audio)
+        if not echoed:
+            _say(_phrase('heard_text', lang, text=text), lang, source)
     return {'isdone': True, 'text': text}
 
 
@@ -266,7 +288,7 @@ def ask(node, **kwargs):
 
     prompt, last_text = question or None, ''
     for attempt in range(1, retries + 2):
-        text = _hear(prompt, lang, source, listen)
+        text, _audio = _hear(prompt, lang, source, listen)   # ask confirms the option, not the audio
         if not text:
             # Nobody answered: say so, then put the question again.
             prompt = ' '.join(p for p in (_phrase('not_heard', lang), question) if p)

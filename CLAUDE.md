@@ -164,11 +164,22 @@ the dashboard's DevicePanel). See robotapp/CLAUDE.md § Cancel / Stop.
 make doctor                           # ROS env + skill-import smoke
 make doctor ARGS=--verbose
 make cli ARGS="--list"                # list skills without UI
+make sys-libs                         # repair HRI voice deps (portaudio, ffmpeg)
 ROBOT_AGENT_DEBUG_RESPONSE=1 make run # full traceback in skill error dicts
 ROBOT_AGENT_LOG_LEVEL=DEBUG make run
 ```
 
 Logs: `kcare_robot/data/logs/kcare_robot.log` (rotating).
+
+**`reply` / `ask` failing with `NameError: name 'sd' is not defined`** (at
+`robot_agent/utils.py` `record_phrase`) means `sounddevice` did not import:
+`portaudio` is a native library, not part of the pip wheel, and
+[utils.py](../robot_agent/robot_agent/utils.py) imports it inside a bare
+`try/except` that only prints — so the failure surfaces later, somewhere else.
+`make sys-libs` installs it (conda env → conda, system python → apt), and
+`make install` now runs it and warns if the HRI voice imports still do not
+resolve. Same story for `ffmpeg`, which `pydub` needs to decode the gTTS mp3;
+pydub imports fine without it and only breaks at first use.
 
 ## Related
 

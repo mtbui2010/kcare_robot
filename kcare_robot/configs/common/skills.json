@@ -559,5 +559,27 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {}
+  },
+  {
+    "name": "reply",
+    "type": "internal",
+    "description": "from kcare_robot.skills.hri:reply",
+    "module_path": "kcare_robot.skills.hri",
+    "func_name": "reply",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {}
+  },
+  {
+    "name": "ask",
+    "type": "internal",
+    "description": "from kcare_robot.skills.hri:ask",
+    "module_path": "kcare_robot.skills.hri",
+    "func_name": "ask",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {}
   }
 ]
