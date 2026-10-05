@@ -167,7 +167,7 @@ def grasp_pose_from_ins(ins, dpull):
     return dx, dy, dz, angle, width, effective_dpull
 
 
-def execute_fine_grasp(node, dx, dy, dz, angle, width, dpull, pull_speed=1.0):
+def execute_fine_grasp(node, dx, dy, dz, angle, width, dpull, init_joints=None, pull_speed=1.0):
     """Open gripper to `width+200`, move to (dx, dy), rotate to `angle`,
     descend `dz`, close, then pull back `dpull` while keeping the gripper
     closed. Returns the final ret (may be a failure or success dict).
@@ -191,7 +191,13 @@ def execute_fine_grasp(node, dx, dy, dz, angle, width, dpull, pull_speed=1.0):
     if not ret['isdone']:
         return ret
         
-    return run_parallel_check(funcs=[
+    ret = run_parallel_check(funcs=[
         lambda: grip(node=node, inputs='close', wait=False),
         lambda: movet(node=node, dz=-dpull, acc=0.25, wait=True),
     ])
+    assert ret['isdone'], f'{ret}'
+
+    if init_joints is not None:
+        return movej(node=node, inputs=init_joints)
+
+    return ret

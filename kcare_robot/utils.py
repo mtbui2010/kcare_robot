@@ -9,7 +9,9 @@ phrasing used by pick / place / move skills. Generic helpers (``text2voice``,
 
 import numpy as np
 
-from robot_agent.skill_configs import EN2KR, ENV, KR2EN, LIFT_CONFIGS
+from robot_agent.env_names import aliases_of, resolve_env_name
+from robot_agent.env_names import normalize as normalize_env_name
+from robot_agent.skill_configs import EN2KR, ENV, KR2EN, LIFT_CONFIGS, MOBILE_CONFIGS
 from robot_agent.utils import text2voice
 
 
@@ -17,20 +19,31 @@ from robot_agent.utils import text2voice
 # ENV lookups (room@furniture location schema)
 # ---------------------------------------------------------------------------
 
+def env_key(env_name, ENV=ENV):
+    """Canonical ENV key for *env_name* (a key, an alias, or a ``@`` segment of
+    either), or None. A name matching several locations raises
+    ``AmbiguousLocation`` when ``MOBILE_CONFIGS['strict_loc']`` is set, else the
+    first match is used with a warning."""
+    return resolve_env_name(env_name, ENV, strict=bool(MOBILE_CONFIGS.get('strict_loc', False)))
+
+
 def get_env_specs(env_name, ENV, recursive=False):
-    """Specs dict for *env_name* from *ENV*, matching progressively shorter
-    ``a@b@c`` suffixes when *recursive*. Returns ``{}`` when unknown."""
+    """Specs dict for *env_name* from *ENV* (resolved through :func:`env_key`,
+    so aliases work), matching progressively shorter ``a@b@c`` suffixes when
+    *recursive*. Returns ``{}`` when unknown."""
     import copy
+    from robot_agent.env_names import AmbiguousLocation
     try:
-        if len(env_name) == 0:
+        if not env_name:
             return {}
-        for k, v in ENV.items():
-            if f'@{env_name}@' in f'@{k}@':
-                return copy.deepcopy(v)
+        key = env_key(env_name, ENV)
+        if key is not None:
+            return copy.deepcopy(ENV[key])
         if recursive:
             return get_env_specs('@'.join(env_name.split('@')[1:]), ENV=ENV)
-        else:
-            return {}
+        return {}
+    except AmbiguousLocation:
+        raise       # strict mode: fail the skill instead of guessing a place
     except Exception:
         return {}
 
@@ -38,13 +51,19 @@ def get_env_specs(env_name, ENV, recursive=False):
 def get_closest_loc(node, ENV, threshold=0.6):
     """Name of the configured location nearest the mobile base, or None when
     the base is farther than *threshold* metres from all of them."""
-    ret = node.agents['mobile_pose'].get()
-    if ret is None:
+    # The mobile_pose agent hands back {'pose': [x, y, rz]} here (also seen: a
+    # ROS Pose, or a flat {'x', 'y'}); reading ret['x'] raised KeyError 'x'.
+    from robot_agent.core.planning.loop import _read_robot_xy
+    xy = _read_robot_xy(node)
+    if xy is None:
         return None
-    x, y = ret['x'], ret['y']
+    x, y = xy
 
     valid_locs = {k: [v['loc']['x'] - x, v['loc']['y'] - y]
-                  for k, v in ENV.items() if 'loc' in v}
+                  for k, v in ENV.items()
+                  if isinstance(v, dict) and isinstance(v.get('loc'), dict) and 'x' in v['loc']}
+    if not valid_locs:
+        return None
     dd = np.linalg.norm(np.array(list(valid_locs.values())), axis=-1)
     argmin = int(np.argmin(dd))
     if dd[argmin] > threshold:
@@ -160,7 +179,9 @@ def announce_placing(inp=None, to_wipe=False, lang='ko'):
         return
 
     env = get_env_specs(inp, ENV=ENV)
-    label = env.get('label', None)
+    # A place named by one of its aliases is read back as the user said it;
+    # the label (etri's Korean names for English keys) is for the key itself.
+    label = None if normalize_env_name(inp) in aliases_of(env) else env.get('label', None)
     if inp is None and label is None:
         return
 

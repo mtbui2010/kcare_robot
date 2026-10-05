@@ -73,6 +73,8 @@ def fine_move(**kwargs):
     dpull      = kwargs.pop('dpull', None)
     num_trials = int(kwargs.pop('num_trials', 2))
     pull_speed = float(kwargs.pop('pull_speed', 1.0))
+    fixed_angle = float(kwargs.pop('fixed_angle', None))
+    back_to_init = float(kwargs.pop('back_to_init', False))
 
     # Step 1: coarse detect + dx nudge. Failure here is non-fatal — we just
     # fall through to the per-trial loop without nudging.
@@ -111,9 +113,16 @@ def fine_move(**kwargs):
         if grasp is None:
             continue
         dx, dy, dz, angle, width, eff_dpull = grasp
+        angle = angle if fixed_angle is None else fixed_angle
+
+        init_joints = None
+        if back_to_init:
+            ret = arm_joints(node=node)
+            assert ret['isdone'], f'{ret}'
+            init_joints = ret['joints']
 
         ret = _h.execute_fine_grasp(node, dx, dy, dz, angle, width, eff_dpull,
-                                    pull_speed=pull_speed)
+                                    init_joints=init_joints, pull_speed=pull_speed)
         if not ret['isdone']:
             return ret
 

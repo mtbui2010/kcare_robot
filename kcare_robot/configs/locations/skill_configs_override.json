@@ -1,0 +1,913 @@
+{
+  "GRIP_CONFIGS": {
+    "range": [
+      0,
+      0.1
+    ]
+  },
+  "LIFT_CONFIGS": {
+    "mobile_height": 0.43,
+    "range": [
+      0.56,
+      1.1
+    ],
+    "home": {
+      "front": 0.5,
+      "left": 0.8,
+      "right": 0.8
+    }
+  },
+  "HEAD_CONFIGS": {
+    "ry_range": [
+      -50,
+      10
+    ],
+    "rz": {
+      "front": 0,
+      "left": -70,
+      "right": 70
+    },
+    "ry": {
+      "up": 20,
+      "straight": -10,
+      "down": -50
+    }
+  },
+  "MOBILE_CONFIGS": {
+    "dforward": 0.2,
+    "dshift": -0.2,
+    "height": 0.405,
+    "max_shift": 0.6
+  },
+  "ENV": {
+    "table@living room": {
+      "default_mode": "left",
+      "placepose": {
+        "dx": 0,
+        "dy": 0
+      },
+      "height": 0.465,
+      "loc": {
+        "x": 2.9,
+        "y": 0.045,
+        "rz": -90
+      },
+      "dforward": 0,
+      "dshift": 0,
+      "aliases": [
+        "\uc1fc\ud30c",
+        "sofa"
+      ]
+    },
+    "table@main room": {
+      "default_mode": "left",
+      "placepose": {
+        "dx": 0,
+        "dy": 0
+      },
+      "height": 0.75,
+      "loc": {
+        "x": 6.2,
+        "y": 0.4,
+        "rz": 0
+      },
+      "dforward": 0,
+      "dshift": 0
+    },
+    "table@kitchen": {
+      "default_mode": "right",
+      "placepose": {
+        "dx": 0,
+        "dy": 0
+      },
+      "height": 0.73,
+      "loc": {
+        "x": 1.85,
+        "y": 3.45,
+        "rz": -180
+      },
+      "dforward": 0,
+      "dshift": 0,
+      "aliases": [
+        "\uc2dd\ud0c1",
+        "dining table"
+      ],
+      "qa": {
+        "views": [
+          "straight",
+          "down"
+        ],
+        "scene": "a white dining table. The user sits on the chair at the LEFT edge of the photos and faces RIGHT, along the table. So from the user: \"front\" is further right in the photos along the table; their left is further up in the photos, away from the robot (towards the wall); their right is lower in the photos, towards the robot",
+        "frame": "person",
+        "places": {
+          "front": {
+            "desc": "on the table directly in front of the user",
+            "ko": "\uc55e",
+            "en": "in front of you",
+            "vi": "\u1edf tr\u01b0\u1edbc m\u1eb7t b\u1ea1n"
+          },
+          "left": {
+            "desc": "on the user's left (their own left hand side)",
+            "ko": "\uc67c\ucabd",
+            "en": "on your left",
+            "vi": "\u1edf b\u00ean tr\u00e1i b\u1ea1n"
+          },
+          "right": {
+            "desc": "on the user's right (their own right hand side)",
+            "ko": "\uc624\ub978\ucabd",
+            "en": "on your right",
+            "vi": "\u1edf b\u00ean ph\u1ea3i b\u1ea1n"
+          }
+        }
+      }
+    },
+    "gas wrench@kitchen": {
+      "default_mode": "right",
+      "placepose": {
+        "dx": 0,
+        "dy": 0
+      },
+      "height": 0.91,
+      "loc": {
+        "x": 2.8,
+        "y": 4.1,
+        "rz": 90
+      },
+      "dforward": 0,
+      "dshift": 0,
+      "aliases": [
+        "\uac00\uc2a4\ub80c\uce58",
+        "gas"
+      ]
+    },
+    "trash": {
+      "default_mode": "left",
+      "placepose": {
+        "dx": 0,
+        "dy": 0
+      },
+      "height": 0.4,
+      "loc": {
+        "x": 0.5,
+        "y": 0.98,
+        "rz": 90
+      },
+      "dforward": -0.2,
+      "dshift": 0,
+      "aliases": [
+        "\uc4f0\ub808\uae30\ud1b5",
+        "trash bin"
+      ]
+    },
+    "shelf1": {
+      "default_mode": "front",
+      "placepose": {
+        "dx": 0,
+        "dy": 0
+      },
+      "height": 1.1,
+      "loc": {
+        "x": 2.5,
+        "y": 4,
+        "rz": 90
+      },
+      "dforward": 0,
+      "dshift": 0,
+      "aliases": [
+        "\uac00\uc6b4\ub370 \uc120\ubc18",
+        "middle shelf"
+      ]
+    },
+    "counter": {
+      "default_mode": "right",
+      "placepose": {
+        "dx": 0,
+        "dy": 0
+      },
+      "height": 0.91,
+      "loc": {
+        "x": 2.5,
+        "y": 4,
+        "rz": 90
+      },
+      "dforward": 0,
+      "dshift": 0,
+      "aliases": [
+        "\uc870\ub9ac\ub300"
+      ]
+    },
+    "sink": {
+      "default_mode": "left",
+      "placepose": {
+        "dx": 0,
+        "dy": 0
+      },
+      "height": 0.91,
+      "loc": {
+        "x": 2.1,
+        "y": 4,
+        "rz": 90
+      },
+      "dforward": 0,
+      "dshift": 0,
+      "aliases": [
+        "\uc2e0\ud06c"
+      ]
+    },
+    "shelf2@kitchen": {
+      "default_mode": "front",
+      "placepose": {
+        "dx": 0,
+        "dy": 0
+      },
+      "height": 1.1,
+      "loc": {
+        "x": 2,
+        "y": 4,
+        "rz": 90
+      },
+      "dforward": 0,
+      "dshift": 0,
+      "aliases": [
+        "\uc67c\ucabd \uc120\ubc18",
+        "left shelf"
+      ],
+      "qa": {
+        "views": [
+          "up"
+        ],
+        "scene": "a wall cabinet above the kitchen counter, with two columns of shelves split by a vertical divider, and a dish drying rack under it",
+        "frame": "robot",
+        "places": {
+          "left": {
+            "desc": "the left column of the cabinet (any shelf on the left of the divider)",
+            "ko": "\uc67c\ucabd \uc120\ubc18",
+            "en": "on the left shelf",
+            "vi": "\u1edf k\u1ec7 b\u00ean tr\u00e1i"
+          },
+          "right": {
+            "desc": "the right column of the cabinet (any shelf on the right of the divider)",
+            "ko": "\uc624\ub978\ucabd \uc120\ubc18",
+            "en": "on the right shelf",
+            "vi": "\u1edf k\u1ec7 b\u00ean ph\u1ea3i"
+          },
+          "rack": {
+            "desc": "the dish drying rack under the cabinet, outside it",
+            "ko": "\uc120\ubc18 \uc544\ub798 \uc2dd\uae30 \uac74\uc870\ub300",
+            "en": "in the dish rack under the cabinet",
+            "vi": "\u1edf gi\u00e1 ph\u01a1i b\u00e1t d\u01b0\u1edbi t\u1ee7"
+          }
+        }
+      }
+    },
+    "dressroom": {
+      "default_mode": "right",
+      "placepose": {
+        "dx": 0,
+        "dy": 0
+      },
+      "height": 0.8,
+      "loc": {
+        "x": 6.4,
+        "y": 3.8,
+        "rz": 0
+      },
+      "dforward": -0.2,
+      "dshift": 0,
+      "aliases": [
+        "\uc637\ubc29"
+      ],
+      "qa": {
+        "views": [
+          "up",
+          "straight",
+          "down"
+        ],
+        "scene": "a dressing room: a clothes hanging rail on the left with a chest of drawers below it, and white corner shelves on the right",
+        "frame": "robot",
+        "places": {
+          "rail_left": {
+            "desc": "hanging on the left third of the rail",
+            "ko": "\ud589\uac70 \uc67c\ucabd",
+            "en": "on the left of the rail",
+            "vi": "\u1edf b\u00ean tr\u00e1i gi\u00e1 treo"
+          },
+          "rail_middle": {
+            "desc": "hanging on the middle third of the rail",
+            "ko": "\ud589\uac70 \uac00\uc6b4\ub370",
+            "en": "in the middle of the rail",
+            "vi": "\u1edf gi\u1eefa gi\u00e1 treo"
+          },
+          "rail_right": {
+            "desc": "hanging on the right third of the rail",
+            "ko": "\ud589\uac70 \uc624\ub978\ucabd",
+            "en": "on the right of the rail",
+            "vi": "\u1edf b\u00ean ph\u1ea3i gi\u00e1 treo"
+          },
+          "shelf_top": {
+            "desc": "right corner shelves: the top shelf, above eye level (seen in the up photo)",
+            "ko": "\uc624\ub978\ucabd \uc120\ubc18 \uc704\ucabd \uce78",
+            "en": "on the top shelf",
+            "vi": "\u1edf ng\u0103n tr\u00ean c\u1ee7a k\u1ec7"
+          },
+          "shelf_middle": {
+            "desc": "right corner shelves: the shelves at eye level (seen in the straight photo)",
+            "ko": "\uc624\ub978\ucabd \uc120\ubc18 \uac00\uc6b4\ub370 \uce78",
+            "en": "on the middle shelves",
+            "vi": "\u1edf ng\u0103n gi\u1eefa c\u1ee7a k\u1ec7"
+          },
+          "shelf_bottom": {
+            "desc": "right corner shelves: the low shelves near the floor (seen in the down photo)",
+            "ko": "\uc624\ub978\ucabd \uc120\ubc18 \uc544\ub798\ucabd \uce78",
+            "en": "on the low shelves",
+            "vi": "\u1edf ng\u0103n d\u01b0\u1edbi c\u1ee7a k\u1ec7"
+          },
+          "drawers": {
+            "desc": "on top of the chest of drawers under the rail",
+            "ko": "\uc11c\ub78d\uc7a5 \uc704",
+            "en": "on the chest of drawers",
+            "vi": "tr\u00ean t\u1ee7 ng\u0103n k\u00e9o"
+          }
+        }
+      }
+    },
+    "restroom": {
+      "default_mode": "front",
+      "placepose": {
+        "dx": 0,
+        "dy": 0
+      },
+      "height": 0.5,
+      "loc": {
+        "x": -3,
+        "y": 0.8,
+        "rz": 90
+      },
+      "dforward": -0.2,
+      "dshift": 0,
+      "aliases": [
+        "\ud654\uc7a5\uc2e4"
+      ]
+    },
+    "entrance": {
+      "default_mode": "left",
+      "placepose": {
+        "dx": 0,
+        "dy": 0
+      },
+      "height": 0.4,
+      "loc": {
+        "x": -0.2,
+        "y": 0.8,
+        "rz": 90
+      },
+      "dforward": -0.2,
+      "dshift": 0,
+      "aliases": [
+        "\uc785\uad6c"
+      ]
+    },
+    "laundry": {
+      "default_mode": "left",
+      "placepose": {
+        "dx": 0,
+        "dy": 0
+      },
+      "height": 0.4,
+      "loc": {
+        "x": 2.6,
+        "y": 2.9,
+        "rz": 0
+      },
+      "dforward": 0,
+      "dshift": 0,
+      "aliases": [
+        "\ube68\ub798\ud1b5"
+      ]
+    },
+    "wait": {
+      "default_mode": "front",
+      "placepose": {
+        "dx": 0,
+        "dy": 0
+      },
+      "height": 0.5,
+      "loc": {
+        "x": 1.4,
+        "y": 0.15,
+        "rz": 0
+      },
+      "dforward": 0,
+      "dshift": 0,
+      "aliases": [
+        "\ub300\uae30"
+      ]
+    }
+  },
+  "HOME_LOC": {
+    "x": 0.2,
+    "y": 0,
+    "rz": 0
+  },
+  "ARM_CONFIGS": {
+    "calib_offset": [
+      0,
+      0,
+      -0.03
+    ],
+    "wrist_cam_offset": [
+      -0.02,
+      -0.075,
+      0
+    ],
+    "base_x": 0.192,
+    "range": {
+      "x": [
+        0.442,
+        0.492
+      ],
+      "y": [
+        -1,
+        1
+      ],
+      "z": [
+        -0.1,
+        1.5
+      ]
+    },
+    "tool_range": {
+      "x": [
+        -0.5,
+        0.5
+      ],
+      "y": [
+        -0.5,
+        0.5
+      ],
+      "z": [
+        0.05,
+        0.9
+      ]
+    },
+    "wrist_angle": {
+      "lying": 45,
+      "standing": 10
+    },
+    "approach_d": 0.08,
+    "home": {
+      "front": [
+        0,
+        15,
+        0,
+        15,
+        -180,
+        0,
+        0
+      ],
+      "left": [
+        -90,
+        15,
+        0,
+        15,
+        -180,
+        0,
+        0
+      ],
+      "right": [
+        90,
+        15,
+        0,
+        15,
+        -180,
+        0,
+        0
+      ]
+    },
+    "ready": {
+      "front": [
+        0,
+        15,
+        0,
+        15,
+        -180,
+        90,
+        0
+      ],
+      "left": [
+        -90,
+        15,
+        0,
+        15,
+        -180,
+        90,
+        0
+      ],
+      "right": [
+        90,
+        15,
+        0,
+        15,
+        -180,
+        90,
+        0
+      ]
+    },
+    "fold": {
+      "front": [
+        90,
+        0,
+        20,
+        12,
+        -40,
+        97,
+        -10
+      ],
+      "left": [
+        82.752,
+        -26.26,
+        -32.947,
+        17.843,
+        -41.129,
+        104.728,
+        -14.829
+      ],
+      "right": [
+        -76.259,
+        -35.634,
+        31.376,
+        21.483,
+        -313.316,
+        110.093,
+        23.493
+      ]
+    },
+    "unfold": {
+      "front": [
+        0,
+        -26.3,
+        18.8,
+        1.5,
+        -160.5,
+        62.2,
+        0
+      ],
+      "right": [
+        -11.8,
+        -19.1,
+        -25.7,
+        12.3,
+        -324.7,
+        60.7,
+        32
+      ],
+      "left": [
+        3.7,
+        -20.6,
+        26.8,
+        8.3,
+        -36.7,
+        56.2,
+        -34.8
+      ]
+    },
+    "give": {
+      "front": [
+        90,
+        0,
+        20,
+        12,
+        -40,
+        97,
+        -10
+      ],
+      "left": [
+        96.85,
+        18.01,
+        -49.85,
+        14.47,
+        -33.29,
+        53.71,
+        -14.79
+      ],
+      "right": [
+        -78.91,
+        24.26,
+        45.87,
+        24.81,
+        -318.36,
+        52.09,
+        20.36
+      ]
+    },
+    "approach_lying": {
+      "right": [
+        89.6,
+        -26.8,
+        0.3,
+        28.4,
+        0.9,
+        55,
+        -179.9
+      ],
+      "left": [
+        86,
+        23.3,
+        -182.5,
+        37,
+        -0.2,
+        60.4,
+        -185.5
+      ]
+    },
+    "approach_standing": {
+      "right": [
+        36.431,
+        33.894,
+        -31.205,
+        51.743,
+        -295.646,
+        99.969,
+        13.196
+      ],
+      "left": [
+        -39.719,
+        30.567,
+        36.3,
+        45.175,
+        -58.42,
+        99.99,
+        -5.605
+      ]
+    },
+    "approach_drawer": {
+      "right": [
+        -6.212,
+        81.905,
+        -15.78,
+        80.381,
+        -277.149,
+        105.365,
+        -3.079
+      ],
+      "left": [
+        3.834,
+        82.741,
+        17.514,
+        81.917,
+        -81.436,
+        107.124,
+        2.998
+      ]
+    },
+    "pre_pick": {
+      "right": [
+        8.743,
+        41.818,
+        18.121,
+        52.978,
+        -294.222,
+        68.288,
+        16.835
+      ],
+      "left": [
+        14.245,
+        46.1,
+        -35.126,
+        47.91,
+        -51.513,
+        58.454,
+        -21.345
+      ],
+      "front": [
+        [
+          0,
+          -25,
+          0,
+          75,
+          0,
+          100,
+          -180
+        ],
+        [
+          -4.56,
+          -9.06,
+          3.99,
+          31.45,
+          -1.34,
+          -49.55,
+          -179.26
+        ]
+      ]
+    },
+    "j_arm_speed": 1.5,
+    "j_arm_accel": 12,
+    "l_arm_speed": 400,
+    "l_arm_accel": 1200,
+    "tool_radius": 0.05,
+    "tool_length": 0.26,
+    "wrist_tool_length": 0.17,
+    "approach_wrist_angle": 45,
+    "place_liftup": 0.13
+  },
+  "CALIB_PARAMS": {
+    "link2base_robot": [
+      [
+        1,
+        0,
+        0,
+        -105.5
+      ],
+      [
+        0,
+        1,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        1,
+        930.99
+      ],
+      [
+        0,
+        0,
+        0,
+        1
+      ]
+    ],
+    "base2LMbase_robot": [
+      [
+        1,
+        0,
+        0,
+        191.5
+      ],
+      [
+        0,
+        1,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        1,
+        115
+      ],
+      [
+        0,
+        0,
+        0,
+        1
+      ]
+    ],
+    "error_linear": [
+      [
+        -0.07502618754327467,
+        2.4424700738230953
+      ],
+      [
+        -16.842424532247115,
+        -446.11492970318335
+      ],
+      [
+        9.553416611923009,
+        183.18383747945558
+      ]
+    ],
+    "error_linear_front": [
+      [
+        -0.07502618754327467,
+        2.4424700738230953
+      ],
+      [
+        -16.842424532247115,
+        -446.11492970318335
+      ],
+      [
+        9.553416611923009,
+        183.18383747945558
+      ]
+    ],
+    "error_linear_left": [
+      [
+        9.210932763507733,
+        184.6078786695192
+      ],
+      [
+        -14.437338038556312,
+        -378.47661712845184
+      ],
+      [
+        0.28343902543810057,
+        2.4396699456603343
+      ]
+    ],
+    "error_linear_right": [
+      [
+        -9.84392375612643,
+        -200.58470322524005
+      ],
+      [
+        -14.726481118427895,
+        -383.38040346872526
+      ],
+      [
+        -0.047364594742677804,
+        1.3281026351637906
+      ]
+    ],
+    "T_1": [
+      32,
+      -75.13,
+      60.9
+    ],
+    "T_2": [
+      0,
+      0,
+      28
+    ],
+    "tune_xyz": [
+      0,
+      50,
+      0
+    ],
+    "init_angle": true,
+    "fx": 746.1448364257812,
+    "ppx": 629.9429931640625,
+    "fy": 746.0178833007812,
+    "ppy": 356.381591796875,
+    "lm_max_value": 935
+  },
+  "FIND_CONFIGS": {
+    "detect_object": {
+      "model": "rfdetr-gdino-sam-etri",
+      "min_size": 0,
+      "max_size": 50,
+      "box_threshold": 0.35,
+      "text_threshold": 0.3,
+      "target_distance": 0.9,
+      "distance_sigma": 0.01,
+      "near_point": "center",
+      "weight": {
+        "quality": 0.8,
+        "distance": 0.1,
+        "near": 0.1
+      }
+    },
+    "detect_grasp": {
+      "model": "rfdetr-gdino-sam-etri",
+      "min_size": 0,
+      "max_size": 50,
+      "box_threshold": 0.3,
+      "text_threshold": 0.15,
+      "target_distance": 0.3,
+      "distance_sigma": 0.01,
+      "near_point": "center",
+      "weight": {
+        "quality": 0.78,
+        "distance": 0.2,
+        "near": 0.02
+      },
+      "gripper_min": 10,
+      "gripper_max": 500
+    },
+    "detect_background": {
+      "use": true,
+      "stride": 20,
+      "avoid_model": "grounding-dino",
+      "avoid_prompt": "object.",
+      "avoid_conf": 0.2,
+      "avoid_pad": 17,
+      "avoid_max_area": 0.1,
+      "place_height_band": 0.1,
+      "place_margin_cells": 2,
+      "place_min_component_cells": 6,
+      "calib_tune": {
+        "dx": 0.03,
+        "dy": 0.05
+      }
+    },
+    "grasp_check_roi": [
+      415,
+      365,
+      476,
+      390
+    ],
+    "standing_obj_names": [
+      "cup"
+    ],
+    "lying_obj_names": [
+      "orange",
+      "apple",
+      "phone",
+      "fork",
+      "spoon",
+      "bread",
+      "banana",
+      "control"
+    ],
+    "having_handle_obj_names": []
+  }
+}

@@ -620,6 +620,17 @@ def _compose_detection_vis(rgb, camera, panels):
     return im
 
 
+def reset_log_image(camera='arm'):
+    """Blank the dashboard's log_image (black frame, the camera's size) before a
+    detection. A run that finds nothing pushes no image of its own, so without
+    this the previous run's boxes stay on screen and read as a fresh result."""
+    h, w = (720, 1280) if 'head' in str(camera) else (480, 848)
+    try:
+        log_data({'log_image': np.zeros((h, w, 3), np.uint8)})
+    except Exception:
+        pass
+
+
 def _emit_detection_vis(node, rgb, camera, panels):
     """Compose + push the single-camera detection debug image (log_image).
 

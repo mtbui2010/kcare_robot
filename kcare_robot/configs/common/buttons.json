@@ -88,5 +88,10 @@
     "id": "df121d60b9ee",
     "label": "go home",
     "plan": "move::home"
+  },
+  {
+    "id": "e785764493cd",
+    "label": "pre pick",
+    "plan": "movej::pre_pick"
   }
 ]

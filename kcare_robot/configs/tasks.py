@@ -22,6 +22,22 @@ HEAD_CONFIGS = {   'ry_range': [-50, 10],
     'rz': {'front': 0, 'left': -70, 'right': 70},
     'ry': {'up': 10, 'straight': -40, 'down': -50}}
 
+# Visual Q&A (skills/qa.py). The vision model runs in Ollama on the dev PC
+# (RTX 3090); `views` are HEAD_CONFIGS['ry'] names, photographed in order.
+# Ollama on the 4xA6000 server, leaving the dev PC's 3090 to visionserve.
+# 2026-09-30, 22 where-questions on dressroom / cabinet / dining photos:
+# 32b-instruct 19/22, 2.4 s per answer (1.5 s server + network); 8b-instruct
+# 18/22, 2.0 s; 30b-a3b-instruct 16/22 (mixes up left / right). Local 8b on
+# the 3090 was 0.5 s. A LAN address instead of the Cloudflare hostname saves
+# about a second.
+QA_CONFIGS = {   'url': 'https://ollama.aistations.org',
+    'model': 'qwen3-vl:32b-instruct',
+    'num_ctx': 8192,
+    'camera': 'head_rgb',
+    'views': ['up', 'straight', 'down'],
+    'refresh_sec': 20.0,
+    'idle_turns': 6}
+
 ARM_CONFIGS = {   'calib_offset': [0, 0, -0.03],
     'wrist_cam_offset': [-0.02, -0.075, 0],
     'base_x': 0.1915,
@@ -110,7 +126,11 @@ ARM_CONFIGS = {   'calib_offset': [0, 0, -0.03],
     'approach_wrist_angle': 45,
     'place_liftup': 0.13}
 
-MOBILE_CONFIGS = {'dforward': 0.2, 'dshift': -0.2, 'height': 0.405, 'max_shift': 0.6}
+# strict_loc: a location name matching several ENV entries (e.g. `table` with
+# table@kitchen and table@living room) fails the skill instead of taking the
+# first one. ENV entries may list other names for the same spot in `aliases`.
+MOBILE_CONFIGS = {'dforward': 0.2, 'dshift': -0.2, 'height': 0.405, 'max_shift': 0.6,
+                  'strict_loc': False}
 
 FIND_CONFIGS = {   'detect_object': {   'model': 'rfdetr-gdino-sam-etri',
                          'min_size': 0,

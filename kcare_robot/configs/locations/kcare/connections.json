@@ -349,7 +349,7 @@
     "name": "visionserve",
     "config": {
       "is_client": true,
-      "url": "http://192.168.1.11:11435",
+      "url": "http://192.168.0.6:11435",
       "model": "rf-detr",
       "agent_name": "visionserve"
     }

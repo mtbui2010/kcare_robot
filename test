@@ -3,73 +3,361 @@
     "default_mode": "left",
     "placepose": {
       "dx": 0,
-      "dy": -0.1
+      "dy": 0
     },
-    "height": 0.72,
+    "height": 0.465,
     "loc": {
-      "x": 0.9,
-      "y": -1.67,
-      "rz": 0
+      "x": 2.9,
+      "y": 0.045,
+      "rz": -90
     },
-    "dforward": 0
+    "dforward": 0,
+    "dshift": 0,
+    "aliases": [
+      "쇼파",
+      "sofa"
+    ]
   },
-  "wait@living room": {
-    "default_mode": "front",
-    "height": 0.72,
-    "loc": {
-      "x": 4.6,
-      "y": 0.48,
-      "rz": 0
-    }
-  },
-  "drawer@living room": {
+  "table@main room": {
     "default_mode": "left",
     "placepose": {
       "dx": 0,
       "dy": 0
     },
-    "handle": "gray handle",
-    "handle_height": 0.415,
-    "height": 0.565,
+    "height": 0.75,
     "loc": {
-      "x": 0.763,
-      "y": -1.913,
-      "rz": -90
-    },
-    "dshift": -0.25,
-    "dforward": -0.1
-  },
-  "drawer2@living room": {
-    "default_mode": "left",
-    "placepose": {
-      "dx": 0.1
-    },
-    "handle": "white handle",
-    "handle_height": 0.6,
-    "height": 0.72,
-    "loc": {
-      "x": 0.763,
-      "y": -1.913,
-      "rz": -90
-    },
-    "dshift": -0.25,
-    "dforward": -0.1
-  },
-  "drawer3@living room": {
-    "default_mode": "right",
-    "placepose": {
-      "dx": 0.1,
-      "dy": 0
-    },
-    "handle": "gray handle",
-    "handle_height": 0.415,
-    "height": 0.565,
-    "loc": {
-      "x": 1,
-      "y": -0.7,
+      "x": 6.2,
+      "y": 0.4,
       "rz": 0
     },
+    "dforward": 0,
+    "dshift": 0
+  },
+  "table@kitchen": {
+    "default_mode": "right",
+    "placepose": {
+      "dx": 0,
+      "dy": 0
+    },
+    "height": 0.73,
+    "loc": {
+      "x": 1.85,
+      "y": 3.3,
+      "rz": -180
+    },
+    "dforward": 0,
     "dshift": 0,
-    "dforward": 0
+    "aliases": [
+      "식탁",
+      "dining table"
+    ],
+    "qa": {
+      "views": [
+        "straight",
+        "down"
+      ],
+      "scene": "a white dining table. The user sits on the chair at the LEFT edge of the photos and faces RIGHT, along the table. So from the user: \"front\" is further right in the photos along the table; their left is further up in the photos, away from the robot (towards the wall); their right is lower in the photos, towards the robot",
+      "frame": "person",
+      "places": {
+        "front": {
+          "desc": "on the table directly in front of the user",
+          "ko": "앞",
+          "en": "in front of you",
+          "vi": "ở trước mặt bạn"
+        },
+        "left": {
+          "desc": "on the user's left (their own left hand side)",
+          "ko": "왼쪽",
+          "en": "on your left",
+          "vi": "ở bên trái bạn"
+        },
+        "right": {
+          "desc": "on the user's right (their own right hand side)",
+          "ko": "오른쪽",
+          "en": "on your right",
+          "vi": "ở bên phải bạn"
+        }
+      }
+    }
+  },
+  "gas wrench@kitchen": {
+    "default_mode": "right",
+    "placepose": {
+      "dx": 0,
+      "dy": 0
+    },
+    "height": 0.91,
+    "loc": {
+      "x": 2.8,
+      "y": 4.1,
+      "rz": 90
+    },
+    "dforward": 0,
+    "dshift": 0,
+    "aliases": [
+      "가스렌치",
+      "gas"
+    ]
+  },
+  "trash": {
+    "default_mode": "left",
+    "placepose": {
+      "dx": 0,
+      "dy": 0
+    },
+    "height": 0.4,
+    "loc": {
+      "x": 0.5,
+      "y": 0.98,
+      "rz": 90
+    },
+    "dforward": -0.2,
+    "dshift": 0,
+    "aliases": [
+      "쓰레기통",
+      "trash bin"
+    ]
+  },
+  "shelf1": {
+    "default_mode": "front",
+    "placepose": {
+      "dx": 0,
+      "dy": 0
+    },
+    "height": 1.1,
+    "loc": {
+      "x": 2.5,
+      "y": 4,
+      "rz": 90
+    },
+    "dforward": 0,
+    "dshift": 0,
+    "aliases": [
+      "가운데 선반, middle shelf"
+    ]
+  },
+  "counter": {
+    "default_mode": "left",
+    "placepose": {
+      "dx": 0,
+      "dy": 0
+    },
+    "height": 0.91,
+    "loc": {
+      "x": 2.5,
+      "y": 4,
+      "rz": 90
+    },
+    "dforward": 0,
+    "dshift": 0,
+    "aliases": [
+      "조리대"
+    ]
+  },
+  "sink": {
+    "default_mode": "left",
+    "placepose": {
+      "dx": 0,
+      "dy": 0
+    },
+    "height": 0.91,
+    "loc": {
+      "x": 2,
+      "y": 4,
+      "rz": 90
+    },
+    "dforward": 0,
+    "dshift": 0,
+    "aliases": [
+      "신크"
+    ]
+  },
+  "shelf2@kitchen": {
+    "default_mode": "front",
+    "placepose": {
+      "dx": 0,
+      "dy": 0
+    },
+    "height": 1.1,
+    "loc": {
+      "x": 2,
+      "y": 4,
+      "rz": 90
+    },
+    "dforward": 0,
+    "dshift": 0,
+    "aliases": [
+      "왼쪽 선반"
+    ],
+    "qa": {
+      "views": [
+        "up"
+      ],
+      "scene": "a wall cabinet above the kitchen counter, with two columns of shelves split by a vertical divider, and a dish drying rack under it",
+      "frame": "robot",
+      "places": {
+        "left": {
+          "desc": "the left column of the cabinet (any shelf on the left of the divider)",
+          "ko": "왼쪽 선반",
+          "en": "on the left shelf",
+          "vi": "ở kệ bên trái"
+        },
+        "right": {
+          "desc": "the right column of the cabinet (any shelf on the right of the divider)",
+          "ko": "오른쪽 선반",
+          "en": "on the right shelf",
+          "vi": "ở kệ bên phải"
+        },
+        "rack": {
+          "desc": "the dish drying rack under the cabinet, outside it",
+          "ko": "선반 아래 식기 건조대",
+          "en": "in the dish rack under the cabinet",
+          "vi": "ở giá phơi bát dưới tủ"
+        }
+      }
+    }
+  },
+  "dressroom": {
+    "default_mode": "right",
+    "placepose": {
+      "dx": 0,
+      "dy": 0
+    },
+    "height": 0.8,
+    "loc": {
+      "x": 6.4,
+      "y": 3.8,
+      "rz": 0
+    },
+    "dforward": -0.2,
+    "dshift": 0,
+    "aliases": [
+      "옷방"
+    ],
+    "qa": {
+      "views": [
+        "up",
+        "straight",
+        "down"
+      ],
+      "scene": "a dressing room: a clothes hanging rail on the left with a chest of drawers below it, and white corner shelves on the right",
+      "frame": "robot",
+      "places": {
+        "rail_left": {
+          "desc": "hanging on the left third of the rail",
+          "ko": "행거 왼쪽",
+          "en": "on the left of the rail",
+          "vi": "ở bên trái giá treo"
+        },
+        "rail_middle": {
+          "desc": "hanging on the middle third of the rail",
+          "ko": "행거 가운데",
+          "en": "in the middle of the rail",
+          "vi": "ở giữa giá treo"
+        },
+        "rail_right": {
+          "desc": "hanging on the right third of the rail",
+          "ko": "행거 오른쪽",
+          "en": "on the right of the rail",
+          "vi": "ở bên phải giá treo"
+        },
+        "shelf_top": {
+          "desc": "right corner shelves: the top shelf, above eye level (seen in the up photo)",
+          "ko": "오른쪽 선반 위쪽 칸",
+          "en": "on the top shelf",
+          "vi": "ở ngăn trên của kệ"
+        },
+        "shelf_middle": {
+          "desc": "right corner shelves: the shelves at eye level (seen in the straight photo)",
+          "ko": "오른쪽 선반 가운데 칸",
+          "en": "on the middle shelves",
+          "vi": "ở ngăn giữa của kệ"
+        },
+        "shelf_bottom": {
+          "desc": "right corner shelves: the low shelves near the floor (seen in the down photo)",
+          "ko": "오른쪽 선반 아래쪽 칸",
+          "en": "on the low shelves",
+          "vi": "ở ngăn dưới của kệ"
+        },
+        "drawers": {
+          "desc": "on top of the chest of drawers under the rail",
+          "ko": "서랍장 위",
+          "en": "on the chest of drawers",
+          "vi": "trên tủ ngăn kéo"
+        }
+      }
+    }
+  },
+  "restroom": {
+    "default_mode": "front",
+    "placepose": {
+      "dx": 0,
+      "dy": 0
+    },
+    "height": 0.5,
+    "loc": {
+      "x": -3,
+      "y": 0.8,
+      "rz": 90
+    },
+    "dforward": -0.2,
+    "dshift": 0,
+    "aliases": [
+      "화장실"
+    ]
+  },
+  "entrance": {
+    "default_mode": "left",
+    "placepose": {
+      "dx": 0,
+      "dy": 0
+    },
+    "height": 0.4,
+    "loc": {
+      "x": -0.2,
+      "y": 0.8,
+      "rz": 90
+    },
+    "dforward": -0.2,
+    "dshift": 0,
+    "aliases": [
+      "입구"
+    ]
+  },
+  "laundry": {
+    "default_mode": "left",
+    "placepose": {
+      "dx": 0,
+      "dy": 0
+    },
+    "height": 0.4,
+    "loc": {
+      "x": 2.75,
+      "y": 2.9,
+      "rz": 0
+    },
+    "dforward": 0,
+    "dshift": 0,
+    "aliases": [
+      "빨래통"
+    ]
+  },
+  "wait": {
+    "default_mode": "front",
+    "placepose": {
+      "dx": 0,
+      "dy": 0
+    },
+    "height": 0.5,
+    "loc": {
+      "x": 1.4,
+      "y": 0.15,
+      "rz": 0
+    },
+    "dforward": 0,
+    "dshift": 0,
+    "aliases": [
+      "대기"
+    ]
   }
 }

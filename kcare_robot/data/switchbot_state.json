@@ -1,0 +1,16 @@
+{
+ "EB:6B:01:06:62:34": {
+  "mode": "switch",
+  "is_on": false,
+  "battery": 100,
+  "source": "command",
+  "ts": 1790922496.484808
+ },
+ "EC:0F:01:06:38:04": {
+  "mode": "switch",
+  "is_on": false,
+  "battery": 100,
+  "source": "advert",
+  "ts": 1790921817.2540293
+ }
+}

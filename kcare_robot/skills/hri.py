@@ -39,6 +39,10 @@ RETRIES = 2               # attempts after the first, for `ask`
 # The browser voices the prompt before it opens the mic, so a dashboard listen
 # needs headroom beyond the phrase itself.
 DASHBOARD_SLACK_SEC = 20.0
+INPUTS = ('voice', 'text')
+# input='text': the answer is typed on the dashboard, which takes far longer
+# than saying it — one wait covers a typed question.
+TEXT_WAIT_SEC = 300.0
 
 _PHRASES = {
     'heard':      {'ko': '들었어요',
@@ -80,7 +84,14 @@ def _common(kwargs: dict):
     source = str(kwargs.pop('source', 'dashboard') or 'dashboard').lower()
     if source not in SOURCES:
         raise ValueError(f'source must be one of {SOURCES}, got {source!r}')
+    mode = str(kwargs.pop('input', 'voice') or 'voice').lower()
+    if mode not in INPUTS:
+        raise ValueError(f'input must be one of {INPUTS}, got {mode!r}')
+    if mode == 'text' and source != 'dashboard':
+        raise ValueError("input='text' is typed on the dashboard: use source='dashboard'")
     listen = {
+        'mode': mode,
+        'text_wait_sec': float(kwargs.pop('text_wait_sec', TEXT_WAIT_SEC)),
         'max_sec': float(kwargs.pop('max_sec', MAX_SEC)),
         'silence_sec': float(kwargs.pop('silence_sec', SILENCE_SEC)),
         'energy_threshold': float(kwargs.pop('energy_threshold', ENERGY_THRESHOLD)),
@@ -107,8 +118,11 @@ def _hear(prompt, lang: str, source: str, listen: dict):
     if prompt:
         log_data({'msg': f'robot: {prompt}'})
     if source == 'dashboard':
+        typed = listen.get('mode') == 'text'
         text = listen_dashboard(prompt=prompt, lang=lang, max_sec=listen['max_sec'],
-                                timeout=listen['max_sec'] + DASHBOARD_SLACK_SEC)
+                                timeout=(listen['text_wait_sec'] if typed
+                                         else listen['max_sec'] + DASHBOARD_SLACK_SEC),
+                                mode='text' if typed else 'voice')
     else:
         if prompt:
             say_to_user(prompt, lang=lang, source='robot')

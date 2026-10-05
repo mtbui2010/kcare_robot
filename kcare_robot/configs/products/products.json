@@ -1,0 +1,77 @@
+{
+  "_doc": "Products find/detect/find_grasp can tell apart. inputs naming a product (or an alias) detects 'class', then keeps the box whose crop looks most like this product's reference photos (SigLIP image embeddings of the middle \"inner\" fraction of each crop, so the neighbouring pack does not count): best similarity >= min_sim and ahead of every other product by >= min_margin, else the product counts as not found. Reference photos: crops from the wrist camera, files next to this one.",
+  "match": {
+    "model": "siglip-image",
+    "min_sim": 0.8,
+    "min_margin": 0.03,
+    "box_threshold": 0.25,
+    "text_threshold": 0.15,
+    "inner": 0.8
+  },
+  "products": {
+    "짜파게티": {
+      "aliases": [
+        "jjapaghetti",
+        "짜장라면"
+      ],
+      "class": "noodle package",
+      "refs": [
+        "jjapaghetti_1.jpg",
+        "jjapaghetti_2.jpg",
+        "jjapaghetti_3.jpg",
+        "jjapaghetti_4.jpg",
+        "jjapaghetti_5.jpg",
+        "jjapaghetti_6.jpg",
+        "jjapaghetti_7.jpg"
+      ]
+    },
+    "너구리": {
+      "aliases": [
+        "neoguri"
+      ],
+      "class": "noodle package",
+      "refs": [
+        "neoguri_1.jpg",
+        "neoguri_2.jpg",
+        "neoguri_3.jpg",
+        "neoguri_4.jpg",
+        "neoguri_5.jpg",
+        "neoguri_6.jpg"
+      ]
+    },
+    "신라면": {
+      "aliases": [
+        "shin ramyun",
+        "shin ramen",
+        "辛라면"
+      ],
+      "class": "noodle package",
+      "refs": [
+        "shin_1.jpg",
+        "shin_2.jpg",
+        "shin_3.jpg",
+        "shin_4.jpg",
+        "shin_5.jpg",
+        "shin_6.jpg",
+        "shin_7.jpg"
+      ]
+    },
+    "안성탕면": {
+      "aliases": [
+        "ansungtangmyun",
+        "ansung tangmyun",
+        "안성 탕면"
+      ],
+      "class": "noodle package",
+      "refs": [
+        "ansung_1.jpg",
+        "ansung_2.jpg",
+        "ansung_3.jpg",
+        "ansung_4.jpg",
+        "ansung_5.jpg",
+        "ansung_6.jpg",
+        "ansung_7.jpg"
+      ]
+    }
+  }
+}

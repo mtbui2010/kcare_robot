@@ -1,5 +1,5 @@
 from robot_agent.utils import run_parallel_check, exception_handler, translate, text2voice
-from kcare_robot.utils import get_env_specs, get_lift_height, loc2text, correct_noun, correct_loc, announce_moving, announce_arrived
+from kcare_robot.utils import env_key, get_env_specs, get_lift_height, loc2text, correct_noun, correct_loc, announce_moving, announce_arrived
 from kcare_robot.skills.arm import movej
 from kcare_robot.skills.head import moveh, get_robot_mode
 from kcare_robot.skills.lift import lift
@@ -28,7 +28,7 @@ def mobile_pose(node, **kwargs):
     pos, ort = ret['pose'].position, ret['pose'].orientation
     rz= quaternion2deg(ort.x, ort.y,ort.z, ort.w)[-1]
     
-    return {'isdone': True, 'pose': [float(pos.x), float(pos.y), float(rz)]}
+    return {'isdone': True, 'pose': [round(el, 3) for el in (float(pos.x), float(pos.y), float(rz))]}
 
 @exception_handler
 def moveb(node, **kwargs):
@@ -72,7 +72,10 @@ def forward(node, **kwargs):
     ret = node.agents['mobile_forward'].send({'distance': inp, 'wait':wait})
     assert ret['isdone'], f'{ret}'
 
-    return rotate(node=node, inputs=prev_rz)
+    ret = rotate(node=node, inputs=prev_rz)
+    assert ret['isdone'], f'{ret}'
+    
+    return {'isdone': True}
 
 
 
@@ -82,52 +85,43 @@ def forward(node, **kwargs):
 def move(node, **kwargs):
     agents = node.agents   
     env_name = kwargs.pop('inputs')
-    
-    if 'home' in env_name:
-        moveh(node=node, inputs='front', wait=False)
-        return moveb(node=node, wait=True, x=0.5, y=0, rz=0) 
 
-    if 'base' in env_name:
-        moveh(node=node, inputs='front', wait=False) 
-        moveb(node=node, wait=True, x=0.3, y=0, theta=0) 
-        return forward(node=node, inputs=-0.3)
-    
-    
     env = get_env_specs(env_name, ENV)
     
     threading.Thread(target=announce_moving, args=(env_name,), daemon=True).start()
-    
     prev_robot_mode = get_robot_mode(node=node)
     back_turn_deg = - get_turn_deg(robot_mode=prev_robot_mode)
-    
-    # approach to new location
-    env_loc = env.get('loc', None)
-    robot_mode = env.get('default_mode', 'front') 
-    dforward = MOBILE_CONFIGS['dforward'] + env.get('dforward', 0) 
-    dshift = MOBILE_CONFIGS['dshift'] + env.get('dshift',  0) 
-    robot_mode = kwargs.get('mode', robot_mode) 
-    lift_height = get_lift_height(env, robot_mode)
 
-    turn_deg = get_turn_deg(robot_mode=robot_mode)
-    dforward =  0 if robot_mode=='front' else dforward
-    dshift =  0 if robot_mode=='front' else dshift
-    
-    is_current_loc = False
-    if env_loc is None:
-        kwargs['inputs']=env.get('label', env_name)
+    if 'home' in env_name or 'base' in env_name:
+        is_current_loc = False
     else:
-        robot_ori, turn_ori = env_loc['rz']*np.pi/180,  (env_loc['rz']+turn_deg)*np.pi/180
-        env_loc['x'] +=  dshift*np.cos(turn_ori)
-        env_loc['y'] +=  dshift*np.sin(turn_ori)
-        kwargs.update(env_loc)
+        # approach to new location
+        env_loc = env.get('loc', None)
+        robot_mode = env.get('default_mode', 'front') 
+        dforward = MOBILE_CONFIGS['dforward'] + env.get('dforward', 0) 
+        dshift = MOBILE_CONFIGS['dshift'] + env.get('dshift',  0) 
+        robot_mode = kwargs.get('mode', robot_mode) 
+        lift_height = get_lift_height(env, robot_mode)
+
+        turn_deg = get_turn_deg(robot_mode=robot_mode)
+        dforward =  0 if robot_mode=='front' else dforward
+        dshift =  0 if robot_mode=='front' else dshift
         
-        # is_current_loc =  check_current_loc(node, env_loc)
-        is_current_loc =  check_current_loc(node, {
-            'x': env_loc['x'] + dforward*np.cos(robot_ori),
-            'y': env_loc['y'] + dforward*np.sin(robot_ori),
-        })
+        is_current_loc = False
+        if env_loc is None:
+            kwargs['inputs']=env.get('label', env_name)
+        else:
+            robot_ori, turn_ori = env_loc['rz']*np.pi/180,  (env_loc['rz']+turn_deg)*np.pi/180
+            env_loc['x'] +=  dshift*np.cos(turn_ori)
+            env_loc['y'] +=  dshift*np.sin(turn_ori)
+            kwargs.update(env_loc)
             
-    
+            # is_current_loc =  check_current_loc(node, env_loc)
+            is_current_loc =  check_current_loc(node, {
+                'x': env_loc['x'] + dforward*np.cos(robot_ori),
+                'y': env_loc['y'] + dforward*np.sin(robot_ori),
+            })
+            
     if is_current_loc:
         return run_parallel_check(funcs=[
             # lambda : agents['turn'].send({'inputs':env_loc['rz'] + turn_deg -agents['mobile_pose'].get()['rz'], 'wait':True}),
@@ -137,27 +131,37 @@ def move(node, **kwargs):
 
     # backward 
     if prev_robot_mode!='front':
-        # ret = run_parallel_check(funcs=[
-        #     lambda : moveh(node=node, inputs='straight,front', wait=True),
-        #     # lambda : node.agents['turn'].send({'inputs': back_turn_deg, 'wait': True}),
-        #     lambda : turn(node=node, inputs=back_turn_deg),
-        # ])
-        # if not ret['isdone']:
-        #     return ret
+        ret = run_parallel_check(funcs=[
+            lambda : moveh(node=node, inputs='straight,front', wait=True),
+            # lambda : node.agents['turn'].send({'inputs': back_turn_deg, 'wait': True}),
+            lambda : turn(node=node, inputs=back_turn_deg),
+        ])
+        if not ret['isdone']:
+            return ret
         
-        # ret = run_parallel_check(funcs=[
-        #     lambda : forward(node=node, inputs=-0.3, wait=True),
-        # ])
-        # if not ret['isdone']:
-        #     return ret
+        ret = run_parallel_check(funcs=[
+            lambda : forward(node=node, inputs=-0.3, wait=True),
+        ])
+        if not ret['isdone']:
+            return ret
 
-        ret = moveh(node=node, inputs='straight,front', wait=True)
-        assert  ret['isdone'], f'{ret}'
+        # ret = moveh(node=node, inputs='straight,front', wait=True)
+        # assert  ret['isdone'], f'{ret}'
+        
+
+    if 'home' in env_name:
+        moveh(node=node, inputs='front', wait=False)
+        return moveb(node=node, wait=True, x=0.5, y=0, rz=0) 
+
+    if 'base' in env_name:
+        moveh(node=node, inputs='front', wait=False) 
+        moveb(node=node, wait=True, x=0.3, y=0, theta=0) 
+        return forward(node=node, inputs=-0.3)
     
     # move
     kwargs.update({'wait':True})
     ret = run_parallel_check(funcs=[
-        lambda : (time.sleep(4),lift(node=node, inputs='home', mode='front'), time.sleep(3), lift(node=node, inputs=lift_height, mode=robot_mode, wait=True))[-1],
+        lambda : (time.sleep(3),lift(node=node, inputs='home', mode='front'), time.sleep(2), lift(node=node, inputs=lift_height, mode=robot_mode, wait=True))[-1],
         # lambda : movej(node=node, inputs='fold', mode=robot_mode),
         lambda : ( movej(node=node, inputs='fold', mode=prev_robot_mode),time.sleep(2), movej(node=node, inputs='fold', mode='front'))[-1],
         lambda : (moveb(node=node, **kwargs), forward(node=node, inputs=dforward, wait=True))[-1]

@@ -35,7 +35,9 @@ from kcare_robot.skills.mobile import move
 from kcare_robot.skills.pointcloud import get3d
 from kcare_robot.skills.arm import movej, movet, movel
 
+from kcare_robot.skills import _products
 from kcare_robot.skills._recognition_helpers import (
+    reset_log_image,
     fetch_camera_data, _fetch_head, _fetch_arm,
     _vs_client, _get_placepose,
     _bbox_to_xyxy, _box_islying_pca, _box_depths,
@@ -48,9 +50,9 @@ from kcare_robot.skills._recognition_helpers import (
 )
 
 def _detect_nearest(node, pose, **kwargs) -> dict:
-    # ret = moveh(node=node, inputs="down")
-    # assert ret['isdone'], f'{ret}'
-    # time.sleep(0.5)
+    ret = moveh(node=node, ry=-20)
+    assert ret['isdone'], f'{ret}'
+    time.sleep(0.5)
 
     cam = fetch_camera_data(node, 'head')
     h, w =  cam.rgb.shape[:2]
@@ -221,14 +223,27 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     out: dict = {}
     panels: list = []
     for name in obj_names:
+        # A product from configs/products (신라면, 짜파게티 ...): detect its
+        # generic class, then keep only the pack that looks like it.
+        product = _products.lookup(name)
+        prompt, cfg = name, det_configs
+        if product is not None:
+            prompt = product[1].get('class', name)
+            cfg = {**det_configs, **{k: product[2][k] for k in ('box_threshold', 'text_threshold')
+                                     if k in product[2]}}
         for _ in range(num_trials):
             cam = fetch_camera_data(node, camera)
             rgb, depth, cam_params = cam.rgb, cam.depth, cam.cam_params
             h, w = rgb.shape[:2]
-            
-            res = _predict_detect(rgb, f'{name.strip()}.', det_configs)
+
+            res = _predict_detect(rgb, f'{prompt.strip()}.', cfg)
             if min_conf > 0:
                 res = res.filter_by_conf(min_conf=min_conf)
+            if product is not None and len(res.detections) != 0:
+                res, report = _products.match(_vs_client(), rgb, res, product[0], product[2], label=name)
+                log_data({'msg': f'{name} = {product[0]}: ' + ', '.join(
+                    f"{r['best']} {r['sim']:.2f}{'' if r['sure'] else '?'}" for r in report)
+                    + ('' if res.detections else ' — not sure which pack, not picking')})
             if len(res.detections) != 0:
                 break
         if len(res.detections) == 0:
@@ -313,6 +328,7 @@ def detect(node, **kwargs):
     Returns ``{'isdone', 'ins': {name: {...}}}``."""
     obj_names = _parse_obj_names(kwargs.pop('inputs', None), kwargs.pop('obj_names', None))
     camera = kwargs.pop('camera', 'arm')
+    reset_log_image(camera)
     return _detect_objects(node, obj_names, camera=camera, **kwargs)
 
 
@@ -326,6 +342,7 @@ def find_once(node, **kwargs):
     An arm entry carries a grasp-gd `grasppose`, so a downstream pick prefers it;
     the head entry (base-frame pose + approach) is the fallback used only for
     objects the wrist camera missed."""
+    reset_log_image(kwargs.get('cameras', 'arm'))
 
     robot_mode = get_robot_mode(node=node)
   
@@ -388,6 +405,7 @@ def find(node, **kwargs):
     """Find objects from the head camera (grounding-dino). `inputs` is
     'cup,bottle@table' (objects, optional '@location'). Retries over `views`
     and, if `once=False`, over every ENV location."""
+    reset_log_image('head')
     loc_name = kwargs.pop('inputs', None)
     splits = loc_name.split('|')
     loc_name, num_trials = splits if len(splits)==2 else (splits[0], 1)
@@ -438,6 +456,7 @@ def find_grasp(node, **kwargs):
       - estimate_grasp=False          → object location only (no grasp).
     Grasp gripper bounds come from the `detect_grasp` config profile."""
     obj_names = _parse_obj_names(kwargs.get('inputs', None), kwargs.pop('obj_names', None))
+    reset_log_image('arm')
     kwargs['estimate_grasp'] = True
     kwargs.pop('detector', None)
     return _detect_objects(node, obj_names, camera='arm', **kwargs)
@@ -540,7 +559,7 @@ def get_side_pose_3d(node, **kwargs):
 
 @exception_handler
 def find_place(node, **kwargs) -> dict:
-    
+    reset_log_image('head')
     point3d = kwargs.pop('point3d', None)
     inputs = kwargs.pop('inputs', None)
     islying = kwargs.pop('islying', False)
@@ -583,7 +602,7 @@ def find_place(node, **kwargs) -> dict:
 
 
     # avoid obstacle
-    if place_beside and 'trash' not in inputs and 'sink' not in inputs:
+    if place_beside and 'trash' not in inputs and 'sink' not in inputs and 'laundry' not in inputs:
         point3d = _detect_nearest(node=node, pose=point3d)
         
         

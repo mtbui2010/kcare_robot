@@ -280,6 +280,22 @@ def _found_pose_data(result, name, node):
     return data
 
 
+def _container_key(params, fallback):
+    """Canonical ENV key of an open/close target, so `open_drawer::서랍장` and
+    `open_drawer::drawer@living room` record the same container; *fallback*
+    when the arg names no ENV location."""
+    if isinstance(params, dict):
+        params = params.get("inputs") or params.get("input")
+    if not isinstance(params, str):
+        return fallback
+    try:
+        from robot_agent.env_names import resolve_env_name
+        from robot_agent.skill_configs import ENV
+        return resolve_env_name(params, ENV) or fallback
+    except Exception:
+        return fallback
+
+
 def apply_skill_effect(world, skill, params=None, result=None, node=None) -> None:
     """Mirror a RAW (direct / open-loop) kcare skill onto the persistent
     WorldState — the inverse of :func:`build_params`, keyed on kcare SKILL names
@@ -332,10 +348,11 @@ def apply_skill_effect(world, skill, params=None, result=None, node=None) -> Non
         world.holding_since = None
         world.holding_pose = None        # released
     elif s in ("open_drawer", "open"):
+        obj = _container_key(params, obj)
         if obj:
             world.opened.add(obj)
     elif s in ("close_drawer", "close"):
-        world.opened.discard(obj)
+        world.opened.discard(_container_key(params, obj))
     # move -> 'arrived' handled by sensor reconcile; others: no symbolic effect
 
 

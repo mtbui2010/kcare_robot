@@ -1,0 +1,411 @@
+[
+  {
+    "type": "ros_topic",
+    "name": "head_rgb",
+    "config": {
+      "conn_name": "/femto/color/image_raw",
+      "conn_type": "ros_topic",
+      "is_client": true,
+      "agent_name": "head_rgb",
+      "data_interface": "sensor_msgs/msg/Image",
+      "is_camera": true,
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.ros.codecs import decode_imgmsg\n    return decode_imgmsg(msg)"
+    }
+  },
+  {
+    "type": "ros_topic",
+    "name": "head_depth",
+    "config": {
+      "conn_name": "/femto/depth/aligned",
+      "conn_type": "ros_topic",
+      "is_client": true,
+      "agent_name": "head_depth",
+      "data_interface": "sensor_msgs/msg/Image",
+      "is_camera": true,
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.ros.codecs import decode_imgmsg\n    return decode_imgmsg(msg)"
+    }
+  },
+  {
+    "type": "ros_topic",
+    "name": "head_cam_params",
+    "config": {
+      "conn_name": "/femto/color/camera_info",
+      "agent_name": "head_cam_params",
+      "conn_type": "ros_topic",
+      "data_interface": "sensor_msgs/msg/CameraInfo",
+      "is_client": true,
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.ros.codecs import decode_caminfomsg\n    return decode_caminfomsg(msg)"
+    }
+  },
+  {
+    "type": "ros_action",
+    "name": "lift",
+    "config": {
+      "conn_name": "/kaair_worker/lift_move",
+      "conn_type": "ros_action",
+      "is_client": true,
+      "agent_name": "lift",
+      "data_interface": "kaair_msgs/action/LiftMove",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'final_height': res.final_height, 'msg': res.message}",
+      "timeout": 30.0
+    }
+  },
+  {
+    "type": "ros_topic",
+    "name": "joint_states",
+    "config": {
+      "conn_name": "/joint_states",
+      "conn_type": "ros_topic",
+      "is_client": true,
+      "agent_name": "joint_states",
+      "data_interface": "sensor_msgs/msg/JointState",
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.helpers import get_attrs\n    # Replace field names with actual message fields\n    ret = get_attrs(msg, ['name', 'position'])\n    ret['isdone'] = True\n    return ret"
+    }
+  },
+  {
+    "type": "ros_topic",
+    "name": "arm_base_tool_pose",
+    "config": {
+      "conn_name": "/robot_pose/arm_base_tool_pose",
+      "conn_type": "ros_topic",
+      "is_client": true,
+      "agent_name": "arm_base_tool_pose",
+      "data_interface": "geometry_msgs/msg/PoseStamped",
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.helpers import get_attrs\n    # Replace field names with actual message fields\n    ret = get_attrs(msg, ['pose'])\n    ret['isdone'] = True\n    return ret"
+    }
+  },
+  {
+    "type": "ros_topic",
+    "name": "mobile_pose",
+    "config": {
+      "conn_name": "/robot_pose/mobile_pose",
+      "conn_type": "ros_topic",
+      "is_client": true,
+      "agent_name": "mobile_pose",
+      "data_interface": "geometry_msgs/msg/PoseStamped",
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.helpers import get_attrs\n    # Replace field names with actual message fields\n    ret = get_attrs(msg, ['pose'])\n    ret['isdone'] = True\n    return ret"
+    }
+  },
+  {
+    "type": "ros_topic",
+    "name": "mobile_base_tool_pose",
+    "config": {
+      "conn_name": "/robot_pose/mobile_base_tool_pose",
+      "conn_type": "ros_topic",
+      "is_client": true,
+      "agent_name": "mobile_base_tool_pose",
+      "data_interface": "geometry_msgs/msg/PoseStamped",
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.helpers import get_attrs\n    # Replace field names with actual message fields\n    ret = get_attrs(msg, ['pose'])\n    ret['isdone'] = True\n    return ret"
+    }
+  },
+  {
+    "type": "ros_topic",
+    "name": "arm_rgb",
+    "config": {
+      "conn_name": "/hand/camera/color/image_raw/compressed",
+      "conn_type": "ros_topic",
+      "is_client": true,
+      "agent_name": "arm_rgb",
+      "data_interface": "sensor_msgs/msg/CompressedImage",
+      "is_camera": true,
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.ros.codecs import decode_imgmsg\n    return decode_imgmsg(msg)"
+    }
+  },
+  {
+    "type": "ros_action",
+    "name": "arm_movej",
+    "config": {
+      "conn_name": "/kaair_worker/arm_moveJ",
+      "conn_type": "ros_action",
+      "is_client": true,
+      "agent_name": "arm_movej",
+      "data_interface": "kaair_msgs/action/MoveJoint",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success}",
+      "timeout": 20.0
+    }
+  },
+  {
+    "type": "ros_action",
+    "name": "arm_movet",
+    "config": {
+      "conn_name": "/kaair_worker/arm_moveT",
+      "conn_type": "ros_action",
+      "is_client": true,
+      "agent_name": "arm_movet",
+      "data_interface": "kaair_msgs/action/MoveTool",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'msg': res.message}",
+      "timeout": 20.0
+    }
+  },
+  {
+    "type": "ros_service",
+    "name": "arm_enable",
+    "config": {
+      "conn_name": "/arm/init_set",
+      "conn_type": "ros_service",
+      "is_client": true,
+      "agent_name": "arm_enable",
+      "data_interface": "std_srvs/srv/Trigger",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success}"
+    }
+  },
+  {
+    "type": "ros_action",
+    "name": "grip",
+    "config": {
+      "conn_name": "/body/tool_controller/gripper_cmd",
+      "conn_type": "ros_action",
+      "is_client": true,
+      "agent_name": "grip",
+      "data_interface": "control_msgs/action/GripperCommand",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req.command, data)\n    return req",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': True, 'stalled': res.stalled, 'reached': res.reached_goal}",
+      "timeout": 10.0
+    }
+  },
+  {
+    "type": "ros_action",
+    "name": "head_move",
+    "config": {
+      "conn_name": "/kaair_worker/head_move",
+      "agent_name": "head_move",
+      "conn_type": "ros_action",
+      "data_interface": "kaair_msgs/action/HeadMove",
+      "is_client": true,
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success}",
+      "timeout": 10.0
+    }
+  },
+  {
+    "type": "ros_action",
+    "name": "mobile_move",
+    "config": {
+      "conn_name": "/navigate_to_pose",
+      "conn_type": "ros_action",
+      "is_client": true,
+      "agent_name": "mobile_move",
+      "data_interface": "nav2_msgs/action/NavigateToPose",
+      "cancel_func": "def cancel_func(node, agent):\n    for h in list(agent._goal_handles):   # goals this process is waiting on\n        h.cancel_goal_async()\n    return agent.cancel_all_goals()       # + CANCEL_ALL for anything else",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    req.pose.header.frame_id = 'map'\n    req.behavior_tree = ''\n\n    req.pose.pose.position.x = data['x']\n    req.pose.pose.position.y = data['y']\n    req.pose.pose.position.z = data['z']\n\n    req.pose.pose.orientation.x = data['qx']\n    req.pose.pose.orientation.y = data['qy']\n    req.pose.pose.orientation.z = data['qz']\n    req.pose.pose.orientation.w = data['qw']\n    return req",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': True}",
+      "timeout": 120.0
+    }
+  },
+  {
+    "type": "ros_topic",
+    "name": "arm_cam_params",
+    "config": {
+      "conn_name": "/hand/camera/depth/camera_info",
+      "conn_type": "ros_topic",
+      "is_client": true,
+      "agent_name": "arm_cam_params",
+      "data_interface": "sensor_msgs/msg/CameraInfo",
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.ros.codecs import decode_caminfomsg\n    return decode_caminfomsg(msg)"
+    }
+  },
+  {
+    "type": "ros_service",
+    "name": "mobile_forward",
+    "config": {
+      "conn_name": "/mobile/shift_pose",
+      "conn_type": "ros_service",
+      "is_client": true,
+      "agent_name": "mobile_forward",
+      "data_interface": "kaair_msgs/srv/MobileShift",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.successed}"
+    }
+  },
+  {
+    "type": "ros_service",
+    "name": "mobile_rotate",
+    "config": {
+      "conn_name": "/mobile/absolute_rotate",
+      "conn_type": "ros_service",
+      "is_client": true,
+      "agent_name": "mobile_rotate",
+      "data_interface": "kaair_msgs/srv/MobileRotate",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.successed}"
+    }
+  },
+  {
+    "type": "ros_service",
+    "name": "mobile_turn",
+    "config": {
+      "conn_name": "/mobile/rotate",
+      "conn_type": "ros_service",
+      "is_client": true,
+      "agent_name": "mobile_turn",
+      "data_interface": "kaair_msgs/srv/MobileRotate",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.successed}"
+    }
+  },
+  {
+    "type": "ros_service",
+    "name": "get3d",
+    "config": {
+      "conn_name": "/create_object_marker",
+      "conn_type": "ros_service",
+      "is_client": true,
+      "agent_name": "get3d",
+      "data_interface": "kaair_msgs/srv/CreateObjectMarker",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'x': res.x_array, 'y':res.y_array, 'z': res.z_array, 'msg': res.message}"
+    }
+  },
+  {
+    "type": "ros_service",
+    "name": "get3d_tool",
+    "config": {
+      "conn_name": "/create_tool_marker",
+      "conn_type": "ros_service",
+      "is_client": true,
+      "agent_name": "get3d_tool",
+      "data_interface": "kaair_msgs/srv/CreateObjectMarker",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'x': res.x_array, 'y':res.y_array, 'z': res.z_array, 'msg': res.message}"
+    }
+  },
+  {
+    "type": "tcp",
+    "name": "vlms",
+    "config": {
+      "host": "192.168.1.11",
+      "port": 8805,
+      "is_client": true,
+      "agent_name": "vlms"
+    }
+  },
+  {
+    "type": "ros_topic",
+    "name": "arm_depth",
+    "config": {
+      "conn_name": "/hand/camera/depth/image_rect_raw",
+      "conn_type": "ros_topic",
+      "is_client": true,
+      "agent_name": "arm_depth",
+      "data_interface": "sensor_msgs/msg/Image",
+      "is_camera": true,
+      "decode_func": "def decode_func(msg):\n    from robot_agent.connect.ros.codecs import decode_imgmsg\n    return decode_imgmsg(msg)"
+    }
+  },
+  {
+    "type": "ros_action",
+    "name": "arm_movel",
+    "config": {
+      "conn_name": "/kaair_worker/arm_moveL",
+      "conn_type": "ros_action",
+      "is_client": true,
+      "agent_name": "arm_movel",
+      "data_interface": "kaair_msgs/action/MoveLinear",
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'msg': res.message}",
+      "timeout": 15.0
+    }
+  },
+  {
+    "type": "visionserve",
+    "name": "visionserve",
+    "config": {
+      "is_client": true,
+      "url": "http://192.168.0.6:11435",
+      "model": "rf-detr",
+      "agent_name": "visionserve"
+    }
+  },
+  {
+    "type": "visionserve",
+    "name": "rf-detr",
+    "config": {
+      "is_client": true,
+      "url": "http://10.252.205.103:11435",
+      "model": "rf-detr"
+    }
+  },
+  {
+    "type": "visionserve",
+    "name": "rf-detr",
+    "config": {
+      "is_client": true,
+      "url": "http://10.252.205.103:11435",
+      "model": "rf-detr"
+    }
+  },
+  {
+    "type": "visionserve",
+    "name": "detserve",
+    "config": {
+      "is_client": true,
+      "url": "http://10.252.205.103:11435",
+      "model": "rf-detr",
+      "agent_name": "detserve"
+    }
+  },
+  {
+    "type": "visionserve",
+    "name": "rf-detr",
+    "config": {
+      "is_client": true,
+      "url": "http://10.252.205.103:11435",
+      "model": "rf-detr"
+    }
+  },
+  {
+    "type": "visionserve",
+    "name": "rf-detr",
+    "config": {
+      "is_client": true,
+      "url": "http://10.252.205.103:11435",
+      "model": "rf-detr"
+    }
+  },
+  {
+    "type": "switchbot",
+    "name": "laundry room",
+    "config": {
+      "agent_name": "switchbot_laundry_room",
+      "mac": "EB:6B:01:06:62:34",
+      "loc": "laundry room",
+      "default": true
+    }
+  },
+  {
+    "type": "switchbot",
+    "name": "warehouse",
+    "config": {
+      "agent_name": "switchbot_warehouse",
+      "mac": "EC:0F:01:06:38:04",
+      "loc": "warehouse",
+      "default": false
+    }
+  },
+  {
+    "type": "llm",
+    "name": "task_planner",
+    "config": {
+      "name": "llama",
+      "agent_name": "task_planner",
+      "url": "http://192.168.1.11:11434",
+      "is_active": false
+    }
+  },
+  {
+    "type": "llm",
+    "name": "vlm",
+    "config": {
+      "name": "llama",
+      "agent_name": "vlm",
+      "url": "http://192.168.0.6:11434",
+      "model": "qwen3-vl:8b-instruct",
+      "num_ctx": 8192,
+      "is_active": true
+    }
+  }
+]

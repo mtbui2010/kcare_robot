@@ -23,6 +23,7 @@ kcare_robot/skills/__init__.py
 kcare_robot/skills/_approach_helpers.py
 kcare_robot/skills/_pick_helpers.py
 kcare_robot/skills/_place_helpers.py
+kcare_robot/skills/_products.py
 kcare_robot/skills/_recognition_helpers.py
 kcare_robot/skills/approach.py
 kcare_robot/skills/arm.py
@@ -39,6 +40,7 @@ kcare_robot/skills/new_skill.py
 kcare_robot/skills/pick.py
 kcare_robot/skills/place.py
 kcare_robot/skills/pointcloud.py
+kcare_robot/skills/qa.py
 kcare_robot/skills/real2sim_capture.py
 kcare_robot/skills/recognition.py
 kcare_robot/skills/rest_detect.py

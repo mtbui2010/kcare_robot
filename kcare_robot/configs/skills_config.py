@@ -58,4 +58,7 @@ SKILL_CONFIGS: dict[str, tuple[str, str]] = {
     'vla_drawer_open': (f'{_PKG}.vla', 'vla_drawer_open'),
     'reply': (f'{_PKG}.hri', 'reply'),
     'ask': (f'{_PKG}.hri', 'ask'),
+    'qa': (f'{_PKG}.qa', 'qa'),
+    'turn_light': (f'{_PKG}.switchbot', 'turn_light'),
+    'light_state': (f'{_PKG}.switchbot', 'light_state'),
 }
