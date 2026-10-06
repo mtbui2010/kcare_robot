@@ -28,6 +28,7 @@ from kcare_robot.skills.head import head_state as get_head_state
 from kcare_robot.skills.pointcloud import get3d, get3d_arm
 from kcare_robot.skills.arm import get_wrist_angle, arm_pose
 from robot_agent.utils import deg2quaternion
+from kcare_robot.utils import put_text
 import cv2
 
 def _normalize_orientation(theta):
@@ -585,8 +586,7 @@ def _draw_grasp(im, line, label=''):
                  (int(cx + px * t), int(cy + py * t)), _GRASP_COLOR, 2)
         cv2.circle(im, (cx, cy), 3, _GRASP_COLOR, -1)
     if label:
-        cv2.putText(im, label, (8, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 5)
-        cv2.putText(im, label, (8, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, _GRASP_COLOR, 2)
+        put_text(im, label, (8, 60), 0.7, _GRASP_COLOR, 2)
 
 
 def _compose_detection_vis(rgb, camera, panels):
@@ -601,22 +601,22 @@ def _compose_detection_vis(rgb, camera, panels):
         if box is not None:
             x0, y0, x1, y1 = [int(v) for v in box]
             cv2.rectangle(im, (x0, y0), (x1, y1), _LY_COLOR if p['vote'] else _ST_COLOR, 3)
-            lbl = f"{p['name'][:2]} {p.get('score', 0.0):.2f}"   # short name + score (box colour = islying)
-            cv2.putText(im, lbl, (x0, max(22, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 4)
-            cv2.putText(im, lbl, (x0, max(22, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+            # name + score (box colour = islying); Korean names in full (신라면),
+            # Latin ones shortened as before
+            nm = p['name'] if not str(p['name']).isascii() else p['name'][:2]
+            lbl = f"{nm} {p.get('score', 0.0):.2f}"
+            put_text(im, lbl, (x0, max(22, y0 - 6)), 0.6, (255, 255, 0), 2)
         if p.get('grasp_line') is not None:        # grasppose, wrist camera only
             _draw_grasp(im, p['grasp_line'], p.get('grasp_label', ''))
 
-    cv2.putText(im, camera, (8, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 5)
-    cv2.putText(im, camera, (8, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
+    put_text(im, camera, (8, 32), 0.8, (255, 255, 0), 2)
 
     lines = [f"{p['name']} {_vlabel(p['vote'])}" for p in panels]
     x = im.shape[1] - 260
     y0 = im.shape[0] - 14 - (len(lines) - 1) * 28
     for i, t in enumerate(lines):
         y = y0 + i * 28
-        cv2.putText(im, t, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 5)
-        cv2.putText(im, t, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        put_text(im, t, (x, y), 0.6, (255, 255, 255), 2)
     return im
 
 

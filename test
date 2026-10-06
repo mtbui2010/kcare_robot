@@ -33,6 +33,21 @@
     "dforward": 0,
     "dshift": 0
   },
+  "table_front": {
+    "default_mode": "front",
+    "placepose": {
+      "dx": 0,
+      "dy": 0
+    },
+    "height": 0.75,
+    "loc": {
+      "x": 6.2,
+      "y": 0.4,
+      "rz": 0
+    },
+    "dforward": 0,
+    "dshift": 0
+  },
   "table@kitchen": {
     "default_mode": "right",
     "placepose": {

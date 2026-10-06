@@ -638,38 +638,14 @@
   {
     "name": "qa",
     "type": "internal",
-    "description": "from kcare_robot.skills.qa:qa",
-    "module_path": "kcare_robot.skills.qa",
+    "description": "from kcare_robot.skills.hri:qa",
+    "module_path": "kcare_robot.skills.hri",
     "func_name": "qa",
     "url": "",
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
     "plan": ""
-  },
-  {
-    "name": "pick_top",
-    "type": "plan",
-    "description": "",
-    "module_path": "",
-    "func_name": "",
-    "url": "",
-    "timeout": 30.0,
-    "method": "POST",
-    "headers": {},
-    "plan": "lift::1.1\nmovej::pre_pick\nforward::0.1\nfine_move::$inputs$\nforward::-0.5\nmovej::give\nlift::0.5"
-  },
-  {
-    "name": "pnp_pot",
-    "type": "plan",
-    "description": "",
-    "module_path": "",
-    "func_name": "",
-    "url": "",
-    "timeout": 30.0,
-    "method": "POST",
-    "headers": {},
-    "plan": "\nlift::0.9\nmovej::pre_pick\nlift::0.65\nmovej::dr6=-90\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True\nturn::90\nforward::1\n\nmovet::dz=0.1\nmovel::dz=-0.25\ngrip::open\nforward::-0.5\nmovej::fold\n"
   },
   {
     "name": "turn_light",
@@ -694,5 +670,65 @@
     "method": "POST",
     "headers": {},
     "plan": ""
+  },
+  {
+    "name": "align_shoes",
+    "type": "internal",
+    "description": "from kcare_robot.skills.align_shoes:align_shoes",
+    "module_path": "kcare_robot.skills.align_shoes",
+    "func_name": "align_shoes",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {},
+    "plan": ""
+  },
+  {
+    "name": "move_top",
+    "type": "plan",
+    "description": "",
+    "module_path": "",
+    "func_name": "",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {},
+    "plan": "move::$inputs$\nlift::highest\nmovej::pre_pick\nforward::0.1"
+  },
+  {
+    "name": "pnp_pot",
+    "type": "plan",
+    "description": "",
+    "module_path": "",
+    "func_name": "",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {},
+    "plan": "\nlift::0.9\nmovej::pre_pick\nlift::0.65&&movej::dr6=-90\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\nturn::90\nforward::1\n\nmovet::dz=0.1\nmovel::dz=-0.25\ngrip::open\nforward::-0.5\nmovej::fold\n"
+  },
+  {
+    "name": "clear_pot",
+    "type": "plan",
+    "description": "",
+    "module_path": "",
+    "func_name": "",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {},
+    "plan": "lift::0.7\nmovej::pre_pick\nlift::0.4&&movej::dr6=-90, dr5=10\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\nlift::0.9\nturn::-90\nforward::0.3\n\nmovej::dr5=20\nmovet::dz=0.25\ngrip::open\nmovet::dz=-0.25\nmovej::dr5=-20\nforward::-0.5\nmovej::fold\n"
+  },
+  {
+    "name": "fold_top",
+    "type": "plan",
+    "description": "",
+    "module_path": "",
+    "func_name": "",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {},
+    "plan": "forward::-0.5\nmovej::fold&&lift::home"
   }
 ]

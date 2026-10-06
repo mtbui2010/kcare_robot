@@ -74,6 +74,21 @@
       "dforward": 0,
       "dshift": 0
     },
+    "table_front": {
+      "default_mode": "front",
+      "placepose": {
+        "dx": 0,
+        "dy": 0
+      },
+      "height": 0.75,
+      "loc": {
+        "x": 2,
+        "y": 3.7,
+        "rz": -180
+      },
+      "dforward": 0,
+      "dshift": 0
+    },
     "table@kitchen": {
       "default_mode": "right",
       "placepose": {
@@ -83,7 +98,7 @@
       "height": 0.73,
       "loc": {
         "x": 1.85,
-        "y": 3.45,
+        "y": 3.2,
         "rz": -180
       },
       "dforward": 0,
@@ -122,15 +137,15 @@
       }
     },
     "gas wrench@kitchen": {
-      "default_mode": "front",
+      "default_mode": "right",
       "placepose": {
         "dx": 0,
         "dy": 0
       },
       "height": 0.91,
       "loc": {
-        "x": 3,
-        "y": 3.8,
+        "x": 2.8,
+        "y": 4.1,
         "rz": 90
       },
       "dforward": 0,
@@ -167,19 +182,18 @@
       },
       "height": 1.1,
       "loc": {
-        "x": 2.6,
+        "x": 2.5,
         "y": 4,
         "rz": 90
       },
       "dforward": 0,
       "dshift": 0,
       "aliases": [
-        "\uac00\uc6b4\ub370 \uc120\ubc18",
-        "middle shelf"
+        "\uac00\uc6b4\ub370 \uc120\ubc18, middle shelf"
       ]
     },
     "counter": {
-      "default_mode": "right",
+      "default_mode": "left",
       "placepose": {
         "dx": 0,
         "dy": 0
@@ -204,7 +218,7 @@
       },
       "height": 0.91,
       "loc": {
-        "x": 2.1,
+        "x": 2,
         "y": 4,
         "rz": 90
       },
@@ -229,8 +243,7 @@
       "dforward": 0,
       "dshift": 0,
       "aliases": [
-        "\uc67c\ucabd \uc120\ubc18",
-        "left shelf"
+        "\uc67c\ucabd \uc120\ubc18"
       ],
       "qa": {
         "views": [
@@ -375,7 +388,7 @@
       },
       "height": 0.4,
       "loc": {
-        "x": 2.6,
+        "x": 2.75,
         "y": 2.9,
         "rz": 0
       },

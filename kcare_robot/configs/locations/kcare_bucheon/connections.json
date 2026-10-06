@@ -407,5 +407,14 @@
       "num_ctx": 8192,
       "is_active": true
     }
+  },
+  {
+    "type": "stt",
+    "name": "whisper",
+    "config": {
+      "agent_name": "whisper",
+      "url": "http://192.168.0.6:8000",
+      "model": "deepdml/faster-whisper-large-v3-turbo-ct2"
+    }
   }
 ]

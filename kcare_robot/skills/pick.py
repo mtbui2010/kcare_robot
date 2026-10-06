@@ -73,9 +73,9 @@ def fine_move(**kwargs):
     dpull      = kwargs.pop('dpull', None)
     num_trials = int(kwargs.pop('num_trials', 2))
     pull_speed = float(kwargs.pop('pull_speed', 1.0))
-    fixed_angle = float(kwargs.pop('fixed_angle', None))
-    back_to_init = float(kwargs.pop('back_to_init', False))
-
+    fixed_angle = kwargs.pop('fixed_angle', None)
+    back_to_init = kwargs.pop('back_to_init', False)
+    lift_before_pull_back = kwargs.pop('lift_before_pull_back', None)
     # Step 1: coarse detect + dx nudge. Failure here is non-fatal — we just
     # fall through to the per-trial loop without nudging.
     # try:
@@ -121,16 +121,46 @@ def fine_move(**kwargs):
             assert ret['isdone'], f'{ret}'
             init_joints = ret['joints']
 
-        ret = _h.execute_fine_grasp(node, dx, dy, dz, angle, width, eff_dpull,
-                                    init_joints=init_joints, pull_speed=pull_speed)
-        if not ret['isdone']:
-            return ret
+        # ret = _h.execute_fine_grasp(node, dx, dy, dz, angle, width, eff_dpull, pull_speed=pull_speed)
+        # if not ret['isdone']:
+        #     return ret
 
-        if grasp_succeed(node=node)['isdone']:
-            # Report the grasp actually executed so the world state can record
-            # how/where the held object was picked (consumed by the world's
-            # `apply_skill_effect` → `holding_pose`).
-            return {'isdone': True, 'grasppose': [dx, dy, dz, angle, width]}
+        ret = run_parallel_check(funcs=[
+            lambda: grip(node=node, inputs=width + 0.02, wait=False),
+            lambda: (movet(node=node, dx=dx, dy=dy, wait=True), movej(node=node, dr6=angle, wait=True))[-1]
+        ])
+        assert ret['isdone'], f'{ret}'
+        
+        # ret = movej(node=node, dr6=angle, wait=True)
+        # assert ret['isdone'], f'{ret}'
+
+        ret = movet(node=node, dz=dz, acc=0.25, wait=True)
+        assert ret['isdone'], f'{ret}'
+        
+        ret = grip(node=node, inputs='close', wait=False)
+        assert ret['isdone'], f'{ret}'
+        
+        isdone = grasp_succeed(node=node)['isdone']
+        if isdone and lift_before_pull_back is not None:
+            ret = movel(node=node, dz=lift_before_pull_back)
+            assert ret['isdone'], f'{ret}'
+
+        if not isdone:
+            ret = grip(node=node, inputs='open', wait=False)
+            assert ret['isdone'], f'{ret}'
+        
+        ret = movet(node=node, dz=-eff_dpull, acc=0.25, wait=True)
+        assert ret['isdone'], f'{ret}'
+
+        isdone = grasp_succeed(node=node)['isdone']
+
+        if back_to_init:
+            ret = movej(node=node, inputs=init_joints)
+            assert ret['isdone'], f'{ret}'
+
+        if isdone:
+            return {'isdone': True}
+
 
     return {'isdone': False, 'dd': [dx, dy, dz]}
 

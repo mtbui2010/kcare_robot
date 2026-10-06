@@ -30,6 +30,21 @@ HEAD_CONFIGS = {   'ry_range': [-50, 10],
 # 18/22, 2.0 s; 30b-a3b-instruct 16/22 (mixes up left / right). Local 8b on
 # the 3090 was 0.5 s. A LAN address instead of the Cloudflare hostname saves
 # about a second.
+# HRI skills (skills/hri.py: reply, ask, qa).
+#   source: which mic by default — 'dashboard' (the browser the operator is at)
+#           or 'robot' (the robot's own speaker + mic); a call's source= wins.
+#   dashboard_stt: who turns the dashboard mic into text — 'whisper' (the
+#           browser records, the 'stt' connection transcribes; good Korean) or
+#           'browser' (the browser's own recogniser: Google in Chrome).
+#   stt: the 'stt' connection id ('' = the first one).
+#   stt_hint: words Whisper should expect, per language (its initial prompt).
+HRI_CONFIGS = {   'source': 'dashboard',
+    'dashboard_stt': 'whisper',
+    'stt': '',
+    'stt_hint': {   'ko': '와인잔, 머그컵, 텀블러, 컵, 접시, 선반, 서랍, 옷장, 행거. 어디에 있어?',
+                    'en': '',
+                    'vi': ''}}
+
 QA_CONFIGS = {   'url': 'https://ollama.aistations.org',
     'model': 'qwen3-vl:32b-instruct',
     'num_ctx': 8192,

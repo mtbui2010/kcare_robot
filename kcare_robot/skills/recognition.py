@@ -181,6 +181,73 @@ def _detect_nearest(node, pose, **kwargs) -> dict:
 
 
 # ── Core: object detection (grounding-dino) + wrist grasp (grasp-gd) ─────────
+def _label_owner(cls: str, prompts: list):
+    """Which prompt a detection's label belongs to, for a multi-label request:
+    the label itself, else the longest prompt it contains or is part of
+    ("white cup" → "cup"); None when it matches none."""
+    c = ' '.join(str(cls or '').lower().split())
+    if c in prompts:
+        return c
+    hits = [p for p in prompts if p and (p in c or (c and c in p))]
+    return max(hits, key=len) if hits else None
+
+
+def _object_entry(node, name, target, res, rgb, depth, cam_params, w, h, with_grasp, grasp_configs,
+                  keep_orientation, gravity_cam, use_head, robot_mode, simple_return, panels, tag):
+    """One detected object's entry (pose, approach, grasp …) — and its panel."""
+    det_box = _bbox_to_xyxy(target.bbox)        # object bbox → islying + viz
+
+    # Wrist camera: grasp-gd on the box also yields the grasppose, a base-frame
+    # pose_3d (get3d_arm) and the grasped-object mask (a better islying source
+    # than the bbox).
+    grasp, obj_mask = (None, None)
+    if with_grasp:
+        grasp, obj_mask = _grasp_from_box(node, target, rgb, depth, cam_params, grasp_configs,
+                                          keep_orientation=keep_orientation,
+                                          select_target_grasp=select_target_grasp)
+    mask = obj_mask if obj_mask is not None else _mask_for_target(res, target, w, h)
+    islying = _box_islying_pca(name, det_box, depth, cam_params, gravity_cam, mask=mask)
+
+    panels.append({
+        'name': tag, 'box': det_box, 'vote': islying,
+        'score': float(getattr(target, 'conf', 0.0)),
+        'grasp_line':  grasp.get('line') if grasp else None,
+        'grasp_label': _grasp_label(grasp) if grasp else '',
+    })
+
+    # Entry geometry: the grasp (pose_3d in the BASE frame, jaw box, grasp
+    # quality) when grasp-gd ran; else the detection box (head → base frame via
+    # get3d, wrist coarse → camera frame via Ixy2xyz).
+    if grasp is not None:
+        pose, ebox, escore, box_depths = grasp['pose_3d'], grasp['box'], grasp['score'], grasp['depths']
+    else:
+        box_depths = _box_depths(depth, det_box)
+        pose   = _object_pose_3d(node, det_box, box_depths, depth, cam_params, use_head=use_head)
+        ebox, escore = det_box, float(getattr(target, 'conf', 0.0))
+
+    if simple_return:
+        entry = {'pose': pose, 'islying': islying}
+        if grasp is not None:
+            entry['grasppose'] = grasp['grasppose']
+        return entry
+
+    entry = {
+        'duration_ms':   res.duration_ms,
+        'device':        res.device,
+        'pose_3d':       pose,
+        **({} if with_grasp else _build_approach_pose(pose, islying, robot_mode)),
+        'box':           ebox,
+        'score':         escore,
+        'islying':       islying,
+        'mass_percents': [50, 50],
+        'depths':        box_depths,
+    }
+    if grasp is not None:
+        entry['grasppose']   = grasp['grasppose']
+        entry['grasp_score'] = grasp['score']
+    return entry
+
+
 def _detect_objects(node, obj_names, **kwargs) -> dict:
     """Detect `obj_names` on one camera and return a per-object entry.
 
@@ -196,7 +263,12 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     Returns ``{'isdone', 'ins': {name: {pose_3d, approach_pose, lift_to, mforward,
     base_rotate, approach_lying, box, score, islying, mass_percents, depths,
     grasppose?, grasp_score?}}}`` (or ``{pose, islying, grasppose?}`` when
-    ``simple_return``)."""
+    ``simple_return``).
+
+    All names go to the detector in ONE request per trial ("cup. bottle.").
+    ``max_instances`` (1 | N | 'all'): with more than 1, each name's entry is
+    its best object plus ``instances`` (up to N entries, best first) and
+    ``count``."""
     simple_return    = kwargs.pop('simple_return', False)
     camera           = kwargs.pop('camera', 'arm')
     estimate_grasp   = kwargs.pop('estimate_grasp', False)
@@ -220,92 +292,94 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
         det_configs['box_threshold'] = kwargs['box_threshold']
     grasp_configs = _grasp_configs() if with_grasp else None
 
-    out: dict = {}
-    panels: list = []
+    # max_instances: 1 (default) → the best object per name, as before; N or
+    # 'all' → up to N (every) object, best first, in entry['instances'].
+    max_inst = kwargs.pop('max_instances', 1)
+    max_inst = None if str(max_inst).strip().lower() == 'all' else max(1, int(max_inst))
+
+    # What to ask the detector for each name: a product (신라면 …) is detected
+    # as its generic class and told apart afterwards; others by their name.
+    plans = {}
     for name in obj_names:
-        # A product from configs/products (신라면, 짜파게티 ...): detect its
-        # generic class, then keep only the pack that looks like it.
         product = _products.lookup(name)
         prompt, cfg = name, det_configs
         if product is not None:
             prompt = product[1].get('class', name)
             cfg = {**det_configs, **{k: product[2][k] for k in ('box_threshold', 'text_threshold')
                                      if k in product[2]}}
-        for _ in range(num_trials):
-            cam = fetch_camera_data(node, camera)
-            rgb, depth, cam_params = cam.rgb, cam.depth, cam.cam_params
-            h, w = rgb.shape[:2]
+        plans[name] = (prompt.strip().lower(), cfg, product)
 
-            res = _predict_detect(rgb, f'{prompt.strip()}.', cfg)
-            if min_conf > 0:
-                res = res.filter_by_conf(min_conf=min_conf)
-            if product is not None and len(res.detections) != 0:
-                res, report = _products.match(_vs_client(), rgb, res, product[0], product[2], label=name)
-                log_data({'msg': f'{name} = {product[0]}: ' + ', '.join(
+    # ONE detector request per trial with every label still missing
+    # ("cup. bottle. noodle package."), instead of one request per object;
+    # the most permissive thresholds go to the request, each name then keeps
+    # only detections above its own box_threshold.
+    found = {}                      # name → (result with only its detections, rgb, depth, cam_params)
+    for _ in range(num_trials):
+        missing = [n for n in obj_names if n not in found]
+        if not missing:
+            break
+        cam = fetch_camera_data(node, camera)
+        rgb, depth, cam_params = cam.rgb, cam.depth, cam.cam_params
+        prompts = list(dict.fromkeys(plans[n][0] for n in missing))
+        req_cfg = dict(det_configs)
+        for k in ('box_threshold', 'text_threshold'):
+            vals = [plans[n][1][k] for n in missing if plans[n][1].get(k) is not None]
+            if vals:
+                req_cfg[k] = min(vals)
+        res_all = _predict_detect(rgb, ' '.join(f'{p}.' for p in prompts), req_cfg)
+        if min_conf > 0:
+            res_all = res_all.filter_by_conf(min_conf=min_conf)
+        owner = [_label_owner(getattr(d, 'cls', ''), prompts) for d in res_all.detections]
+        reports = {}                 # (prompt, floor) → classify() of those packs, shared by products
+        for n in missing:
+            prompt, cfg, product = plans[n]
+            floor = float(cfg.get('box_threshold') or 0.0)
+            idx = [k for k, d in enumerate(res_all.detections)
+                   if owner[k] == prompt and float(getattr(d, 'conf', 0.0)) >= floor]
+            if not idx:
+                continue
+            res = _products.subset(res_all, idx, n)          # relabelled to the name asked
+            if product is not None:
+                key = (prompt, floor)
+                if key not in reports:
+                    reports[key] = _products.classify(_vs_client(), rgb, res, product[2])
+                res, report = _products.match(_vs_client(), rgb, res, product[0], product[2],
+                                              label=n, report=reports[key])
+                log_data({'msg': f'{n} = {product[0]}: ' + ', '.join(
                     f"{r['best']} {r['sim']:.2f}{'' if r['sure'] else '?'}" for r in report)
                     + ('' if res.detections else ' — not sure which pack, not picking')})
-            if len(res.detections) != 0:
+            if res.detections:
+                found[n] = (res, rgb, depth, cam_params)
+
+    out: dict = {}
+    panels: list = []
+    for name in obj_names:
+        if name not in found:
+            continue
+        res, rgb, depth, cam_params = found[name]
+        h, w = rgb.shape[:2]
+        entries, remaining = [], res
+        while max_inst is None or len(entries) < max_inst:
+            target, k = select_target_object(
+                remaining, cls=name, image_size=(w, h), depth_result=depth,
+                intrinsics=cam_params, return_index=True, **select_configs)
+            if target is None:
                 break
-        if len(res.detections) == 0:
+            entry = _object_entry(node, name, target, remaining, rgb, depth, cam_params, w, h,
+                                  with_grasp, grasp_configs, keep_orientation, gravity_cam,
+                                  use_head, robot_mode, simple_return, panels,
+                                  tag=name if not entries else f'{name}#{len(entries) + 1}')
+            entries.append(entry)
+            rest = [x for x in range(len(remaining.detections)) if x != k]
+            if not rest:
+                break
+            remaining = _products.subset(remaining, rest, name)
+        if not entries:
             continue
-        target = select_target_object(
-            res, cls=name, image_size=(w, h), depth_result=depth, 
-            intrinsics=cam_params, **select_configs)
-        if target is None:
-            continue
-
-        det_box = _bbox_to_xyxy(target.bbox)        # object bbox → islying + viz
-
-        # Wrist camera: grasp-gd on the box also yields the grasppose, a base-frame
-        # pose_3d (get3d_arm) and the grasped-object mask (a better islying source
-        # than the bbox).
-        grasp, obj_mask = (None, None)
-        if with_grasp:
-            grasp, obj_mask = _grasp_from_box(node, target, rgb, depth, cam_params, grasp_configs,
-                                              keep_orientation=keep_orientation,
-                                              select_target_grasp=select_target_grasp)
-        mask = obj_mask if obj_mask is not None else _mask_for_target(res, target, w, h)
-        islying = _box_islying_pca(name, det_box, depth, cam_params, gravity_cam, mask=mask)
-
-        panels.append({
-            'name': name, 'box': det_box, 'vote': islying,
-            'score': float(getattr(target, 'conf', 0.0)),
-            'grasp_line':  grasp.get('line') if grasp else None,
-            'grasp_label': _grasp_label(grasp) if grasp else '',
-        })
-
-        # Entry geometry: the grasp (pose_3d in the BASE frame, jaw box, grasp
-        # quality) when grasp-gd ran; else the detection box (head → base frame via
-        # get3d, wrist coarse → camera frame via Ixy2xyz).
-        if grasp is not None:
-            pose, ebox, escore, box_depths = grasp['pose_3d'], grasp['box'], grasp['score'], grasp['depths']
-        else:
-            box_depths = _box_depths(depth, det_box)
-            pose   = _object_pose_3d(node, det_box, box_depths, depth, cam_params, use_head=use_head)
-            ebox, escore = det_box, float(getattr(target, 'conf', 0.0))
-
-        if simple_return:
-            entry = {'pose': pose, 'islying': islying}
-            if grasp is not None:
-                entry['grasppose'] = grasp['grasppose']
-            out[name] = entry
-            continue
-
-        entry = {
-            'duration_ms':   res.duration_ms,
-            'device':        res.device,
-            'pose_3d':       pose,
-            **({} if with_grasp else _build_approach_pose(pose, islying, robot_mode)),
-            'box':           ebox,
-            'score':         escore,
-            'islying':       islying,
-            'mass_percents': [50, 50],
-            'depths':        box_depths,
-        }
-        if grasp is not None:
-            entry['grasppose']   = grasp['grasppose']
-            entry['grasp_score'] = grasp['score']
-        out[name] = entry
+        out[name] = dict(entries[0])
+        if max_inst != 1:
+            out[name]['instances'] = entries
+            out[name]['count'] = len(entries)
 
     # One annotated frame for this camera with every object's box + grasp —
     # captured alongside the raw inputs so a logged case shows what was detected.

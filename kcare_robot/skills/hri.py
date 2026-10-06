@@ -1,6 +1,6 @@
-"""Human-robot interaction skills: ``reply`` and ``ask``.
+"""Human-robot interaction skills: ``reply``, ``ask`` and ``qa``.
 
-Both talk and listen on one side, chosen per call with ``source``:
+All talk and listen on one side, chosen per call with ``source``:
 
 * ``'robot'`` (default) — the robot's own speaker and microphone. Speech goes
   out through gTTS; the answer is captured with energy-based voice activity
@@ -19,11 +19,14 @@ Usage:
     ask::'어떤 음료 드릴까요?'                   # ask, then repeat the answer back
     ask::inputs='어떤 음료 드릴까요?', options=['물', '주스', '커피']
     ask::inputs='Which drink?', lang='en', source='dashboard', options='water,juice'
+    qa                                        # Q&A about what the head camera sees
+    qa::lang='vi', input='text'               # questions typed on the dashboard
 """
 
 import re
 import unicodedata
 
+from robot_agent.skill_configs import HRI_CONFIGS
 from robot_agent.skills import log_data
 from robot_agent.utils import (
     exception_handler, listen_dashboard, play_audio, record_phrase, say_to_user,
@@ -43,6 +46,7 @@ INPUTS = ('voice', 'text')
 # input='text': the answer is typed on the dashboard, which takes far longer
 # than saying it — one wait covers a typed question.
 TEXT_WAIT_SEC = 300.0
+QA_TEXT_WAIT_SEC = 24 * 3600.0  # qa: a typed question is waited for until it comes or Cancel
 
 _PHRASES = {
     'heard':      {'ko': '들었어요',
@@ -79,9 +83,20 @@ def _truthy(v) -> bool:
     return bool(v)
 
 
+def _hri_cfg() -> dict:
+    """HRI_CONFIGS (Global Configs) with defaults filled in."""
+    cfg = {'source': 'robot', 'dashboard_stt': 'whisper', 'stt': '', 'stt_hint': {}}
+    try:
+        cfg.update(dict(HRI_CONFIGS.items()))
+    except Exception:
+        pass
+    return cfg
+
+
 def _common(kwargs: dict):
+    hri = _hri_cfg()
     lang = str(kwargs.pop('lang', 'ko') or 'ko')
-    source = str(kwargs.pop('source', 'dashboard') or 'dashboard').lower()
+    source = str(kwargs.pop('source', None) or hri['source'] or 'dashboard').lower()
     if source not in SOURCES:
         raise ValueError(f'source must be one of {SOURCES}, got {source!r}')
     mode = str(kwargs.pop('input', 'voice') or 'voice').lower()
@@ -95,8 +110,22 @@ def _common(kwargs: dict):
         'max_sec': float(kwargs.pop('max_sec', MAX_SEC)),
         'silence_sec': float(kwargs.pop('silence_sec', SILENCE_SEC)),
         'energy_threshold': float(kwargs.pop('energy_threshold', ENERGY_THRESHOLD)),
+        # Dashboard mic: 'whisper' (browser records, the stt connection
+        # transcribes) or 'browser' (the browser's recogniser).
+        'capture': str(kwargs.pop('stt', None) or hri['dashboard_stt'] or 'whisper').lower(),
+        'stt': str(hri.get('stt') or '') or None,
+        'hint': kwargs.pop('stt_hint', None) or _hint_for(hri.get('stt_hint'), lang),
     }
+    if listen['capture'] not in ('whisper', 'browser'):
+        raise ValueError(f"stt must be 'whisper' or 'browser', got {listen['capture']!r}")
     return lang, source, listen
+
+
+def _hint_for(hints, lang: str):
+    """Whisper hint words for `lang`: stt_hint is a {lang: text} dict or one text."""
+    if isinstance(hints, dict):
+        return str(hints.get(lang) or '').strip() or None
+    return str(hints or '').strip() or None
 
 
 def _say(text: str, lang: str, source: str) -> None:
@@ -119,17 +148,34 @@ def _hear(prompt, lang: str, source: str, listen: dict):
         log_data({'msg': f'robot: {prompt}'})
     if source == 'dashboard':
         typed = listen.get('mode') == 'text'
-        text = listen_dashboard(prompt=prompt, lang=lang, max_sec=listen['max_sec'],
-                                timeout=(listen['text_wait_sec'] if typed
-                                         else listen['max_sec'] + DASHBOARD_SLACK_SEC),
-                                mode='text' if typed else 'voice')
+        try:
+            text = listen_dashboard(prompt=prompt, lang=lang, max_sec=listen['max_sec'],
+                                    timeout=(listen['text_wait_sec'] if typed
+                                             else listen['max_sec'] + DASHBOARD_SLACK_SEC),
+                                    mode='text' if typed else 'voice',
+                                    capture=listen['capture'], hint=listen['hint'],
+                                    silence_sec=listen['silence_sec'], stt=listen['stt'])
+        except RuntimeError as e:
+            # The browser refused the mic ('not-allowed': permission denied,
+            # or the page is on plain http, where the mic is never allowed).
+            # Ask for a typed answer in the Q&A card instead of failing — for
+            # the rest of this skill call too, since `listen` is shared.
+            if typed or 'not-allowed' not in str(e):
+                raise
+            listen['mode'] = 'text'
+            listen['text_wait_sec'] = max(listen['text_wait_sec'], listen.get('text_fallback_sec', TEXT_WAIT_SEC))
+            log_data({'msg': 'the browser blocked the microphone (not-allowed) — '
+                             'switching to typed input: type in the Q&A card'})
+            text = listen_dashboard(prompt=prompt, lang=lang, max_sec=listen['max_sec'],
+                                    timeout=listen['text_wait_sec'], mode='text')
     else:
         if prompt:
             say_to_user(prompt, lang=lang, source='robot')
         audio = record_phrase(max_sec=listen['max_sec'],
                               silence_sec=listen['silence_sec'],
                               energy_threshold=listen['energy_threshold'])
-        text = speech_to_text(audio, lang=lang) if audio is not None else None
+        text = (speech_to_text(audio, lang=lang, prompt=listen['hint'], stt=listen['stt'])
+                if audio is not None else None)
     text = (text or '').strip() or None
     log_data({'msg': f'user: {text}' if text else 'user: (no answer)'})
     return text, audio
@@ -283,8 +329,11 @@ def ask(node, **kwargs):
         inputs (str):   the question.
         options (list): allowed answers. When given, the answer is matched to
             one of them and that option is confirmed aloud; an answer matching
-            none gets the list read out and the question asked again. When
-            None, the answer is simply repeated back.
+            none gets the question asked again. They are also Whisper's hint
+            words, so it hears 신라면, not 실라면. When None, the answer is
+            simply repeated back.
+        read_options (bool): on a non-matching answer, read the options out
+            ("… 중에서 골라 주세요") instead of repeating the question. Default False.
         retries (int):  extra attempts after the first, for no answer or no
             match. Default 2.
         match_threshold (float): fuzzy-match floor, 0..1. Default 0.7.
@@ -298,7 +347,14 @@ def ask(node, **kwargs):
     options = parse_options(kwargs.pop('options', None))
     retries = max(0, int(kwargs.pop('retries', RETRIES)))
     threshold = float(kwargs.pop('match_threshold', MATCH_THRESHOLD))
+    read_options = _truthy(kwargs.pop('read_options', False))
+    own_hint = 'stt_hint' in kwargs          # _common pops it
     lang, source, listen = _common(kwargs)
+    if options and not own_hint:
+        # The options are the words to expect. Without them Whisper heard
+        # "실라면" for 신라면 and "자파게티" for 짜파게티 — no match, and the list
+        # was read out instead of confirming.
+        listen['hint'] = ', '.join(options)
 
     prompt, last_text = question or None, ''
     for attempt in range(1, retries + 2):
@@ -318,11 +374,174 @@ def ask(node, **kwargs):
             _say(_phrase('confirm', lang, choice=choice), lang, source)
             return {'isdone': True, 'answer': choice, 'text': text,
                     'attempts': attempt, 'options': options}
-        # An answer, just not one of the options: offer the list this time.
-        prompt = _phrase('choose', lang, options=', '.join(options))
+        # An answer, just not one of the options: ask again (the list only
+        # with read_options).
+        log_data({'msg': f'ask: "{text}" matches none of {options}'})
+        prompt = (_phrase('choose', lang, options=', '.join(options)) if read_options
+                  else ' '.join(p for p in (_phrase('not_heard', lang), question) if p))
 
     _say(_phrase('not_heard', lang), lang, source)
     msg = ('answer did not match any option' if last_text and options
            else 'no speech heard')
     return {'isdone': False, 'msg': msg, 'answer': None, 'text': last_text,
             'attempts': retries + 1, 'options': options}
+
+
+
+# ── Visual Q&A ───────────────────────────────────────────────────────────────
+
+@exception_handler
+def qa(node, **kwargs):
+    """Answer questions about what the robot sees, round after round, like
+    `ask`, until the user says a stop word or the run is cancelled.
+
+    Each round is one `ask`-style listen: the line the robot says before
+    listening — the opening question, then each answer — is the prompt of the
+    listen, so it is spoken to completion and the mic opens right after. No
+    answer is not an end: the robot listens again (silently, so it does not
+    keep talking at an empty room). Only a stop word (그만, 종료, dừng, stop …,
+    on a short utterance) or Cancel / Stop on the dashboard ends it.
+
+    The vision side (photos, model, place-restricted answers) is in skills/qa.py.
+
+    Params:
+        source, lang, max_sec, silence_sec, energy_threshold: as for `reply`.
+        input: 'voice' (default) or 'text' — typed in the dashboard's Q&A card.
+        Any QA_CONFIGS key (refresh_sec, views, model, url, ...) overrides the
+            configured value for this call.
+        loc: ENV location (key or alias) to answer for; default the nearest.
+        cam: 'head' (default: a photo at each head tilt in `views`) or 'arm'
+            (one photo from the arm camera, QA_CONFIGS['arm_camera']; the head
+            does not move).
+        once: True — answer one question and end (no goodbye); silence is
+            asked again up to `retries` times (default 2), as `ask` does.
+            Default False: the conversation goes on until a stop word or Cancel.
+        products: False turns off the product recogniser (default on): a
+            question about 라면 / a product name is answered with the names it
+            is sure of (configs/products), never a name the model read.
+
+    Returns ``{'isdone', 'turns', 'ended', 'history'}`` (+ ``answer`` with
+    once) — `ended` is 'stop word', 'cancelled', 'answered' or 'no answer'
+    (once, nobody spoke; isdone False).
+    """
+    import time
+    from robot_agent.core.run_control import cancel_requested
+    from . import qa as vqa
+
+    kwargs.pop('inputs', None)              # a bare "qa::" carries nothing
+    loc = kwargs.pop('loc', None)
+    cam = str(kwargs.pop('cam', 'head') or 'head').lower()
+    once = _truthy(kwargs.pop('once', False))
+    retries = max(0, int(kwargs.pop('retries', RETRIES)))
+    use_products = _truthy(kwargs.pop('products', True))
+    if cam not in ('head', 'arm'):
+        raise ValueError(f"cam must be 'head' or 'arm', got {cam!r}")
+    explicit_views = 'views' in kwargs
+    cfg = vqa._config(kwargs)
+    cfg['cam'] = cam
+    lang, source, listen = _common(kwargs)
+    # A typed question is waited for until it comes or the run is cancelled: a
+    # listen that times out would leave the browser's Q&A card waiting on the
+    # old request, and the line typed next would go to it and be lost.
+    listen['text_fallback_sec'] = QA_TEXT_WAIT_SEC
+    if listen.get('mode') == 'text':
+        listen['text_wait_sec'] = QA_TEXT_WAIT_SEC
+    place, qa_cfg = vqa._place_config(node, cfg, loc)
+    if qa_cfg and qa_cfg.get('views') and not explicit_views:
+        cfg['views'] = list(qa_cfg['views'])
+    log_data({'msg': f"qa: at {place or 'unknown place'}"
+                     + (' (place layout)' if qa_cfg else '')
+                     + (f" — {cfg['arm_camera']}, one photo" if cam == 'arm'
+                        else f" — {cfg['camera']} at {', '.join(cfg['views'])}")})
+    log_data({'msg': f"qa: VLM {vqa._vlm_label(cfg)} (url {cfg.get('url')}, num_ctx {cfg.get('num_ctx')}, "
+                     f"from {cfg.get('_source', 'QA_CONFIGS')})"})
+
+    history, shots, shot_at = [], [], 0.0
+    inv, inv_at = None, None                # product inventory of the current photos
+    ended = 'cancelled'
+    silent = 0
+    prompt = vqa._phrase('start', lang)     # said by the first listen, as `ask` does
+
+    while not cancel_requested():
+        try:
+            text, _audio = _hear(prompt, lang, source, listen)
+        except RuntimeError:
+            if cancel_requested():          # the dashboard mic was released by Stop
+                break
+            raise
+        prompt = None                       # nothing heard: listen again, quietly
+        if not text:
+            silent += 1
+            if once and silent > retries:   # one-shot: give up like `ask` does
+                ended = 'no answer'
+                break
+            if once:                        # one-shot: ask again, as `ask` does
+                prompt = ' '.join(p for p in (_phrase('not_heard', lang), vqa._phrase('start', lang)) if p)
+            continue
+        silent = 0
+        if vqa._is_stop(text):
+            ended = 'stop word'
+            break
+
+        # A new question: clear the previous answer's picture; the photos the
+        # model is given for this answer are logged once it has answered.
+        log_data({'log_image_reset': True})
+        if not shots or time.time() - shot_at > float(cfg['refresh_sec']):
+            _say(vqa._phrase('look', lang), lang, source)
+            shots, shot_at = vqa._look_around(node, cfg), time.time()
+            if cancel_requested():
+                break
+
+        facts = None
+        if not shots:
+            answer = vqa._phrase('blind', lang)
+        else:
+            t0 = time.time()
+            try:
+                named = []
+                if use_products and vqa._is_product_question(text):
+                    if inv_at != shot_at:       # once per set of photos
+                        t1 = time.time()
+                        inv, inv_at = vqa._inventory(cfg, shots), shot_at
+                        log_data({'msg': f'qa: products ({time.time() - t1:.1f}s): ' + (', '.join(
+                            f"{p['name'] or '?'}@{p['side']} {p['sim']:.2f}" for p in inv) or 'none')})
+                    from . import _products
+                    named = _products.names_in(text)
+                    facts = vqa._product_facts(inv)
+                unknown = vqa._unknown_names(text) if facts else []
+                if named:                       # "신라면 있어?" — straight from the recogniser
+                    answer = vqa._product_answer(named, inv, lang)
+                elif unknown:                   # "진라면 있어?" — not a product it knows: never yes / no
+                    answer = vqa._unrecognised_answer(unknown, inv, lang)
+                elif facts:                     # "무슨 라면 있어?" — model, with the verified names
+                    answer = vqa._ask_vlm(cfg, shots, text, history, lang, facts=facts)
+                    if vqa._unknown_names(answer):   # it named a product anyway: use the list
+                        log_data({'msg': f'qa: model named an unverified product — {answer!r}'})
+                        answer = vqa._product_list(inv, lang)
+                else:
+                    answer = (vqa._ask_place(cfg, shots, text, history, lang, qa_cfg) if qa_cfg
+                              else vqa._ask_vlm(cfg, shots, text, history, lang))
+            except Exception as e:
+                log_data({'msg': f'qa: vision model failed ({vqa._vlm_label(cfg)}): {e}'})
+                answer = ''
+            log_data({'msg': f'qa: answered in {time.time() - t0:.1f}s by {vqa._vlm_label(cfg)} '
+                             f'from {len(shots)} photo(s) taken {time.time() - shot_at:.0f}s ago '
+                             f"({', '.join(v for v, _ in shots)})",
+                      'log_image': vqa._mosaic(shots)})
+            answer = answer or vqa._phrase('error', lang)
+        if cancel_requested():
+            break
+        history.append((text, answer))
+        if once:                            # one question: say the answer and end
+            _say(answer, lang, source)
+            ended = 'answered'
+            break
+        prompt = answer                     # spoken by the next listen, then the mic opens
+
+    if ended not in ('cancelled', 'answered'):
+        _say(vqa._phrase('bye', lang), lang, source)
+    out = {'isdone': ended != 'no answer', 'turns': len(history), 'ended': ended,
+           'history': [{'q': q, 'a': a} for q, a in history]}
+    if once and history:
+        out['answer'] = history[-1][1]
+    return out

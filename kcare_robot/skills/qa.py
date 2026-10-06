@@ -1,4 +1,7 @@
-"""Visual Q&A about the robot's surroundings: ``qa``.
+"""Vision side of the ``qa`` skill (the skill itself is in hri.py, next to
+``ask``): looking around, asking the vision model, place-restricted answers.
+
+Visual Q&A about the robot's surroundings: ``qa``.
 
 Answers spoken questions about what is around the robot — "what colour is the
 shirt and where is it?", "which shelf level is the handbag on?" — from photos
@@ -6,8 +9,8 @@ taken by the head camera, using a local vision-language model served by Ollama
 (QA_CONFIGS in configs/tasks.py: url, model, ...).
 
 One call runs a whole conversation: listen -> look around if needed -> answer
--> listen ..., until the person says a stop word, stays silent `idle_turns`
-times in a row, or the run is cancelled. The dashboard's Q&A button starts the
+-> listen ..., until the person says a stop word or the run is cancelled
+(silence just means listening again; `idle_turns` is no longer used). The dashboard's Q&A button starts the
 run and, pressed again, sends POST /agent/cancel.
 
 Looking around: the head takes one photo at each tilt in QA_CONFIGS['views']
@@ -52,11 +55,10 @@ import requests
 from robot_agent.core.run_control import cancel_requested
 from robot_agent.skill_configs import ENV, QA_CONFIGS
 from robot_agent.skills import log_data
-from robot_agent.utils import exception_handler
 
 from ..utils import env_key, get_closest_loc
 from .head import head_state, moveh
-from .hri import _common, _hear, _say
+from .lift import lift
 
 
 _PHRASES = {
@@ -120,6 +122,7 @@ _DEFAULTS = {
     # the same photos (Ollama reuses the cached image prefix).
     'model': 'qwen3-vl:8b-instruct',
     'camera': 'head_rgb',
+    'arm_camera': 'arm_rgb',    # qa::cam='arm' — one photo, the head does not move
     'views': ['up', 'straight', 'down'],
     'refresh_sec': 20.0,
     'idle_turns': 6,
@@ -222,6 +225,17 @@ def _look_around(node, cfg: dict) -> list:
     cancelled every action agent refuses to send, and a cancel means "stop
     moving" anyway.
     """
+    if cfg.get('cam') == 'arm':
+        # The arm camera looks where the arm points: one photo as it is.
+        cam = node.agents.get(cfg['arm_camera']) if node is not None else None
+        if cam is None:
+            log_data({'msg': f"qa: camera {cfg['arm_camera']!r} is not connected"})
+            return []
+        im = _fresh_frame(cam, 0.0, cfg['frame_timeout_sec'])
+        if im is None:
+            log_data({'msg': f"qa: no fresh frame from {cfg['arm_camera']}"})
+            return []
+        return [('arm', im)]
     cam = node.agents.get(cfg['camera']) if node is not None else None
     if cam is None:
         log_data({'msg': f"qa: camera {cfg['camera']!r} is not connected"})
@@ -290,11 +304,21 @@ def _first_sentence(text: str) -> str:
     return (m.group(1) if m else text).strip()
 
 
-def _ask_vlm(cfg: dict, shots: list, question: str, history: list, lang: str) -> str:
-    """One short answer to `question` from the photos, or '' if the model gave none."""
-    views = ', '.join(f'photo {i + 1} = head {v}' for i, (v, _) in enumerate(shots))
+def _view_labels(shots: list) -> str:
+    """'photo 1 = head up, photo 2 = head straight' / 'photo 1 = arm camera'."""
+    return ', '.join(f'photo {i + 1} = ' + ('arm camera (on the gripper)' if v == 'arm' else f'head {v}')
+                     for i, (v, _) in enumerate(shots))
+
+
+def _ask_vlm(cfg: dict, shots: list, question: str, history: list, lang: str,
+             facts: str | None = None) -> str:
+    """One short answer to `question` from the photos, or '' if the model gave none.
+    `facts`: verified product names (see _product_facts), added to the prompt."""
+    views = _view_labels(shots)
     system = _SYSTEM_PROMPT.format(n=len(shots), views=views,
                                    language=_LANG_NAME.get(lang, 'the language of the question'))
+    if facts:
+        system += '\n\n' + facts
     msgs = [{'role': 'system', 'content': system}]
     for q, a in history[-int(cfg['history_turns']):]:
         msgs += [{'role': 'user', 'content': q}, {'role': 'assistant', 'content': a}]
@@ -382,7 +406,7 @@ def _place_answer(ids: list, places: dict, lang: str) -> str:
 def _ask_place(cfg: dict, shots: list, question: str, history: list, lang: str, qa_cfg: dict) -> str:
     """Answer at a place with a `qa` block: where-questions from its places."""
     places = qa_cfg['places']
-    views = ', '.join(f'photo {i + 1} = head {v}' for i, (v, _) in enumerate(shots))
+    views = _view_labels(shots)
     system = _PLACE_PROMPT.format(
         n=len(shots), views=views, scene=qa_cfg.get('scene', 'an indoor place'),
         frame=_FRAME.get(qa_cfg.get('frame', 'robot'), _FRAME['robot']),
@@ -420,85 +444,139 @@ def _ask_place(cfg: dict, shots: list, question: str, history: list, lang: str, 
     return _place_answer(ids, places, lang) if ids else _phrase('unseen', lang)
 
 
-# ── Skill ────────────────────────────────────────────────────────────────────
+# ── Products (신라면, 짜파게티 …): names from the product recogniser ───────────
+#
+# The VLMs cannot read pack labels reliably: on the arm-camera shelf photo they
+# answered with colours only, or — given example names in the prompt — repeated
+# an example that was not on the shelf (진라면). So product names come from
+# skills/_products.py (detector + SigLIP match against reference photos), which
+# names a pack only when it is sure; the robot serves blind users and must not
+# guess a product.
 
-@exception_handler
-def qa(node, **kwargs):
-    """Hold a spoken Q&A about the surroundings until told to stop.
+# Words that make a question about products even without a product name.
+_PRODUCT_WORDS = re.compile(r'라면|컵라면|봉지면|ramen|ramyun|ramyeon|noodle|\bmì\b|\bmỳ\b', re.IGNORECASE)
 
-    Params:
-        source, lang, max_sec, silence_sec, energy_threshold: as for `reply`.
-        input: 'voice' (default) or 'text' — typed on the dashboard; the
-            conversation then ends after one `text_wait_sec` (300 s) without
-            a question instead of `idle_turns` short listens.
-        Any QA_CONFIGS key (refresh_sec, views, idle_turns, model, url, ...)
-            overrides the configured value for this call.
-        loc: ENV location (key or alias) to answer for; default the nearest.
+_SIDE = {'ko': {'left': '왼쪽', 'middle': '가운데', 'right': '오른쪽'},
+         'en': {'left': 'on the left', 'middle': 'in the middle', 'right': 'on the right'},
+         'vi': {'left': 'bên trái', 'middle': 'ở giữa', 'right': 'bên phải'}}
 
-    Returns ``{'isdone', 'turns', 'ended', 'history'}`` — `ended` is 'stop
-    word', 'idle' or 'cancelled'.
-    """
-    kwargs.pop('inputs', None)              # a bare "qa::" carries nothing
-    loc = kwargs.pop('loc', None)
-    explicit_views = 'views' in kwargs
-    cfg = _config(kwargs)
-    lang, source, listen = _common(kwargs)
-    place, qa_cfg = _place_config(node, cfg, loc)
-    if qa_cfg and qa_cfg.get('views') and not explicit_views:
-        cfg['views'] = list(qa_cfg['views'])
-    log_data({'msg': f"qa: at {place or 'unknown place'}"
-                     + (' (place layout)' if qa_cfg else '')})
-    log_data({'msg': f"qa: VLM {_vlm_label(cfg)} (url {cfg.get('url')}, num_ctx {cfg.get('num_ctx')}, "
-                     f"from {cfg.get('_source', 'QA_CONFIGS')})"})
 
-    history, shots, shot_at = [], [], 0.0
-    quiet, ended = 0, 'cancelled'
-    _say(_phrase('start', lang), lang, source)
+def _is_product_question(text: str) -> bool:
+    from . import _products
+    return bool(_products.names_in(text) or _PRODUCT_WORDS.search(text))
 
-    while not cancel_requested():
-        try:
-            text, _audio = _hear(None, lang, source, listen)
-        except RuntimeError:
-            if cancel_requested():          # the dashboard mic was released by Stop
-                break
-            raise
-        if not text:
-            quiet += 1
-            if quiet >= (1 if listen.get('mode') == 'text' else int(cfg['idle_turns'])):
-                ended = 'idle'
-                break
-            continue
-        quiet = 0
-        if _is_stop(text):
-            ended = 'stop word'
-            break
 
-        if not shots or time.time() - shot_at > float(cfg['refresh_sec']):
-            _say(_phrase('look', lang), lang, source)
-            shots, shot_at = _look_around(node, cfg), time.time()
-            if cancel_requested():
-                break
-            if shots:
-                log_data({'log_image': _mosaic(shots)})
+def _inventory(cfg: dict, shots: list) -> list:
+    """Packs in the photos: [{name|None, side, view, ...}] — see _products.inventory.
+    Head photos overlap, so a product seen in several is listed once (its
+    first view); unnamed packs are counted from the photo with the most."""
+    from . import _products
+    from ._recognition_helpers import _object_det_select_configs, _predict_detect, _vs_client
+    det, _sel = _object_det_select_configs()
+    client = _vs_client()
+    detect = lambda rgb, prompt, th: _predict_detect(rgb, prompt, {**det, **th})  # noqa: E731
+    named, unnamed = {}, []
+    for view, im in shots:
+        packs = _products.inventory(client, im, detect)
+        for p in packs:
+            if p['name'] and p['name'] not in named:
+                named[p['name']] = {**p, 'view': view}
+        anon = [{**p, 'view': view} for p in packs if not p['name']]
+        if len(anon) > len(unnamed):
+            unnamed = anon
+    return list(named.values()) + unnamed
 
-        if not shots:
-            answer = _phrase('blind', lang)
+
+def _join(words: list, lang: str) -> str:
+    if lang == 'ko':
+        out = words[0]
+        for w in words[1:]:
+            out += ('과 ' if _batchim(out) else '와 ') + w
+        return out
+    sep = {'en': ' and ', 'vi': ' và '}.get(lang, ', ')
+    return ', '.join(words[:-1]) + sep + words[-1] if len(words) > 1 else words[0]
+
+
+def _product_answer(names: list, inv: list, lang: str) -> str:
+    """Spoken answer for a question naming catalogue products: where each one
+    is, or that it is not seen — straight from the recogniser, no model."""
+    side = _SIDE.get(lang, _SIDE['en'])
+    parts = []
+    for n in names:
+        sides = sorted({p['side'] for p in inv if p['name'] == n}, key=['left', 'middle', 'right'].index)
+        topic = n + ('은' if _batchim(n) else '는')
+        if sides:
+            where = _join([side[x] for x in sides], lang)
+            parts.append({'ko': f'{topic} {where}에 있어요.', 'vi': f'{n} {where}.'}.get(lang, f'{n} is {where}.'))
         else:
-            t0 = time.time()
-            try:
-                answer = (_ask_place(cfg, shots, text, history, lang, qa_cfg) if qa_cfg
-                          else _ask_vlm(cfg, shots, text, history, lang))
-            except Exception as e:
-                log_data({'msg': f'qa: vision model failed ({_vlm_label(cfg)}): {e}'})
-                answer = ''
-            log_data({'msg': f'qa: answered in {time.time() - t0:.1f}s by {_vlm_label(cfg)}'})
-            answer = answer or _phrase('error', lang)
-        if cancel_requested():
-            break
-        _say(answer, lang, source)
-        history.append((text, answer))
+            parts.append({'ko': f'{topic} 보이지 않아요.', 'vi': f'Tôi không thấy {n}.'}.get(lang, f"I can't see {n}."))
+    unknown = sum(1 for p in inv if not p['name'])
+    if unknown and any('보이지' in x or 'không thấy' in x or "can't" in x for x in parts):
+        parts.append({'ko': f'이름을 알 수 없는 라면이 {unknown}개 있어요.',
+                      'vi': f'Có {unknown} gói mì tôi không biết tên.'}.get(
+            lang, f"There {'is' if unknown == 1 else 'are'} {unknown} pack(s) I can't name."))
+    return ' '.join(parts)
 
-    if ended != 'cancelled':
-        _say(_phrase('bye', lang), lang, source)
-    return {'isdone': True, 'turns': len(history), 'ended': ended,
-            'history': [{'q': q, 'a': a} for q, a in history]}
+
+def _product_facts(inv: list) -> str:
+    """The recogniser's findings as prompt text for a general product question."""
+    named = [f"{p['name']} ({p['side']})" for p in inv if p['name']]
+    unknown = sum(1 for p in inv if not p['name'])
+    return ('Product packs, identified by the robot\'s product recogniser (trust these over the photos): '
+            + (', '.join(named) if named else 'none identified')
+            + (f'; plus {unknown} pack(s) it could not identify' if unknown else '') + '.\n'
+            + '- Name products ONLY with these names, exactly as written. Never name any other product, '
+              'even if you think you can read one.\n'
+            + '- A pack that could not be identified: say there is one you cannot name.\n'
+            + '- left / middle / right are from the camera\'s point of view.')
+
+
+# Words ending in 라면 / 면 that name no product ("라면 몇 개", "컵라면").
+_GENERIC_NOODLE = {'라면', '컵라면', '봉지라면', '봉지면', '면', '이면', '라면은', '라면이', '라면을'}
+_NOODLE_NAME = re.compile(r'([가-힣A-Za-z]{1,8}(?:라면|탕면|면))')
+
+
+def _unknown_names(text: str) -> list:
+    """Noodle names in `text` that are not in the product catalogue (진라면 …)."""
+    from . import _products
+    known = set()
+    for key, entry in (_products._catalog().get('products') or {}).items():
+        known |= {_products._norm(n) for n in [key, *entry.get('aliases', [])]}
+    out = []
+    for m in _NOODLE_NAME.findall(text):
+        n = _products._norm(m)
+        # "무슨라면" / "어떤라면" written together are the question, not a name.
+        if n in _GENERIC_NOODLE or n in known or re.match(r'(무슨|어떤|어느|몇|뭔|무엇|이런|그런|저런)', n):
+            continue
+        out.append(m)
+    return out
+
+
+def _product_list(inv: list, lang: str) -> str:
+    """Every pack the recogniser sees, by side: the safe answer when the
+    question or the model names a product it does not know."""
+    side = _SIDE.get(lang, _SIDE['en'])
+    groups = []
+    for sd in ('left', 'middle', 'right'):
+        names = [p['name'] for p in inv if p['name'] and p['side'] == sd]
+        if names:
+            groups.append((side[sd], _join(names, lang)))
+    unknown = sum(1 for p in inv if not p['name'])
+    if lang == 'ko':
+        txt = ', '.join(f'{s}에 {n}' for s, n in groups)
+        txt = (txt + '이 있어요.' if txt and _batchim(txt) else txt + '가 있어요.') if txt else '알아볼 수 있는 라면이 없어요.'
+        return txt + (f' 이름을 알 수 없는 라면이 {unknown}개 더 있어요.' if unknown else '')
+    if lang == 'vi':
+        txt = '; '.join(f'{s}: {n}' for s, n in groups) or 'Tôi không nhận ra gói mì nào'
+        return txt + (f'; và {unknown} gói tôi không biết tên.' if unknown else '.')
+    txt = '; '.join(f'{n} {s}' for s, n in groups) or "I can't identify any pack"
+    return txt + (f"; and {unknown} pack(s) I can't name." if unknown else '.')
+
+
+def _unrecognised_answer(names: list, inv: list, lang: str) -> str:
+    """A question about a product the robot cannot recognise (not in the
+    catalogue): say so — never yes or no — then what it does see."""
+    n = names[0]
+    head = {'ko': f"{n}{'은' if _batchim(n) else '는'} 확인할 수 없어요.",
+            'vi': f'Tôi không nhận biết được {n}.'}.get(lang, f"I can't recognise {n}.")
+    return head + ' ' + _product_list(inv, lang)

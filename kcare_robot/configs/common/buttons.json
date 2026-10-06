@@ -93,5 +93,10 @@
     "id": "e785764493cd",
     "label": "pre pick",
     "plan": "movej::pre_pick"
+  },
+  {
+    "id": "eca4a070523e",
+    "label": "fold top",
+    "plan": "fold_top::"
   }
 ]

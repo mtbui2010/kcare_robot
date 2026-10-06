@@ -161,7 +161,8 @@ def move(node, **kwargs):
     # move
     kwargs.update({'wait':True})
     ret = run_parallel_check(funcs=[
-        lambda : (time.sleep(3),lift(node=node, inputs='home', mode='front'), time.sleep(2), lift(node=node, inputs=lift_height, mode=robot_mode, wait=True))[-1],
+        lambda : (time.sleep(3),lift(node=node, inputs='home', mode='front'), time.sleep(2), 
+        lift(node=node, inputs='home' if robot_mode=='front' else lift_height, mode=robot_mode, wait=True))[-1],
         # lambda : movej(node=node, inputs='fold', mode=robot_mode),
         lambda : ( movej(node=node, inputs='fold', mode=prev_robot_mode),time.sleep(2), movej(node=node, inputs='fold', mode='front'))[-1],
         lambda : (moveb(node=node, **kwargs), forward(node=node, inputs=dforward, wait=True))[-1]
@@ -187,7 +188,8 @@ def move(node, **kwargs):
     assert ret['isdone'], f'{ret}'
     
     kwargs['isdone'] = True
-    return kwargs
+    # return kwargs
+    return {'isdone': True}
 
     
 

@@ -155,13 +155,52 @@ def subset(res, indices, label: str):
     )
 
 
-def match(client, rgb, res, product: str, settings: dict, label: str = None):
+def match(client, rgb, res, product: str, settings: dict, label: str = None, report: list = None):
     """`res` restricted to the detections that are `product`, relabelled
     `label` (the name the caller asked for, so select_target_object(cls=label)
-    keeps them), plus a report of every pack's best match for the log."""
-    report = classify(client, rgb, res, settings)
+    keeps them), plus a report of every pack's best match for the log.
+    `report`: a classify() of this same `res`, to reuse — several products
+    asked about at once share one embedding pass over the packs."""
+    if report is None:
+        report = classify(client, rgb, res, settings)
     kept = [r['index'] for r in report if r['sure'] and r['best'] == product]
     return subset(res, kept, label or product), report
 
 
 single_items = _single_items
+
+
+def names_in(text: str) -> list:
+    """Catalogue products named in `text` (key or alias), as canonical names."""
+    t = _norm(text)
+    out = []
+    for key, entry in (_catalog().get('products') or {}).items():
+        if any(_norm(n) and _norm(n) in t for n in [key, *entry.get('aliases', [])]):
+            out.append(key)
+    return out
+
+
+def inventory(client, rgb, detect, settings: dict | None = None) -> list:
+    """Every product pack in `rgb`: [{name, side, box, sim, margin}] — `name`
+    is the catalogue product it surely is, or None when no product matches
+    surely (the robot must not name it). `side` is 'left' / 'middle' / 'right'
+    in the image. `detect(rgb, prompt, thresholds)` runs the detector.
+
+    One detection per generic class in the catalogue ("noodle package" …);
+    packs are classified once against all products' reference photos."""
+    cat = _catalog()
+    settings = {**(cat.get('match') or {}), **(settings or {})}
+    classes = sorted({e.get('class') for e in (cat.get('products') or {}).values() if e.get('class')})
+    w = rgb.shape[1]
+    out = []
+    for cls in classes:
+        res = detect(rgb, f'{cls}.', {k: settings[k] for k in ('box_threshold', 'text_threshold') if k in settings})
+        if not res.detections:
+            continue
+        for r in classify(client, rgb, res, settings):
+            x, _, bw, _ = r['box']
+            cx = (x + bw / 2) / w
+            out.append({'name': r['best'] if r['sure'] else None,
+                        'side': 'left' if cx < 0.4 else 'right' if cx > 0.6 else 'middle',
+                        'box': r['box'], 'sim': r['sim'], 'margin': r['margin'], 'class': cls})
+    return out

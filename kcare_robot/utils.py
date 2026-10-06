@@ -7,6 +7,8 @@ phrasing used by pick / place / move skills. Generic helpers (``text2voice``,
 ``exception_handler``, ``run_parallel_check``, …) stay in ``robot_agent.utils``.
 """
 
+import os
+
 import numpy as np
 
 from robot_agent.env_names import aliases_of, resolve_env_name
@@ -214,3 +216,37 @@ def announce_moving(env_name):
 
 def announce_arrived():
     pass
+
+
+# ── Text on debug images (Korean too) ─────────────────────────────────────────
+# cv2.putText only has ASCII glyphs: object names like 신라면 came out as
+# "??????" on the detection log image. Non-ASCII text is drawn with Pillow and
+# a Korean-capable font shipped in configs/fonts (OFL), so it works in any
+# container without installing fonts.
+_FONT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'configs', 'fonts', 'NanumGothic-Bold.ttf')
+_fonts: dict = {}
+
+
+def put_text(im, text, org, scale=0.6, color=(255, 255, 0), thick=2, outline=(0, 0, 0)):
+    """cv2.putText-like text with a dark outline, in place on an RGB/BGR uint8
+    image. `org` is the left end of the baseline, as for cv2.putText."""
+    import cv2
+    text = str(text)
+    if text.isascii():
+        cv2.putText(im, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, outline, thick + 3)
+        cv2.putText(im, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, color, thick)
+        return im
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        size = max(10, int(round(34 * scale)))
+        if size not in _fonts:
+            _fonts[size] = ImageFont.truetype(_FONT_FILE, size)
+        pil = Image.fromarray(im)
+        ImageDraw.Draw(pil).text(org, text, font=_fonts[size], fill=tuple(int(c) for c in color),
+                                 anchor='ls', stroke_width=max(1, thick), stroke_fill=tuple(outline))
+        im[...] = np.asarray(pil)
+    except Exception:                       # no Pillow / font: at least the ASCII part
+        safe = text.encode('ascii', 'replace').decode()
+        cv2.putText(im, safe, org, cv2.FONT_HERSHEY_SIMPLEX, scale, outline, thick + 3)
+        cv2.putText(im, safe, org, cv2.FONT_HERSHEY_SIMPLEX, scale, color, thick)
+    return im
