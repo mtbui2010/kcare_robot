@@ -110,7 +110,8 @@ def _targets(loc) -> list:
     if want == 'all':
         return [(d['loc'], d['mac']) for d in devices]
     for d in devices:
-        if want in (_norm(d['loc']), _norm(d['id']), d['mac'].lower()):
+        if want in (_norm(d['loc']), _norm(d['id']), d['mac'].lower(),
+                    *(_norm(a) for a in d.get('aliases') or [])):
             return [(d['loc'], d['mac'])]
     raise ValueError(f'no SwitchBot at "{loc}" — configured: '
                      + ', '.join(d['loc'] for d in devices) + ' or all')

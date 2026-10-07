@@ -658,7 +658,7 @@
       "avoid_conf": 0.2,
       "avoid_pad": 17,
       "avoid_max_area": 0.1,
-      "place_height_band": 0.1,
+      "place_height_band": 0.04,
       "place_margin_cells": 2,
       "place_min_component_cells": 6,
       "calib_tune": {

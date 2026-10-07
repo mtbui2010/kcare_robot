@@ -1,6 +1,8 @@
 # Per-deployment runtime state — not checked in.
 .env
 active_location
+# per machine: active_location.<host> (robot_agent.state.active_location_file)
+active_location.*
 *.bak
 *.tmp
 *.json.bak

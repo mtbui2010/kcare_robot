@@ -1,4 +1,4 @@
-"""Human-robot interaction skills: ``reply``, ``ask`` and ``qa``.
+"""Human-robot interaction skills: ``reply``, ``ask``, ``qa``, ``announce`` and ``wait``.
 
 All talk and listen on one side, chosen per call with ``source``:
 
@@ -329,7 +329,11 @@ def ask(node, **kwargs):
         inputs (str):   the question.
         options (list): allowed answers. When given, the answer is matched to
             one of them and that option is confirmed aloud; an answer matching
-            none gets the question asked again. They are also Whisper's hint
+            none gets the question asked again. An option may be
+            "spoken=value" — "검은 가방=black bag": the robot hears, matches
+            and confirms the spoken part, and `answer` is the value (for the
+            English-only detector: pick::{answer}). Without "=" both are the
+            option itself. They are also Whisper's hint
             words, so it hears 신라면, not 실라면. When None, the answer is
             simply repeated back.
         read_options (bool): on a non-matching answer, read the options out
@@ -339,12 +343,24 @@ def ask(node, **kwargs):
         match_threshold (float): fuzzy-match floor, 0..1. Default 0.7.
         source, lang, max_sec, silence_sec, energy_threshold: as for `reply`.
 
-    Returns ``{'isdone', 'answer', 'text', 'attempts'}`` — `answer` is the
-    matched option (or the transcript when there are no options), `text` the
+    Returns ``{'isdone', 'answer', 'answer_text', 'text', 'attempts'}`` —
+    `answer` is the matched option's value (or the transcript when there are no
+    options), `answer_text` its spoken part, `text` the
     raw transcript.
     """
     question = str(kwargs.pop('inputs', '') or '').strip()
     options = parse_options(kwargs.pop('options', None))
+    values = {}                                 # spoken option → value ("검은 가방" → "black bag")
+    if options:
+        spoken = []
+        for o in options:
+            say, _, val = o.partition('=')
+            say, val = say.strip(), val.strip()
+            if not say:                          # "=black bag": nothing to say — use the value
+                say = val
+            spoken.append(say)
+            values[say] = val or say
+        options = spoken
     retries = max(0, int(kwargs.pop('retries', RETRIES)))
     threshold = float(kwargs.pop('match_threshold', MATCH_THRESHOLD))
     read_options = _truthy(kwargs.pop('read_options', False))
@@ -367,13 +383,13 @@ def ask(node, **kwargs):
 
         if options is None:
             _say(_phrase('heard_text', lang, text=text), lang, source)
-            return {'isdone': True, 'answer': text, 'text': text, 'attempts': attempt}
+            return {'isdone': True, 'answer': text, 'answer_text': text, 'text': text, 'attempts': attempt}
 
         choice = match_option(text, options, threshold)
         if choice is not None:
             _say(_phrase('confirm', lang, choice=choice), lang, source)
-            return {'isdone': True, 'answer': choice, 'text': text,
-                    'attempts': attempt, 'options': options}
+            return {'isdone': True, 'answer': values.get(choice, choice), 'answer_text': choice,
+                    'text': text, 'attempts': attempt, 'options': options}
         # An answer, just not one of the options: ask again (the list only
         # with read_options).
         log_data({'msg': f'ask: "{text}" matches none of {options}'})
@@ -386,6 +402,74 @@ def ask(node, **kwargs):
     return {'isdone': False, 'msg': msg, 'answer': None, 'text': last_text,
             'attempts': retries + 1, 'options': options}
 
+
+
+# ── Announce / wait ──────────────────────────────────────────────────────────
+
+_VI_CHARS = re.compile(r'[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]', re.IGNORECASE)
+
+
+def _guess_lang(text: str) -> str:
+    """ko for Hangul, vi for Vietnamese letters, else en."""
+    if re.search(r'[가-힣]', text):
+        return 'ko'
+    if _VI_CHARS.search(text):
+        return 'vi'
+    return 'en'
+
+
+@exception_handler
+def announce(node, **kwargs):
+    """Say `inputs` aloud and return once it has been said.
+
+    Params:
+        inputs (str): what to say.
+        lang: 'ko' / 'en' / 'vi'; default from the text (Hangul → ko,
+            Vietnamese letters → vi, else en).
+        source: 'dashboard' / 'robot' — default HRI_CONFIGS['source'].
+        wait (bool): True (default) — return once the line has been spoken, so
+            the next step does not start under it; False — go on at once.
+
+    Usage:
+        announce::식사 준비가 다 되었어요
+        announce::inputs='Lunch is ready', source='robot'
+        announce::inputs='잠시만요', wait=False      # speak while the next step runs
+    """
+    text = str(kwargs.pop('inputs', '') or '').strip()
+    if not text:
+        return {'isdone': False, 'msg': 'announce: nothing to say (inputs is empty)'}
+    lang = str(kwargs.pop('lang', '') or _guess_lang(text))
+    source = str(kwargs.pop('source', None) or _hri_cfg()['source'] or 'dashboard').lower()
+    if source not in SOURCES:
+        raise ValueError(f'source must be one of {SOURCES}, got {source!r}')
+    wait = _truthy(kwargs.pop('wait', True))
+    log_data({'msg': f'robot: {text}'})
+    say_to_user(text, lang=lang, source=source, wait=wait)
+    return {'isdone': True, 'said': text, 'lang': lang, 'waited': wait}
+
+
+@exception_handler
+def wait(node, **kwargs):
+    """Stand still for `inputs` seconds (time.sleep that Cancel / Stop ends).
+
+    Usage:
+        wait::3
+        wait::inputs=1.5
+    """
+    import time
+    from robot_agent.core.run_control import cancel_requested
+    try:
+        sec = float(kwargs.pop('inputs', 0) or 0)
+    except (TypeError, ValueError):
+        return {'isdone': False, 'msg': 'wait: inputs must be a number of seconds'}
+    if sec < 0:
+        return {'isdone': False, 'msg': 'wait: seconds must not be negative'}
+    end = time.monotonic() + sec
+    while time.monotonic() < end:
+        if cancel_requested():
+            return {'isdone': False, 'msg': 'cancelled', 'waited': round(sec - (end - time.monotonic()), 1)}
+        time.sleep(min(0.1, max(0.0, end - time.monotonic())))
+    return {'isdone': True, 'waited': sec}
 
 
 # ── Visual Q&A ───────────────────────────────────────────────────────────────
@@ -413,6 +497,8 @@ def qa(node, **kwargs):
         cam: 'head' (default: a photo at each head tilt in `views`) or 'arm'
             (one photo from the arm camera, QA_CONFIGS['arm_camera']; the head
             does not move).
+        Light requests ("불 꺼줘", "turn on the light") are acknowledged and
+            done with turn_light (off without a place → every light).
         once: True — answer one question and end (no goodbye); silence is
             asked again up to `retries` times (default 2), as `ask` does.
             Default False: the conversation goes on until a stop word or Cancel.
@@ -444,6 +530,16 @@ def qa(node, **kwargs):
     # listen that times out would leave the browser's Q&A card waiting on the
     # old request, and the line typed next would go to it and be lost.
     listen['text_fallback_sec'] = QA_TEXT_WAIT_SEC
+    # Whisper hint: also the things people drop and the products the robot
+    # knows (Whisper heard "손가락" for 숟가락 without them).
+    extra = [w for w in vqa._drop_vocab(cfg) if re.match(r'[가-힣]', w)] if lang == 'ko' else []
+    try:
+        from . import _products
+        extra += list((_products._catalog().get('products') or {}).keys())
+    except Exception:
+        pass
+    if extra:
+        listen['hint'] = ', '.join(x for x in [listen.get('hint') or '', ', '.join(dict.fromkeys(extra))] if x)
     if listen.get('mode') == 'text':
         listen['text_wait_sec'] = QA_TEXT_WAIT_SEC
     place, qa_cfg = vqa._place_config(node, cfg, loc)
@@ -483,17 +579,51 @@ def qa(node, **kwargs):
             ended = 'stop word'
             break
 
+        # "불 꺼줘" — say it will, then do it with turn_light (qa._light_command).
+        light = vqa._light_command(text)
+        if light is not None:
+            action, loc = light
+            ack = vqa._light_phrase('ack', action, lang)
+            _say(ack, lang, source)
+            try:
+                ok, note = vqa._do_light(node, action, loc, lang)
+            except Exception as e:                      # no SwitchBot / BLE error
+                ok, note = False, f'turn_light {action}: {e}'
+            log_data({'msg': f'qa: {note}'})
+            answer = ack
+            if not ok:
+                answer = vqa._light_phrase('fail', action, lang)
+                _say(answer, lang, source)
+            history.append((text, answer))
+            if once:
+                ended = 'answered'
+                break
+            continue                                    # listen again (already spoken)
+
         # A new question: clear the previous answer's picture; the photos the
         # model is given for this answer are logged once it has answered.
         log_data({'log_image_reset': True})
-        if not shots or time.time() - shot_at > float(cfg['refresh_sec']):
+        # "숟가락 어디에 떨어졌어?" — the arm camera + geometry, no head photos /
+        # model (see qa._drop_answer).
+        # Any "…떨어졌어?" goes here, even when the object word was not
+        # understood (it asks again) — never to the left / right place answer.
+        drop = vqa._is_drop_question(text)
+        if not drop and (not shots or time.time() - shot_at > float(cfg['refresh_sec'])):
             _say(vqa._phrase('look', lang), lang, source)
             shots, shot_at = vqa._look_around(node, cfg), time.time()
             if cancel_requested():
                 break
 
         facts = None
-        if not shots:
+        if drop:
+            t0 = time.time()
+            try:
+                answer = vqa._drop_answer(node, cfg, text, lang)
+            except Exception as e:
+                log_data({'msg': f'qa: dropped-object search failed: {e}'})
+                answer = vqa._phrase('error', lang)
+            log_data({'msg': f'qa: answered in {time.time() - t0:.1f}s from the arm camera (feet + object)'})
+        elif not shots:
             answer = vqa._phrase('blind', lang)
         else:
             t0 = time.time()

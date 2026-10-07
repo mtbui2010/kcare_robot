@@ -72,8 +72,9 @@ def forward(node, **kwargs):
     ret = node.agents['mobile_forward'].send({'distance': inp, 'wait':wait})
     assert ret['isdone'], f'{ret}'
 
-    ret = rotate(node=node, inputs=prev_rz)
-    assert ret['isdone'], f'{ret}'
+    if MOBILE_CONFIGS.get('platform', None)!="clober":
+        ret = rotate(node=node, inputs=prev_rz)
+        assert ret['isdone'], f'{ret}'
     
     return {'isdone': True}
 

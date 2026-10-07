@@ -3,14 +3,14 @@
   "mode": "switch",
   "is_on": true,
   "battery": 100,
-  "source": "advert",
-  "ts": 1791246232.0450125
+  "source": "command",
+  "ts": 1791344766.4443355
  },
  "EC:0F:01:06:38:04": {
   "mode": "switch",
   "is_on": false,
   "battery": 100,
-  "source": "advert",
-  "ts": 1791246232.1279702
+  "source": "command",
+  "ts": 1791344666.9663994
  }
 }

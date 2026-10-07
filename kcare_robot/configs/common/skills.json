@@ -9,7 +9,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "find",
@@ -21,7 +22,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "find_grasp",
@@ -33,7 +35,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "grasp_succeed",
@@ -45,7 +48,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "get_side_pose_3d",
@@ -57,7 +61,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "pick",
@@ -69,7 +74,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "pick_card",
@@ -81,7 +87,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "fine_move",
@@ -93,7 +100,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "open_drawer",
@@ -105,7 +113,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "close_drawer",
@@ -117,7 +126,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "stack",
@@ -129,7 +139,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "approach",
@@ -141,7 +152,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "approach_close",
@@ -153,7 +165,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "approach_closef",
@@ -165,7 +178,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "placeat",
@@ -177,7 +191,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "placep",
@@ -189,7 +204,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "arm_joints",
@@ -201,7 +217,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "arm_pose",
@@ -213,7 +230,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "movel",
@@ -225,7 +243,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "movej",
@@ -237,7 +256,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "movet",
@@ -249,7 +269,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "movelf",
@@ -261,7 +282,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "place",
@@ -273,7 +295,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "collect_card",
@@ -285,7 +308,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "return_card",
@@ -297,7 +321,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "wipe",
@@ -309,7 +334,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "init_arm",
@@ -321,7 +347,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "lift",
@@ -333,7 +360,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "lift_state",
@@ -345,7 +373,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "dlift",
@@ -357,7 +386,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "mobile_pose",
@@ -369,7 +399,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "move",
@@ -381,7 +412,10 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": [
+      "\uc774\ub3d9"
+    ]
   },
   {
     "name": "moveb",
@@ -393,7 +427,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "forward",
@@ -405,7 +440,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "turn",
@@ -417,7 +453,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "rotate",
@@ -429,7 +466,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "head_state",
@@ -441,7 +479,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "moveh",
@@ -453,7 +492,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "grip",
@@ -465,7 +505,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "inform",
@@ -477,7 +518,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "select_response",
@@ -489,7 +531,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "get3d",
@@ -501,7 +544,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "llm",
@@ -513,7 +557,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "rest_detect",
@@ -525,7 +570,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "new_skill",
@@ -537,7 +583,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "find_place",
@@ -549,7 +596,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "approach_pick",
@@ -561,7 +609,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "approach_place",
@@ -573,7 +622,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "get3d_arm",
@@ -585,7 +635,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "real2sim_capture",
@@ -597,7 +648,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "vla_drawer_open",
@@ -609,7 +661,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "reply",
@@ -621,7 +674,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "ask",
@@ -633,7 +687,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "qa",
@@ -645,7 +700,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "turn_light",
@@ -657,7 +713,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "light_state",
@@ -669,7 +726,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "align_shoes",
@@ -681,7 +739,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": ""
+    "plan": "",
+    "aliases": []
   },
   {
     "name": "move_top",
@@ -693,7 +752,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": "move::$inputs$\nlift::highest\nmovej::pre_pick\nforward::0.1"
+    "plan": "move::$inputs$\nlift::highest\nmovej::pre_pick\nforward::0.1",
+    "aliases": []
   },
   {
     "name": "pnp_pot",
@@ -705,7 +765,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": "\nlift::0.9\nmovej::pre_pick\nlift::0.65&&movej::dr6=-90\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\nturn::90\nforward::1\n\nmovet::dz=0.1\nmovel::dz=-0.25\ngrip::open\nforward::-0.5\nmovej::fold\n"
+    "plan": "\nlift::0.9\nmovej::pre_pick\nlift::0.65&&movej::dr6=-90\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\nforward::-0.5\nturn::90\nforward::0.9\n\nmovet::dz=0.1\nmovel::dz=-0.25\ngrip::open\nforward::-0.5\nmovej::fold\n",
+    "aliases": []
   },
   {
     "name": "clear_pot",
@@ -717,7 +778,8 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": "lift::0.7\nmovej::pre_pick\nlift::0.4&&movej::dr6=-90, dr5=10\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\nlift::0.9\nturn::-90\nforward::0.3\n\nmovej::dr5=20\nmovet::dz=0.25\ngrip::open\nmovet::dz=-0.25\nmovej::dr5=-20\nforward::-0.5\nmovej::fold\n"
+    "plan": "lift::0.7\nmovej::pre_pick\nlift::0.4&&movej::dr6=-90, dr5=10\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\nlift::0.9\nturn::-90\nforward::0.3\n\nmovej::dr5=20\nmovet::dz=0.25\ngrip::open\nmovet::dz=-0.25\nmovej::dr5=-20\nforward::-0.5\nmovej::fold\n",
+    "aliases": []
   },
   {
     "name": "fold_top",
@@ -729,6 +791,33 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": "forward::-0.5\nmovej::fold&&lift::home"
+    "plan": "forward::-0.5\nmovej::fold&&lift::home",
+    "aliases": []
+  },
+  {
+    "name": "announce",
+    "type": "internal",
+    "description": "from kcare_robot.skills.hri:announce",
+    "module_path": "kcare_robot.skills.hri",
+    "func_name": "announce",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {},
+    "plan": "",
+    "aliases": []
+  },
+  {
+    "name": "wait",
+    "type": "internal",
+    "description": "from kcare_robot.skills.hri:wait",
+    "module_path": "kcare_robot.skills.hri",
+    "func_name": "wait",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {},
+    "plan": "",
+    "aliases": []
   }
 ]

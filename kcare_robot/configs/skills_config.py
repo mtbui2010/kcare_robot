@@ -59,6 +59,8 @@ SKILL_CONFIGS: dict[str, tuple[str, str]] = {
     'reply': (f'{_PKG}.hri', 'reply'),
     'ask': (f'{_PKG}.hri', 'ask'),
     'qa': (f'{_PKG}.hri', 'qa'),
+    'announce': (f'{_PKG}.hri', 'announce'),
+    'wait': (f'{_PKG}.hri', 'wait'),
     'turn_light': (f'{_PKG}.switchbot', 'turn_light'),
     'light_state': (f'{_PKG}.switchbot', 'light_state'),
     'align_shoes': (f'{_PKG}.align_shoes', 'align_shoes'),

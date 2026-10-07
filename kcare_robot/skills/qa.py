@@ -580,3 +580,258 @@ def _unrecognised_answer(names: list, inv: list, lang: str) -> str:
     head = {'ko': f"{n}{'은' if _batchim(n) else '는'} 확인할 수 없어요.",
             'vi': f'Tôi không nhận biết được {n}.'}.get(lang, f"I can't recognise {n}.")
     return head + ' ' + _product_list(inv, lang)
+
+
+# ── "어디에 떨어졌어?" — a dropped object, as a clock direction from the person ──
+#
+# The VLMs could not do it from the photos (8 / 8 wrong on the head camera, 3–11
+# o'clock on the arm camera for a spoon at 2). So it is geometry: the detector
+# on the ARM camera finds the person's feet ('foot' / 'slipper' — it labels the
+# two feet either way), their legs and the object; depth gives each a point on
+# the floor (base frame), and:
+#   two feet → centre between them; 12 o'clock is perpendicular to the line
+#              between them, on the side the feet stick out from the legs;
+#   one foot → centre on that foot; 12 o'clock is the way it points (leg → foot).
+# No feet, or no leg to tell front from back → say the direction is unknown:
+# the user is blind, an answer relative to the ROBOT is no use to them.
+
+_DROP = re.compile(r'떨어|떨궜|떨어뜨|rơi|đánh rơi|\bdrop|\bfall|\bfell\b', re.IGNORECASE)
+
+# Spoken word → detector prompt. QA_CONFIGS['drop_objects'] adds / overrides.
+_DROP_OBJECTS = {
+    '숟가락': 'spoon', '수저': 'spoon', '스푼': 'spoon', '포크': 'fork', '젓가락': 'chopsticks',
+    '컵': 'cup', '휴대폰': 'phone', '핸드폰': 'phone', '리모컨': 'remote control', '안경': 'glasses',
+    '열쇠': 'key', '펜': 'pen', '약': 'pill bottle', '지갑': 'wallet',
+    'spoon': 'spoon', 'fork': 'fork', 'chopsticks': 'chopsticks', 'cup': 'cup', 'phone': 'phone',
+    'remote': 'remote control', 'glasses': 'glasses', 'key': 'key', 'pen': 'pen',
+    'thìa': 'spoon', 'muỗng': 'spoon', 'nĩa': 'fork', 'dĩa': 'fork', 'đũa': 'chopsticks',
+    'cốc': 'cup', 'điện thoại': 'phone', 'kính': 'glasses', 'chìa khóa': 'key', 'bút': 'pen',
+}
+
+
+def _is_drop_question(text: str) -> bool:
+    return bool(_DROP.search(text or ''))
+
+
+def _drop_vocab(cfg: dict) -> dict:
+    return {**_DROP_OBJECTS, **(cfg.get('drop_objects') or {})}
+
+
+def _drop_object(cfg: dict, text: str):
+    """(word, detector prompt) for the object asked about, or None. A word
+    Whisper misheard is matched by Hangul-letter similarity — "손가락" (finger)
+    for 숟가락 came back on a real voice and fell through to the left / right
+    place answer."""
+    vocab = _drop_vocab(cfg)
+    t = (text or '').lower()
+    hits = [(w, p) for w, p in vocab.items() if w.lower() in t]
+    if hits:
+        return max(hits, key=lambda h: len(h[0]))                      # "숟가락" over "약"
+    from .hri import _jamo, _similarity
+    words = re.findall(r'[가-힣]{2,}|[a-zà-ỹ]{3,}', t)
+    best, score = None, 0.0
+    for tok in words:
+        for w, p in vocab.items():
+            if len(w) < 2:
+                continue
+            for cand in (tok, tok[:len(w)]):                           # "숟가락이" → "숟가락"
+                s = _similarity(_jamo(cand), _jamo(w.lower()))
+                if s > score:
+                    best, score = (w, p), s
+    return best if score >= 0.72 else None
+
+
+def _box_inside(a, b, frac=0.6) -> bool:
+    """xyxy box a lies mostly inside b."""
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    return ix * iy > frac * max(1e-6, (a[2] - a[0]) * (a[3] - a[1]))
+
+
+def _shin_xy(node, cam, box):
+    """Where the leg above a foot stands on the floor plan: base-frame (x, y)
+    median of the depth points just above the foot box, 12–60 cm above the
+    floor and within 25 cm of the foot. None when there is no leg there (an
+    empty slipper) or no depth. The detector's own 'leg' boxes came and went
+    from frame to frame (0, 0, 2, 1 in four runs), flipping front and back."""
+    import numpy as np
+    from .pointcloud import get3d_arm
+    x0, y0, x1, y1 = [int(v) for v in box]
+    h = max(8, y1 - y0)
+    depth = np.asarray(cam.depth)
+    pts = []
+    for v in range(max(0, y0 - int(1.5 * h)), max(1, y0), 6):
+        for u in range(max(0, x0), min(depth.shape[1], x1), 6):
+            d = float(depth[v, u])
+            if d > 0:
+                pts.append([u, v, d])
+    if len(pts) < 5:
+        return None
+    xyz = np.asarray(get3d_arm(node=node, points=pts)['pose'], dtype=float)
+    return xyz
+
+
+def _clock_from_feet(feet: list, obj_xy):
+    """(hour, distance_m, how) or (None, None, why). `feet`: [(foot xy on the
+    floor, shin xy or None)]; only feet with a leg above them count."""
+    import math
+    worn = [(f, s) for f, s in feet if s is not None]
+    if not worn:
+        return None, None, 'no foot with a leg above it'
+    if len(worn) >= 2:
+        # the pair closest to a normal stance (feet 8–50 cm apart)
+        pairs = [(a, b) for i, a in enumerate(worn) for b in worn[i + 1:]
+                 if 0.08 <= math.dist(a[0], b[0]) <= 0.5]
+        if not pairs:
+            worn = [max(worn, key=lambda w: math.dist(w[0], w[1]))]
+        else:
+            (a, la), (b, lb) = min(pairs, key=lambda p: abs(math.dist(p[0][0], p[1][0]) - 0.25))
+            c = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+            n = (-(b[1] - a[1]), b[0] - a[0])               # ⟂ to the line between the feet
+            fwd = (c[0] - (la[0] + lb[0]) / 2, c[1] - (la[1] + lb[1]) / 2)   # legs → feet: toes' side
+            if n[0] * fwd[0] + n[1] * fwd[1] < 0:
+                n = (-n[0], -n[1])
+            how = 'two feet'
+    if len(worn) == 1:
+        (c, leg), = worn
+        n = (c[0] - leg[0], c[1] - leg[1])                   # one foot: the way it points
+        how = 'one foot'
+    if math.hypot(*n) < 1e-3:
+        return None, None, 'feet direction unclear'
+    v = (obj_xy[0] - c[0], obj_xy[1] - c[1])
+    left = math.degrees(math.atan2(n[0] * v[1] - n[1] * v[0], n[0] * v[0] + n[1] * v[1]))
+    hour = round(((-left) % 360) / 30) % 12 or 12          # clockwise from the front
+    return hour, math.hypot(*v), how
+
+
+def _drop_measure(node, cfg: dict, prompt: str):
+    """One frame: (hour | None, distance, how, n_feet, object found)."""
+    import numpy as np
+    from .recognition import _detect_objects
+    from ._recognition_helpers import fetch_camera_data
+    camera = cfg.get('drop_camera', 'arm')
+    res = _detect_objects(node, ['foot', 'slipper', prompt], camera=camera, num_trials=2, max_instances='all')
+    ins = res.get('ins', {})
+
+    def pts(name):
+        e = ins.get(name)
+        return [(i['pose_3d'][:2], list(i['box'])) for i in (e.get('instances', [e]) if e else [])]
+    feet = []
+    for f in sorted(pts('foot') + pts('slipper'), key=lambda f: -(f[1][2] - f[1][0]) * (f[1][3] - f[1][1])):
+        if not any(_box_inside(f[1], g[1], 0.3) or _box_inside(g[1], f[1], 0.3) for g in feet):
+            feet.append(f)                                    # one foot found as foot AND slipper: once
+    objs = pts(prompt)
+    if not objs:
+        return None, None, 'object not seen', len(feet), False
+    cam = fetch_camera_data(node, camera)
+    with_shin = []
+    for xy, box in feet:
+        shin = None
+        xyz = _shin_xy(node, cam, box)
+        if xyz is not None and len(xyz):
+            near = xyz[(xyz[:, 2] > 0.12) & (xyz[:, 2] < 0.6)
+                       & (np.hypot(xyz[:, 0] - xy[0], xyz[:, 1] - xy[1]) < 0.25)]
+            if len(near) >= 5:
+                shin = (float(np.median(near[:, 0])), float(np.median(near[:, 1])))
+        with_shin.append((xy, shin))
+    hour, dist, how = _clock_from_feet(with_shin, objs[0][0])
+    return hour, dist, how, len(feet), True
+
+
+def _drop_answer(node, cfg: dict, text: str, lang: str) -> str:
+    """Spoken answer to "<object> 어디에 떨어졌어?" from the arm camera."""
+    obj = _drop_object(cfg, text)
+    if obj is None:
+        return {'ko': '무엇이 떨어졌는지 다시 말씀해 주세요.', 'vi': 'Bạn làm rơi gì vậy? Hãy nói lại.'}.get(
+            lang, 'What did you drop? Please say it again.')
+    word, prompt = obj
+    topic = word + ('은' if _batchim(word) else '는')
+    # Two frames must agree (±1 hour): a wrong direction is worse than none.
+    runs = [_drop_measure(node, cfg, prompt) for _ in range(2)]
+    if not any(r[4] for r in runs):
+        return {'ko': f'{topic} 보이지 않아요.', 'vi': f'Tôi không thấy {word}.'}.get(lang, f"I can't see the {word}.")
+    hours = [r[0] for r in runs if r[0]]
+    agree = len(hours) == 2 and min(abs(hours[0] - hours[1]), 12 - abs(hours[0] - hours[1])) <= 1
+    if len(hours) == 2 and not agree:
+        runs.append(_drop_measure(node, cfg, prompt))          # a third frame decides
+        h3 = runs[-1][0]
+        for h in hours:
+            if h3 and min(abs(h - h3), 12 - abs(h - h3)) <= 1:
+                hours, agree = [h, h3], True
+                break
+    log_data({'msg': f'qa: dropped {word} ({prompt}): ' + ' | '.join(
+        f"{r[3]} feet → {f'{r[0]}h {r[1]:.2f}m ({r[2]})' if r[0] else r[2]}" for r in runs)})
+    if not agree:
+        return {'ko': f'{topic} 보이지만, 방향을 정확히 알 수 없어요.',
+                'vi': f'Tôi thấy {word} nhưng không xác định được hướng.'}.get(
+            lang, f"I can see the {word}, but I can't tell the direction for sure.")
+    hour = hours[0]
+    dist = next(r[1] for r in runs if r[0] == hour)
+    cm = max(10, int(round(dist * 10)) * 10)
+    return {'ko': f'{topic} {hour}시 방향, 약 {cm}센티미터 거리에 있어요.',
+            'vi': f'{word} ở hướng {hour} giờ của bạn, cách khoảng {cm} cm.'}.get(
+        lang, f"The {word} is at your {hour} o'clock, about {cm} cm away.")
+
+
+# ── "불 꺼줘" — light commands, done with turn_light ───────────────────────────
+#
+#   (H) 나 외출할거니까 불켜진거 있으면 꺼놔
+#   (R) 네. 불 끄겠습니다.        → turn_light::inputs='off', loc='all'
+#
+# The robot says the acknowledgement, then acts, and says so if it failed.
+# Which light: a place named in the request (a switchbot connection's loc, id
+# or alias — 세탁실 …); else off → every light, on → the default light.
+
+_LIGHT_NOUN = re.compile(r'불|전등|조명|형광등|스탠드|\blights?\b|\blamps?\b|đèn', re.IGNORECASE)
+_LIGHT_OFF = re.compile(r'꺼|끄|끌|끕|\boff\b|tắt', re.IGNORECASE)
+_LIGHT_ON = re.compile(r'켜|켤|켭|키|\bon\b|bật|mở đèn', re.IGNORECASE)
+
+
+def _light_command(text: str):
+    """(action 'on' | 'off', loc or None) for a light request, else None.
+    "불 켜진 거 있으면 꺼" holds both 켜 and 꺼: the verb that comes last wins."""
+    t = text or ''
+    if not _LIGHT_NOUN.search(t):
+        return None
+    offs = [m.start() for m in _LIGHT_OFF.finditer(t)]
+    ons = [m.start() for m in _LIGHT_ON.finditer(t)]
+    if not offs and not ons:
+        return None
+    action = 'off' if (max(offs) if offs else -1) > (max(ons) if ons else -1) else 'on'
+    loc = None
+    try:
+        from .switchbot import _devices, _norm as sb_norm
+        nt = sb_norm(t)
+        for d in _devices():
+            names = [d['loc'], d['id'], *(d.get('aliases') or [])]
+            if any(sb_norm(n) and sb_norm(n) in nt for n in names):
+                loc = d['loc']
+                break
+    except Exception:
+        pass
+    return action, loc
+
+
+def _light_phrase(key: str, action: str, lang: str) -> str:
+    on = action == 'on'
+    return {
+        'ack':  {'ko': '네. 불 켜겠습니다.' if on else '네. 불 끄겠습니다.',
+                 'en': "OK, I'll turn the lights on." if on else "OK, I'll turn the lights off.",
+                 'vi': 'Vâng, tôi sẽ bật đèn.' if on else 'Vâng, tôi sẽ tắt đèn.'},
+        'done': {'ko': '불을 켰어요.' if on else '불을 껐어요.',
+                 'en': 'The lights are on.' if on else 'The lights are off.',
+                 'vi': 'Đã bật đèn.' if on else 'Đã tắt đèn.'},
+        'fail': {'ko': '죄송해요, 불을 켜지 못했어요.' if on else '죄송해요, 불을 끄지 못했어요.',
+                 'en': "Sorry, I couldn't turn the lights on." if on else "Sorry, I couldn't turn the lights off.",
+                 'vi': 'Xin lỗi, tôi không bật được đèn.' if on else 'Xin lỗi, tôi không tắt được đèn.'},
+    }[key].get(lang) or ''
+
+
+def _do_light(node, action: str, loc, lang: str):
+    """Run turn_light; (ok, note for the log)."""
+    from .switchbot import turn_light
+    target = loc or ('all' if action == 'off' else None)
+    r = turn_light(node=node, inputs=action, **({'loc': target} if target else {}))
+    per = r.get('results') or {}
+    note = ', '.join(f"{k}: {v.get('result')}" for k, v in per.items()) or str(r.get('msg', ''))
+    return bool(r.get('isdone')), f'turn_light {action} {target or "default"} → {note}'

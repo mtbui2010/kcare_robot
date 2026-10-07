@@ -44,7 +44,7 @@
       "default_mode": "left",
       "placepose": {
         "dx": 0,
-        "dy": 0
+        "dy": -0.1
       },
       "height": 0.465,
       "loc": {
@@ -83,7 +83,7 @@
       "height": 0.75,
       "loc": {
         "x": 2,
-        "y": 3.7,
+        "y": 3.6,
         "rz": -180
       },
       "dforward": 0,
@@ -97,8 +97,8 @@
       },
       "height": 0.73,
       "loc": {
-        "x": 1.85,
-        "y": 3.2,
+        "x": 1.9,
+        "y": 3.3,
         "rz": -180
       },
       "dforward": 0,
@@ -137,7 +137,7 @@
       }
     },
     "gas wrench@kitchen": {
-      "default_mode": "right",
+      "default_mode": "front",
       "placepose": {
         "dx": 0,
         "dy": 0
@@ -145,7 +145,7 @@
       "height": 0.91,
       "loc": {
         "x": 2.8,
-        "y": 4.1,
+        "y": 3.9,
         "rz": 90
       },
       "dforward": 0,
@@ -281,8 +281,8 @@
       },
       "height": 0.8,
       "loc": {
-        "x": 6.4,
-        "y": 3.8,
+        "x": 6.3,
+        "y": 3.7,
         "rz": 0
       },
       "dforward": -0.2,
@@ -388,7 +388,7 @@
       },
       "height": 0.4,
       "loc": {
-        "x": 2.75,
+        "x": 2.55,
         "y": 2.9,
         "rz": 0
       },
@@ -889,12 +889,12 @@
     "detect_background": {
       "use": true,
       "stride": 20,
-      "avoid_model": "grounding-dino",
+      "avoid_model": "rfdetr-gdino-sam-etri",
       "avoid_prompt": "object.",
       "avoid_conf": 0.2,
       "avoid_pad": 17,
       "avoid_max_area": 0.1,
-      "place_height_band": 0.1,
+      "place_height_band": 0.04,
       "place_margin_cells": 2,
       "place_min_component_cells": 6,
       "calib_tune": {

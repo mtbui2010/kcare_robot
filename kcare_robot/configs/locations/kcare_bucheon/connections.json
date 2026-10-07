@@ -373,7 +373,8 @@
       "agent_name": "switchbot_laundry_room",
       "mac": "EB:6B:01:06:62:34",
       "loc": "laundry room",
-      "default": true
+      "default": true,
+      "aliases": []
     }
   },
   {
@@ -383,7 +384,8 @@
       "agent_name": "switchbot_warehouse",
       "mac": "EC:0F:01:06:38:04",
       "loc": "warehouse",
-      "default": false
+      "default": false,
+      "aliases": []
     }
   },
   {

@@ -49,8 +49,43 @@ from kcare_robot.skills._recognition_helpers import (
     save_detection_dataset, _normalize_orientation
 )
 
+def _support_masks(node, masks, target_z, max_px, min_px, tol, flat, samples=40) -> set:
+    """Indices of the masks (between min_px and max_px pixels) that are the
+    support surface: flat and at the target height — measured with one get3d
+    call over a few sampled pixels of each."""
+    pts, owner = [], []
+    rng = np.random.default_rng(0)
+    for k, mm in enumerate(masks):
+        n = int(mm.sum())
+        if n < min_px or n > max_px:
+            continue
+        ys, xs = np.nonzero(mm)
+        for i in rng.choice(n, min(samples, n), replace=False):
+            pts.append([int(xs[i]), int(ys[i])])
+            owner.append(k)
+    if not pts:
+        return set()
+    ret = get3d(node=node, points=pts)
+    if not ret.get('isdone', True):
+        return set()
+    z = np.asarray(ret['pose'], dtype=float)[:, 2]
+    owner = np.asarray(owner)
+    out = set()
+    for k in set(owner.tolist()):
+        zk = z[(owner == k) & ~np.isnan(z)]
+        if len(zk) < 5:
+            continue
+        z50, z90 = np.percentile(zk, [50, 90])
+        if abs(z50 - target_z) <= tol and z90 - z50 <= flat:
+            out.add(k)
+    if out:
+        log_data({'msg': f'find_place: {len(out)} detected mask(s) at the target height {target_z:.2f} m '
+                         'kept as the support surface, not obstacles'})
+    return out
+
+
 def _detect_nearest(node, pose, **kwargs) -> dict:
-    ret = moveh(node=node, ry=-20)
+    ret = moveh(node=node, ry=-40)
     assert ret['isdone'], f'{ret}'
     time.sleep(0.5)
 
@@ -68,6 +103,16 @@ def _detect_nearest(node, pose, **kwargs) -> dict:
     avoid_conf   = configs.get('avoid_conf', 0.25)
     avoid_pad    = configs.get('avoid_pad', 8)                       # enlarge each object box (px) before excluding
     avoid_max    = configs.get('avoid_max_area', 0.15)              # ignore boxes larger than this fraction of the image: "object." also boxes the empty TABLE/couch itself — those are the SURFACE, not an obstacle
+    # A smaller mask can still be the support itself: on find_place::sofa the
+    # living-room table's mask was 10.0 % of the frame, right on avoid_max_area,
+    # so the table was an "obstacle" in one frame and a surface in the next, and
+    # the robot placed on the sofa. A mask that is big enough (surface_min_area,
+    # so a phone / card lying on the table stays an obstacle), FLAT
+    # (z90 - z50 <= surface_flat) and AT the target height (|z50 - target| <=
+    # surface_tol) is the surface, whatever its size.
+    surf_min     = configs.get('surface_min_area', 0.02)
+    surf_tol     = configs.get('surface_tol', 0.03)
+    surf_flat    = configs.get('surface_flat', 0.04)
 
     # Two cheap, complementary filters so a place point never lands on an object:
     #   1) detect objects (open-vocab "object.") and exclude their footprint —
@@ -86,9 +131,10 @@ def _detect_nearest(node, pose, **kwargs) -> dict:
                                   box_threshold=avoid_conf, text_threshold=0.2)
         masks = od.masks or []
         if masks:
-            for m in masks:
-                mm = m.to_ndarray(width=w, height=h) > 0
-                if mm.sum() > max_px:              # whole-surface mask → not an obstacle
+            mms = [m.to_ndarray(width=w, height=h) > 0 for m in masks]
+            surfaces = _support_masks(node, mms, pose[2], max_px, surf_min * h * w, surf_tol, surf_flat)
+            for k, mm in enumerate(mms):
+                if mm.sum() > max_px or k in surfaces:   # whole-surface mask / the support itself → not an obstacle
                     continue
                 if avoid_pad:
                     mm = cv2.dilate(mm.astype('uint8'), np.ones((avoid_pad, avoid_pad), 'uint8')).astype(bool)
