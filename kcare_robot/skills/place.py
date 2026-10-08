@@ -86,6 +86,8 @@ def place(node, **kwargs):
       - `rev_loc=='me'` is rewritten to the `ME` constant.
       - `to_wipe` is auto-set when `'spill'` appears in `rev_loc`.
     """
+    lower_before_open = kwargs.pop('lower_before_open', None)
+
     for k in ['object_from_drawer', 'pose_after_open', 'lift_after_open', 'forward_after_open', 'init_pose_fixed']:
         kwargs.pop(k, None)
     inputs = kwargs.pop('inputs', None)
@@ -105,11 +107,18 @@ def place(node, **kwargs):
         ret = movet(node=node, dz=kwargs['dapproach'], wait=True)
         assert ret['isdone'], f'{ret}'
 
-    ret = run_parallel_check(funcs=[
-        lambda: (time.sleep(0. if kwargs['islying'] else 0.15), movet(node=node, dz=kwargs['dz_up']/2) if kwargs['islying'] else movel(node=node, dz=-kwargs['dz_up'],acc= 0.3 if kwargs['islying'] else 0.2))[-1],
-        lambda: (time.sleep(0.3 if kwargs['islying'] else 0.), grip(node=node, inputs='open', wait=True))
-    ])
-    assert ret['isdone'], f'{ret}'
+    if lower_before_open is None:
+        lower_before_open = kwargs['islying']
+
+    if lower_before_open:
+        ret = run_parallel_check(funcs=[
+            lambda: (time.sleep(0. if kwargs['islying'] else 0.15), movet(node=node, dz=kwargs['dz_up']/2) if kwargs['islying'] else movel(node=node, dz=-kwargs['dz_up'],acc= 0.3 if kwargs['islying'] else 0.2))[-1],
+            lambda: (time.sleep(0.3 if kwargs['islying'] else 0.), grip(node=node, inputs='open', wait=True))
+        ])
+        assert ret['isdone'], f'{ret}'
+    else:
+        grip(node=node, inputs="open")
+        assert ret['isdone'], f'{ret}'
     # ret = grip(node=node, inputs='open')
     # assert ret['isdone'], f'{ret}'
 

@@ -1,1 +1,1 @@
-{"arrived": "gas wrench@kitchen", "found": null, "holding": "{answer}", "opened": ["drawer2", "drawer@kitchen", "inputs=\"drawer@kitchen\",stay_here=True"], "on": [], "holding_since": 1791347912.5423849, "found_pose": null, "holding_pose": null}
+{"arrived": "wait", "found": null, "holding": null, "opened": ["drawer2", "drawer@kitchen", "inputs=\"drawer@kitchen\",stay_here=True"], "on": [], "holding_since": null, "found_pose": null, "holding_pose": null}

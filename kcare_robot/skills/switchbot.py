@@ -55,26 +55,42 @@ _lock = threading.Lock()           # one BLE operation at a time: there is one a
 # light_state while another program holds the adapter's scan: bluetoothd scans
 # with duplicate filtering, so each device is reported once when that scan
 # starts and nothing fresh can be heard afterwards.
-_STATE_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                           'data', 'switchbot_state.json')
+#
+# Kept in the active site's folder (configs/locations/<site>/): the lights
+# belong to the house, and data/ is shared by every robot using this code.
+_OLD_STATE_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                               'data', 'switchbot_state.json')
+
+
+def _state_file() -> str:
+    try:
+        from robot_agent.state import current
+        return os.path.join(str(current().location_dir), 'switchbot_state.json')
+    except Exception:
+        return _OLD_STATE_FILE
 
 
 def _load_states() -> dict:
+    from robot_agent.core.shared_json import read_fresh    # sshfs: never a cut-off read
     try:
-        with open(_STATE_FILE, encoding='utf-8') as f:
-            return json.load(f)
+        return json.loads(read_fresh(_state_file()))
     except (OSError, ValueError):
         return {}
 
 
 def _remember(mac: str, state: dict, source: str) -> None:
+    # Re-read right before writing (another robot on this site may have just
+    # written another light) and replace the file in one step.
     states = _load_states()
     states[mac] = {**states.get(mac, {}), **{k: v for k, v in state.items() if k != 'rssi'},
                    'source': source, 'ts': time.time()}
+    path = _state_file()
+    tmp = os.path.join(os.path.dirname(path), f'.switchbot_state.json.tmp.{os.getpid()}')
     try:
-        os.makedirs(os.path.dirname(_STATE_FILE), exist_ok=True)
-        with open(_STATE_FILE, 'w', encoding='utf-8') as f:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(tmp, 'w', encoding='utf-8') as f:
             json.dump(states, f, indent=1)
+        os.replace(tmp, path)
     except OSError:
         pass
 

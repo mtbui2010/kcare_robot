@@ -136,7 +136,7 @@ fix_angle = lambda angle: angle-360 if angle>=360 else angle+360 if angle<=-360 
 def movej(**kwargs):
     last_state_only = kwargs.pop('last_state_only', False)
     inputs = {}
-    inputs['velocity_scale'] = kwargs.get('speed', 0.8)
+    inputs['velocity_scale'] = kwargs.get('speed', 1.0)
     inputs['acceleration_scale'] = kwargs.get('acc', 0.3)
 
     node = kwargs.pop('node', None)

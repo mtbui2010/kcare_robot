@@ -88,6 +88,11 @@ def move(node, **kwargs):
     env_name = kwargs.pop('inputs')
 
     env = get_env_specs(env_name, ENV)
+    import logging as _lg      # [spoken-debug] temporary
+    from robot_agent.skills import spoken as _sp
+    _lg.getLogger('robot_agent.spoken_debug').warning(
+        '[spoken-debug] move inputs=%r said=%r env_key=%r loc=%r', env_name, _sp('inputs', env_name),
+        env_key(env_name, ENV) if env else None, env.get('loc'))
     
     threading.Thread(target=announce_moving, args=(env_name,), daemon=True).start()
     prev_robot_mode = get_robot_mode(node=node)

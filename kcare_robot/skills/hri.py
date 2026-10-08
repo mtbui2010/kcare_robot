@@ -18,6 +18,7 @@ Usage:
     reply::need_confirm=True                  # ..., then '"<text>"라고 들었어요'
     ask::'어떤 음료 드릴까요?'                   # ask, then repeat the answer back
     ask::inputs='어떤 음료 드릴까요?', options=['물', '주스', '커피']
+    ask::inputs='어디로 갈까요?', options="식탁 앞->table@kitchen, 옷방->dressroom"
     ask::inputs='Which drink?', lang='en', source='dashboard', options='water,juice'
     qa                                        # Q&A about what the head camera sees
     qa::lang='vi', input='text'               # questions typed on the dashboard
@@ -330,10 +331,11 @@ def ask(node, **kwargs):
         options (list): allowed answers. When given, the answer is matched to
             one of them and that option is confirmed aloud; an answer matching
             none gets the question asked again. An option may be
-            "spoken=value" — "검은 가방=black bag": the robot hears, matches
-            and confirms the spoken part, and `answer` is the value (for the
-            English-only detector: pick::{answer}). Without "=" both are the
-            option itself. They are also Whisper's hint
+            "spoken->value" — "검은 가방->black bag" (or the older
+            "검은 가방=black bag"): the robot hears, matches and confirms the
+            spoken part, and `answer` is the value (for the English-only
+            detector: pick::{answer}; the next step also gets the spoken part,
+            as "검은 가방->black bag"). Without "->" both are the option itself. They are also Whisper's hint
             words, so it hears 신라면, not 실라면. When None, the answer is
             simply repeated back.
         read_options (bool): on a non-matching answer, read the options out
@@ -354,7 +356,9 @@ def ask(node, **kwargs):
     if options:
         spoken = []
         for o in options:
-            say, _, val = o.partition('=')
+            # "검은 가방->black bag" (the plan-wide said->real form); the older
+            # "검은 가방=black bag" still works.
+            say, _, val = o.partition('->') if '->' in o else o.partition('=')
             say, val = say.strip(), val.strip()
             if not say:                          # "=black bag": nothing to say — use the value
                 say = val

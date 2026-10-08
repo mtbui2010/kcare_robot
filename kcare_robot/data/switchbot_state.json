@@ -4,7 +4,7 @@
   "is_on": true,
   "battery": 100,
   "source": "command",
-  "ts": 1791344766.4443355
+  "ts": 1791423262.5175176
  },
  "EC:0F:01:06:38:04": {
   "mode": "switch",

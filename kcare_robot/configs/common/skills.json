@@ -753,7 +753,9 @@
     "method": "POST",
     "headers": {},
     "plan": "move::$inputs$\nlift::highest\nmovej::pre_pick\nforward::0.1",
-    "aliases": []
+    "aliases": [
+      "\ub192\uc774 \uc774\ub3d9"
+    ]
   },
   {
     "name": "pnp_pot",
@@ -765,8 +767,10 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": "\nlift::0.9\nmovej::pre_pick\nlift::0.65&&movej::dr6=-90\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\nforward::-0.5\nturn::90\nforward::0.9\n\nmovet::dz=0.1\nmovel::dz=-0.25\ngrip::open\nforward::-0.5\nmovej::fold\n",
-    "aliases": []
+    "plan": "\nlift::0.9\nmovej::pre_pick\nlift::0.65&&movej::dr6=-90\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\nforward::-0.5\nturn::90\nforward::1.1\n\nmovet::dz=0.1\nmovel::dz=-0.25\ngrip::open\nforward::-0.5\nmovej::fold\nannounce::\uc2dd\ud0c1 \uc704\uc5d0 \ub0c4\ube44 \uc62c\ub824\ub480\uc2b5\ub2c8\ub2e4.",
+    "aliases": [
+      "\ub0c4\ube44 \uc804\ub2ec"
+    ]
   },
   {
     "name": "clear_pot",
@@ -778,7 +782,7 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": "lift::0.7\nmovej::pre_pick\nlift::0.4&&movej::dr6=-90, dr5=10\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\nlift::0.9\nturn::-90\nforward::0.3\n\nmovej::dr5=20\nmovet::dz=0.25\ngrip::open\nmovet::dz=-0.25\nmovej::dr5=-20\nforward::-0.5\nmovej::fold\n",
+    "plan": "lift::0.7\nmovej::pre_pick\nlift::0.4&&movej::dr6=-90, dr5=10\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\nlift::0.9\nturn::-90\nforward::0.3\n\nmovej::dr5=20\nmovet::dz=0.35\ngrip::open\nmovet::dz=-0.35&&forward::-0.5\nmovej::fold\n",
     "aliases": []
   },
   {
@@ -819,5 +823,20 @@
     "headers": {},
     "plan": "",
     "aliases": []
+  },
+  {
+    "name": "arm_down",
+    "type": "plan",
+    "description": "",
+    "module_path": "",
+    "func_name": "",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {},
+    "plan": "movej::give\nlift::lowest&&movej::dr5=-20",
+    "aliases": [
+      "\ubc14\ub2e5 \ucc3e\uae30"
+    ]
   }
 ]

@@ -7,3 +7,13 @@ active_location.*
 *.tmp
 *.json.bak
 *.json.tmp
+# per machine (robot_agent.state.host_id): beliefs, presence, run logs
+world_state.*.json
+hosts/
+**/task_runs/*/
+grace_memory.*.jsonl
+# side files of the merged saves (robot_agent/core/shared_json.py)
+.*.lock
+.*.tmp.*
+# per site runtime state
+switchbot_state.json

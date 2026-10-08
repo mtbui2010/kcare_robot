@@ -36,7 +36,7 @@ kcare_robot/kcare_robot/
 │   │   └── .env                      # API keys (gitignored)
 │   ├── locations/default/            # fallback site (always present)
 │   └── active_location               # name of the active site (gitignored)
-└── data/logs/                        # rotating logs (not config)
+└── data/logs/<host>/                 # rotating logs, per machine (not config)
 ```
 
 ## Locations (per-site config profiles)
@@ -76,7 +76,7 @@ when applied — most skills already use it.
 A symbolic `WorldState`
 (`arrived/found/holding/opened/on/holding_since/found_pose/holding_pose`)
 lives on `robot_agent`'s per-process `AgentState.world`, so it **persists across
-plan runs** and (selectively) across a **restart** via `common_dir/world_state.json`.
+plan runs** and (selectively) across a **restart** via `common_dir/world_state.<host>.json` (per machine).
 A just-run skill updates it through the `configs/grace_namemap.py` hook
 `apply_skill_effect(world, skill, params, result, node)` (find→`found`/`found_pose`,
 pick→`holding`/`holding_pose`, placeat→clear, open/close_drawer→`opened`); `arrived`
@@ -169,7 +169,7 @@ ROBOT_AGENT_DEBUG_RESPONSE=1 make run # full traceback in skill error dicts
 ROBOT_AGENT_LOG_LEVEL=DEBUG make run
 ```
 
-Logs: `kcare_robot/data/logs/kcare_robot.log` (rotating).
+Logs: `kcare_robot/data/logs/<host>/kcare_robot.log` (rotating; `<host>` = `$ROBOT_AGENT_HOST` or the hostname).
 
 **`reply` / `ask` failing with `NameError: name 'sd' is not defined`** (at
 `robot_agent/utils.py` `record_phrase`) means `sounddevice` did not import:

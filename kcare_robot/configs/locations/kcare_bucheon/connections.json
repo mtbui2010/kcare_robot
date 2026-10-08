@@ -418,5 +418,18 @@
       "url": "http://192.168.0.6:8000",
       "model": "deepdml/faster-whisper-large-v3-turbo-ct2"
     }
+  },
+  {
+    "type": "ros_topic",
+    "name": "slam_map",
+    "config": {
+      "agent_name": "slam_map",
+      "conn_name": "/map",
+      "conn_type": "ros_topic",
+      "is_client": true,
+      "data_interface": "nav_msgs/msg/OccupancyGrid",
+      "is_camera": false,
+      "decode_func": "def decode_func(msg):\n    import numpy as np\n    i = msg.info\n    return {'grid': np.asarray(msg.data, dtype=np.int16).reshape(i.height, i.width),\n            'info': {'resolution': i.resolution, 'width': i.width, 'height': i.height,\n                     'origin': {'position': {'x': i.origin.position.x, 'y': i.origin.position.y},\n                                'orientation': {'z': i.origin.orientation.z, 'w': i.origin.orientation.w}}}}"
+    }
   }
 ]

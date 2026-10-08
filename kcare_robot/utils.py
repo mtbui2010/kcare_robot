@@ -14,6 +14,7 @@ import numpy as np
 from robot_agent.env_names import aliases_of, resolve_env_name
 from robot_agent.env_names import normalize as normalize_env_name
 from robot_agent.skill_configs import EN2KR, ENV, KR2EN, LIFT_CONFIGS, MOBILE_CONFIGS
+from robot_agent.skills import spoken
 from robot_agent.utils import text2voice
 
 
@@ -183,7 +184,12 @@ def announce_placing(inp=None, to_wipe=False, lang='ko'):
     env = get_env_specs(inp, ENV=ENV)
     # A place named by one of its aliases is read back as the user said it;
     # the label (etri's Korean names for English keys) is for the key itself.
-    label = None if normalize_env_name(inp) in aliases_of(env) else env.get('label', None)
+    # A spoken name in the plan (place::식탁->table@kitchen) wins over both.
+    said = spoken('inputs', inp)
+    if said:
+        label = said.split('>>')[-1]
+    else:
+        label = None if normalize_env_name(inp) in aliases_of(env) else env.get('label', None)
     if inp is None and label is None:
         return
 

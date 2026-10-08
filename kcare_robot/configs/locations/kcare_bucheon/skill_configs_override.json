@@ -144,15 +144,15 @@
       },
       "height": 0.91,
       "loc": {
-        "x": 2.8,
+        "x": 3,
         "y": 3.9,
         "rz": 90
       },
       "dforward": 0,
       "dshift": 0,
       "aliases": [
-        "\uac00\uc2a4\ub80c\uce58",
-        "gas"
+        "gas",
+        "\uac00\uc2a4 \ub80c\uce58"
       ]
     },
     "trash": {
@@ -189,7 +189,7 @@
       "dforward": 0,
       "dshift": 0,
       "aliases": [
-        "\uac00\uc6b4\ub370 \uc120\ubc18, middle shelf"
+        "\uac00\uc6b4\ub370 \uc120\ubc18"
       ]
     },
     "counter": {
@@ -922,5 +922,75 @@
       "control"
     ],
     "having_handle_obj_names": []
+  },
+  "MAP": {
+    "pose": {
+      "agent": "mobile_pose",
+      "x": "pose.position.x",
+      "y": "pose.position.y",
+      "orientation": "pose.orientation",
+      "period_s": 0.5
+    },
+    "confirm_goal": true,
+    "image": {
+      "file": "map/map.png",
+      "frame": {
+        "origin": [
+          -3.799999952316284,
+          -14.850000381469727
+        ],
+        "resolution": 0.05000000074505806,
+        "width": 267,
+        "height": 422
+      }
+    },
+    "layers": {
+      "occupancy": {
+        "file": "map/occupancy.png",
+        "frame": {
+          "origin": [
+            -3.799999952316284,
+            -14.850000381469727
+          ],
+          "resolution": 0.05000000074505806,
+          "width": 267,
+          "height": 422
+        },
+        "values": {
+          "free": 0,
+          "inflated": 128,
+          "occupied": 255
+        }
+      }
+    },
+    "source": {
+      "connection": "slam_map",
+      "saved_at": "2026-10-08 13:02:27",
+      "inflate_m": 0.3,
+      "occupied": 65
+    },
+    "places": "ENV",
+    "goal": {
+      "skill": "moveb",
+      "params": {
+        "x": "{x}",
+        "y": "{y}"
+      }
+    },
+    "rotate": {
+      "skill": "turn",
+      "params": {
+        "inputs": "{deg}"
+      },
+      "step_deg": 15
+    },
+    "lift": {
+      "skill": "lift",
+      "params": {
+        "inputs": "{h}"
+      },
+      "clearance": 0.1,
+      "reach_m": 1.0
+    }
   }
 }

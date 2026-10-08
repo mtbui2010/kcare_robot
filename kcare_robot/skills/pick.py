@@ -37,7 +37,7 @@ from kcare_robot.skills.recognition import find_grasp, grasp_succeed, find
 from kcare_robot.skills import _pick_helpers as _h
 # Re-export for parity with the original module's public surface.
 from kcare_robot.skills._pick_helpers import is_inside_workspace, fix_angle
-from robot_agent.skills import log_data
+from robot_agent.skills import log_data, spoken
 
 
 # Module-level constants (kept name-mangled to match original imports).
@@ -629,6 +629,7 @@ def approach_pick(node, **kwargs) -> dict:
 def pick(node, **kwargs):
     """`pick_no_sound` wrapped with picking/picked voice announcements."""
     loc_name = kwargs.pop('inputs', None)
+    said = spoken('inputs', loc_name)       # pick::컵->cup says 컵
     splits = loc_name.split('|')
     loc_name, num_trials = splits if len(splits)==2 else (splits[0], 2)
     num_trials = int(num_trials)
@@ -636,7 +637,7 @@ def pick(node, **kwargs):
     caption, _loc = _h.split_loc(loc_name)
     robot_mode = get_robot_mode(node=node)
 
-    announce_picking(caption)
+    announce_picking(said or caption)
     if not NO_ACTION:
 
         # if kwargs.pop("object_from_drawer", False):
