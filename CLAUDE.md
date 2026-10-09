@@ -79,7 +79,7 @@ lives on `robot_agent`'s per-process `AgentState.world`, so it **persists across
 plan runs** and (selectively) across a **restart** via `common_dir/world_state.<host>.json` (per machine).
 A just-run skill updates it through the `configs/grace_namemap.py` hook
 `apply_skill_effect(world, skill, params, result, node)` (find→`found`/`found_pose`,
-pick→`holding`/`holding_pose`, placeat→clear, open/close_drawer→`opened`); `arrived`
+pick→`holding`/`holding_pose`, place→clear, open/close_drawer→`opened`); `arrived`
 is sensor-reconciled from localization (`reconcile_world` / the optional `robot_xy`
 hook). Only `arrived` is sensor-derived — the rest are **beliefs** (no gripper
 sensor). It is shown and editable in the dashboard "Robot State" panel via
@@ -117,10 +117,9 @@ as hints (re-detect before grasping if the base has moved), and never assume
 Skills can call other skills, but always pass `node=` through:
 
 ```python
-def pick_no_sound(**kwargs):
-    node = kwargs.pop('node', None)
+def pick(node, **kwargs):
     ret = grip(node=node, inputs='open')       # always pass node down
-    ret = approach_close(node=node, **kwargs)
+    ret = approach_pick(node=node, **kwargs)
 ```
 
 This is what keeps the Python-API mode safe: the wrapper only auto-injects

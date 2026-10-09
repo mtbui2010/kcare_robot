@@ -292,7 +292,7 @@ class Announcer:
 
 ### Skill-level TTS mute flag
 
-To avoid double-speak (kcare `pick`/`placeat`/`move` skills speak internally),
+To avoid double-speak (kcare `pick`/`place`/`move` skills speak internally),
 `robot_agent/utils.py` exposes a **process-global** mute flag:
 
 ```python

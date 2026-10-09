@@ -279,7 +279,9 @@
       "name": "llama",
       "agent_name": "llama",
       "url": "http://192.168.1.11:11434",
-      "is_active": true
+      "is_active": true,
+      "model": "qwen3-vl:8b-instruct",
+      "num_ctx": 8192
     }
   },
   {

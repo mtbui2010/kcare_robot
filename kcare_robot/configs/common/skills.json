@@ -78,19 +78,6 @@
     "aliases": []
   },
   {
-    "name": "pick_card",
-    "type": "internal",
-    "description": "from kcare_robot.skills.pick:pick_card",
-    "module_path": "kcare_robot.skills.pick",
-    "func_name": "pick_card",
-    "url": "",
-    "timeout": 30.0,
-    "method": "POST",
-    "headers": {},
-    "plan": "",
-    "aliases": []
-  },
-  {
     "name": "fine_move",
     "type": "internal",
     "description": "from kcare_robot.skills.pick:fine_move",
@@ -135,71 +122,6 @@
     "description": "from kcare_robot.skills.pick:stack",
     "module_path": "kcare_robot.skills.pick",
     "func_name": "stack",
-    "url": "",
-    "timeout": 30.0,
-    "method": "POST",
-    "headers": {},
-    "plan": "",
-    "aliases": []
-  },
-  {
-    "name": "approach",
-    "type": "internal",
-    "description": "from kcare_robot.skills.approach:approach_close",
-    "module_path": "kcare_robot.skills.approach",
-    "func_name": "approach_close",
-    "url": "",
-    "timeout": 30.0,
-    "method": "POST",
-    "headers": {},
-    "plan": "",
-    "aliases": []
-  },
-  {
-    "name": "approach_close",
-    "type": "internal",
-    "description": "from kcare_robot.skills.approach:approach_close",
-    "module_path": "kcare_robot.skills.approach",
-    "func_name": "approach_close",
-    "url": "",
-    "timeout": 30.0,
-    "method": "POST",
-    "headers": {},
-    "plan": "",
-    "aliases": []
-  },
-  {
-    "name": "approach_closef",
-    "type": "internal",
-    "description": "from kcare_robot.skills.approach:approach_closef",
-    "module_path": "kcare_robot.skills.approach",
-    "func_name": "approach_closef",
-    "url": "",
-    "timeout": 30.0,
-    "method": "POST",
-    "headers": {},
-    "plan": "",
-    "aliases": []
-  },
-  {
-    "name": "placeat",
-    "type": "internal",
-    "description": "from kcare_robot.skills.approach:placeat",
-    "module_path": "kcare_robot.skills.approach",
-    "func_name": "placeat",
-    "url": "",
-    "timeout": 30.0,
-    "method": "POST",
-    "headers": {},
-    "plan": "",
-    "aliases": []
-  },
-  {
-    "name": "placep",
-    "type": "internal",
-    "description": "from kcare_robot.skills.approach:placep",
-    "module_path": "kcare_robot.skills.approach",
-    "func_name": "placep",
     "url": "",
     "timeout": 30.0,
     "method": "POST",
@@ -299,32 +221,6 @@
     "aliases": []
   },
   {
-    "name": "collect_card",
-    "type": "internal",
-    "description": "from kcare_robot.skills.place:collect_card",
-    "module_path": "kcare_robot.skills.place",
-    "func_name": "collect_card",
-    "url": "",
-    "timeout": 30.0,
-    "method": "POST",
-    "headers": {},
-    "plan": "",
-    "aliases": []
-  },
-  {
-    "name": "return_card",
-    "type": "internal",
-    "description": "from kcare_robot.skills.place:return_card",
-    "module_path": "kcare_robot.skills.place",
-    "func_name": "return_card",
-    "url": "",
-    "timeout": 30.0,
-    "method": "POST",
-    "headers": {},
-    "plan": "",
-    "aliases": []
-  },
-  {
     "name": "wipe",
     "type": "internal",
     "description": "from kcare_robot.skills.place:wipe",
@@ -414,7 +310,7 @@
     "headers": {},
     "plan": "",
     "aliases": [
-      "\uc774\ub3d9"
+      "이동"
     ]
   },
   {
@@ -754,7 +650,7 @@
     "headers": {},
     "plan": "move::$inputs$\nlift::highest\nmovej::pre_pick\nforward::0.1",
     "aliases": [
-      "\ub192\uc774 \uc774\ub3d9"
+      "높이 이동"
     ]
   },
   {
@@ -767,9 +663,9 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": "\nlift::0.9\nmovej::pre_pick\nlift::0.65&&movej::dr6=-90\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\nforward::-0.5\nturn::90\nforward::1.1\n\nmovet::dz=0.1\nmovel::dz=-0.25\ngrip::open\nforward::-0.5\nmovej::fold\nannounce::\uc2dd\ud0c1 \uc704\uc5d0 \ub0c4\ube44 \uc62c\ub824\ub480\uc2b5\ub2c8\ub2e4.",
+    "plan": "\nlift::0.9\nmovej::pre_pick\nlift::0.65&&movej::dr6=-90\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\nforward::-0.5\nturn::90\nforward::1.1\n\nmovet::dz=0.1\nmovel::dz=-0.25\ngrip::open\nforward::-0.5\nmovej::fold\nannounce::식탁 위에 냄비 올려뒀습니다.",
     "aliases": [
-      "\ub0c4\ube44 \uc804\ub2ec"
+      "냄비 전달"
     ]
   },
   {
@@ -836,7 +732,7 @@
     "headers": {},
     "plan": "movej::give\nlift::lowest&&movej::dr5=-20",
     "aliases": [
-      "\ubc14\ub2e5 \ucc3e\uae30"
+      "바닥 찾기"
     ]
   }
 ]

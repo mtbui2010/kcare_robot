@@ -25,7 +25,7 @@ Authoritative cross-references:
   * docs/ACTION_MAPPER_SPEC.md   — the mapping table (§2) + name map (§4)
   * docs/SKILLS.md               — skill params / returns
   * configs/skills_config.py     — registered skill names (move/find/pick/
-                                   placeat/open_drawer/close_drawer/find_grasp/
+                                   place/open_drawer/close_drawer/find_grasp/
                                    grasp_succeed/llm/detect)
 """
 
@@ -146,7 +146,7 @@ def to_obj(name: str) -> str:
 
 def _to_obj_or_loc(name: str) -> str:
     """For Place/PutIn the GRACE arg is a *receptacle/container* that may be a
-    known ENV location (a placeat target like 'sopha table') OR an object-like
+    known ENV location (a place target like 'sopha table') OR an object-like
     string. Prefer an explicit location, then an explicit object, then the
     object-words fallback."""
     if not name:
@@ -160,7 +160,7 @@ def _to_obj_or_loc(name: str) -> str:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. Action → skill map  (verified against configs/skills_config.py)
-#    Registered names used here: move, find, pick, placeat, open_drawer,
+#    Registered names used here: move, find, pick, place, open_drawer,
 #    close_drawer  — all present in SKILL_CONFIGS.
 #    TurnOn/TurnOff/Wash are intentionally absent (no skill → unsupported).
 # ─────────────────────────────────────────────────────────────────────────────
@@ -169,8 +169,9 @@ SKILL_MAP: dict[str, str] = {
     "MoveTo": "move",
     "Find":   "find",
     "Pick":   "pick",
-    "Place":  "placeat",
-    "PutIn":  "placeat",        # realized as place-into-open-container
+    # place also checks the gripper is empty after the release
+    "Place":  "place",
+    "PutIn":  "place",          # realized as place-into-open-container
     "Open":   "open_drawer",    # drawers only; non-drawer Open is unsupported
     "Close":  "close_drawer",   # drawers only
 }
@@ -343,7 +344,7 @@ def apply_skill_effect(world, skill, params=None, result=None, node=None) -> Non
             world.holding_pose = hp
         else:
             world.holding_pose = None
-    elif s in ("placeat", "place", "put", "putin", "put_in", "give"):
+    elif s in ("place", "put", "putin", "put_in", "give"):
         world.holding = None
         world.holding_since = None
         world.holding_pose = None        # released

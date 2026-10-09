@@ -48,7 +48,7 @@ graph TD
 
   subgraph KC["kcare_robot (robot-specific)"]
     NM["configs/grace_namemap.py<br/>LOCATIONS/OBJECTS · SKILL_MAP · observe() · vlm_hook()"]
-    SK["skills/*.py<br/>find, move, pick, placeat, open_drawer…"]
+    SK["skills/*.py<br/>find, move, pick, place, open_drawer…"]
   end
 
   subgraph PP["pyplanner (READ-ONLY, OPTIONAL extra 'grace')"]

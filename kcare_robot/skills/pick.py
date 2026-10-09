@@ -3,10 +3,8 @@
   - `fine_move`     : detect grasp pose with the wrist camera then execute it.
   - `open_drawer`   : approach a drawer, grab its handle, pull open.
   - `close_drawer`  : push a known drawer shut.
-  - `pick_no_sound` : full pick flow (no TTS).
-  - `pick_card`     : domain-specific card pick.
   - `stack`         : domain-specific stacking demo.
-  - `pick`          : `pick_no_sound` wrapped with picking/picked announcements.
+  - `pick`          : approach, `fine_move`, retract, with picking/picked announcements.
 
 Heavy lifting is split into helpers in `_pick_helpers.py`. This file is the
 orchestration only — flow matches the original module 1:1.
@@ -26,7 +24,6 @@ from kcare_robot.utils import (
     announce_picking,
 )
 
-from kcare_robot.skills.approach import approach_close, __TURN_ANGLE, placeat, placep  # noqa: F401
 from kcare_robot.skills.arm import movet, movej, arm_exception_handler, movel, movelf, arm_joints
 from kcare_robot.skills.lift import lift, dlift, lift_state
 from kcare_robot.skills.grip import grip
@@ -137,9 +134,11 @@ def fine_move(**kwargs):
         ret = movet(node=node, dz=dz, acc=0.25, wait=True)
         assert ret['isdone'], f'{ret}'
         
-        ret = grip(node=node, inputs='close', wait=False)
+        # wait for the fingers to finish closing: checked right after a wait=False close, the
+        # wrist ROI still saw the open jaws over the table and passed empty grasps
+        ret = grip(node=node, inputs='close', wait=True)
         assert ret['isdone'], f'{ret}'
-        
+
         isdone = grasp_succeed(node=node)['isdone']
         if isdone and lift_before_pull_back is not None:
             ret = movel(node=node, dz=lift_before_pull_back)
@@ -383,141 +382,6 @@ def close_drawer(**kwargs):
 
 
 @arm_exception_handler
-def pick_no_sound(**kwargs):
-    """Full pick flow (no TTS). Steps:
-
-      1. Parse `caption@loc`; if `loc` is set, open that drawer first.
-      2. Open gripper.
-      3. If drawer was opened, prep arm for the 'approach_lying' pose;
-         otherwise run `approach_close` with `init_pose_fixed`.
-      4. Execute the grasp (`direct` straight dive, or `fine_move` re-detect).
-      5. Retract: lift to carry height, go to 'give', fold, drive base back.
-      6. If drawer was opened, place-back, close drawer, then re-pick.
-      7. Return success based on `grasp_succeed`.
-    """
-    kwargs['action_type'] = 'pick'
-    node = kwargs.pop('node', None)
-    move_type = kwargs.pop('type', 'fine_move')  # 'direct' or 'fine_move'
-    loc_name = kwargs.pop('inputs', None)
-    caption, loc = _h.split_loc(loc_name)
-
-    # `caption|N` lets the caller override the per-grasp trial count, e.g.
-    # `pick::apple|3`. Matches carerobotapp's syntax.
-    splits = caption.split('|')
-    if len(splits) >= 2:
-        caption = splits[0]
-        try:
-            num_trials = int(splits[-1])
-        except ValueError:
-            num_trials = 2
-    else:
-        num_trials = kwargs.pop('num_trials', 2)
-
-    env = get_env_specs(loc, ENV)
-    robot_mode = get_robot_mode(node=node, env=env)
-    lift_height = get_lift_height(env, robot_mode)
-
-    # # Step 1: open drawer if a location is supplied.
-    # drawer_opened = False
-    # if loc is not None:
-    #     ret = open_drawer(node=node, inputs=loc, **kwargs)
-    #     kwargs['inputs'] = caption if ret['isdone'] else f'{caption}@{loc}'
-    #     drawer_opened = ret['isdone']
-    # else:
-    #     kwargs['inputs'] = caption
-
-    # Step 2: open gripper.
-    ret = grip(node=node, inputs='open', wait=False)
-    if not ret['isdone']:
-        return ret
-
-    # # Step 3: get arm into pre-grasp pose.
-    # if drawer_opened:
-    #     ret = _h.post_drawer_open_prep(node, robot_mode)
-    #     if not ret['isdone']:
-    #         return ret
-    # else:
-    init_pose_fixed = kwargs.pop('init_pose_fixed', True)
-    # kwargs.update(approach_close(**kwargs, node=node, init_pose_fixed=init_pose_fixed))
-    kwargs.update(approach_close(**kwargs, node=node, inputs=f'{caption}{"" if loc is None else f"@{loc}"}', init_pose_fixed=init_pose_fixed))
-    if not kwargs['isdone']:
-        movej(node=node, mode=robot_mode, inputs='fold')
-        return kwargs
-
-    # Step 4: execute the grasp.
-    dz = ARM_CONFIGS['approach_d']
-    if move_type == 'direct':
-        ret = _h.pickup_motion_direct(node, dz)
-        if not ret['isdone']:
-            return ret
-    elif move_type == 'fine_move':
-        time.sleep(0.5)
-        ret = fine_move(node=node, inputs=caption, mode=robot_mode,
-                        wrist_angle=kwargs.get('wrist_angle'),
-                        num_trials=num_trials)
-        if not ret['isdone']:
-            return ret
-    else:
-        raise Exception(f'move_type [{move_type}] not implemented ...')
-
-    # Step 5: retract.
-    mforward = kwargs.pop('mforward', 0)
-    ret = _h.post_pick_retract(node, robot_mode, lift_height, mforward)
-    if not ret['isdone']:
-        return ret
-
-    # # Step 6: drawer-pick recovery — place inside, close drawer, re-pick.
-    # if drawer_opened:
-    #     ret = placep(node=node, inputs=loc)
-    #     if not ret['isdone']:
-    #         return ret
-    #     if loc is not None:
-    #         ret = close_drawer(node=node, inputs=loc)
-    #         if not ret['isdone']:
-    #             return ret
-    #     ret = pick(node=node, inputs=caption)
-    #     if not ret['isdone']:
-    #         return ret
-
-    # Step 7: report success based on actual grasp state.
-    kwargs['isdone'] = grasp_succeed(node=node)['isdone']
-    for k in ['wrist_angle', 'inputs']:
-        kwargs.pop(k, None)
-    return kwargs
-
-
-@arm_exception_handler
-def pick_card(**kwargs):
-    """Domain-specific: approach a card box's blue surface, then fine-grasp
-    the white handle. Used by the robot-world card demo."""
-    node = kwargs.pop('node')
-    loc = kwargs.pop('inputs', None)
-    loc = 'box@source' if loc is None else loc
-
-    kwargs['inputs'] = f'blue surface@{loc}'
-    kwargs['wrist_angle'] = 0
-    ret = approach_close(node=node, **kwargs)
-    if not ret['isdone']:
-        return ret
-
-    ret = movel(node=node, dz=-50, wait=True)
-    if not ret['isdone']:
-        return ret
-
-    kwargs['inputs'] = 'white handle'
-    kwargs['deeper'] = True
-    ret = fine_move(node=node, **kwargs)
-    if not ret['isdone']:
-        return ret
-
-    ret = movel(node=node, dz=0.1, wait=True)
-    if not ret['isdone']:
-        return ret
-
-    return movej(node=node, inputs='fold', wait=True)
-
-
-@arm_exception_handler
 def stack(**kwargs):
     """Domain-specific stacking demo with hardcoded waypoints."""
     node = kwargs.pop('node')
@@ -627,7 +491,7 @@ def approach_pick(node, **kwargs) -> dict:
 
 @arm_exception_handler
 def pick(node, **kwargs):
-    """`pick_no_sound` wrapped with picking/picked voice announcements."""
+    """Approach (`approach_pick`), grasp (`fine_move`) and retract, with picking/picked voice announcements."""
     loc_name = kwargs.pop('inputs', None)
     said = spoken('inputs', loc_name)       # pick::컵->cup says 컵
     splits = loc_name.split('|')

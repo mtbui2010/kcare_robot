@@ -395,7 +395,9 @@
       "name": "llama",
       "agent_name": "task_planner",
       "url": "http://192.168.1.11:11434",
-      "is_active": false
+      "is_active": false,
+      "model": "qwen3-vl:8b-instruct",
+      "num_ctx": 8192
     }
   },
   {

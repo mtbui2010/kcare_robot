@@ -21,6 +21,7 @@ keeps the registered skills plus the single detection orchestrator
 runs grasp-gd for a `grasppose`).
 """
 
+import json
 import numpy as np, time, copy, cv2, threading
 
 from visionserve.utils import show_box_on_rgb, get_valid_depth_locs
@@ -197,16 +198,32 @@ def _detect_nearest(node, pose, **kwargs) -> dict:
         if best_label is not None:
             place_grid = (labels_cc == best_label).astype('uint8')
 
-    if margin_cells > 0:
+    # Clearance in METRES, not grid cells: a cell is a place point only if every edge of the support blob —
+    # the table's own edge and the outline of each object cut out of it — is at least the object's radius
+    # plus a margin away (the grid erosion was in pixels, so the far edge got only a few cm, and an empty
+    # erosion fell back to the edge itself). Nothing left -> None: find_place fails instead of dropping
+    # the object over an edge.
+    need = float(kwargs.get('obj_radius') or configs.get('place_obj_radius', 0.05)) + float(configs.get('place_edge_margin', 0.03))
+    P_grid = P_full.reshape(gh, gw, 3)
+    blob = place_grid.astype(bool)
+    edge = blob & ~cv2.erode(place_grid, np.ones((3, 3), 'uint8'), borderType=cv2.BORDER_REPLICATE).astype(bool)
+    edge[[0, -1], :] = False; edge[:, [0, -1]] = False     # the image border is not the table's edge: it goes on
+    edge_xy = P_grid[edge][:, :2]
+    edge_xy = edge_xy[~np.isnan(edge_xy).any(axis=-1)]
+    ok = blob.copy()
+    if edge_xy.size:
+        cells = np.argwhere(blob)
+        cxy = P_grid[blob][:, :2]
+        d = np.sqrt(((cxy[:, None, :] - edge_xy[None, :, :]) ** 2).sum(-1)).min(axis=1)
+        ok[cells[:, 0], cells[:, 1]] = d >= need
+    elif margin_cells > 0:                   # no 3D for the edge: the old grid erosion
         k = 2 * margin_cells + 1
-        eroded = cv2.erode(place_grid, np.ones((k, k), 'uint8'))
-        if eroded.any():
-            place_grid = eroded               # keep clearance; fall back if it empties out
+        ok = cv2.erode(place_grid, np.ones((k, k), 'uint8')).astype(bool)
+    place_grid = ok.astype('uint8')
     sel = place_grid.ravel().astype(bool)
     if not sel.any():
-        sel = valid                           # last resort: any valid free point
-        if not sel.any():
-            return pose
+        log_data({'msg': f'find_place: no spot {need:.2f} m clear of the surface edges and objects'})
+        return None
 
     cand_xy = np.stack([gxf, gyf], axis=1)[sel]
     cand_P = P_full[sel]
@@ -330,6 +347,10 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     gravity_cam = _cam_gravity(node, cam, use_head)
 
     min_conf = kwargs.pop('min_conf', 0.1 if any('handle' in n for n in obj_names) else 0.0)
+    # verify=True: a VLM looks at the crop of each detection scoring below `verify_above` ("is this a cup?")
+    # and drops the ones it says are not (the detector "finds" absent objects at 0.4-0.6).
+    verify       = bool(kwargs.pop('verify', False))
+    verify_above = float(kwargs.pop('verify_above', 0.75))
     # Grasp selection uses the closer `detect_grasp` profile; plain detection the
     # default `detect_object` profile.
     cfg_key = 'detect_grasp' if with_grasp else 'detect_object'
@@ -382,6 +403,8 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
             floor = float(cfg.get('box_threshold') or 0.0)
             idx = [k for k, d in enumerate(res_all.detections)
                    if owner[k] == prompt and float(getattr(d, 'conf', 0.0)) >= floor]
+            if verify and product is None and idx:
+                idx = _vlm_filter(rgb, res_all, idx, n, verify_above)
             if not idx:
                 continue
             res = _products.subset(res_all, idx, n)          # relabelled to the name asked
@@ -437,6 +460,54 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     return ret
 
 
+
+
+def _vlm_filter(rgb, res, idx, name, verify_above, max_checks=3):
+    """The detections of `idx` a VLM agrees are a `name` (crop + yes / no). Above `verify_above` a detection
+    is kept unchecked; at most `max_checks` are checked (best first), the rest are dropped. On a VLM error the
+    detections are kept as they were (a broken check must not hide real objects)."""
+    import time as _t
+    from kcare_robot.skills import qa as _qa
+    dets = res.detections
+    idx = sorted(idx, key=lambda k: -float(getattr(dets[k], 'conf', 0.0)))
+    keep, notes, t0 = [], [], _t.time()
+    try:
+        cfg = _qa._config({})
+    except Exception as e:
+        log_data({'msg': f'find verify: no VLM config ({e}), not verifying'})
+        return idx
+    h, w = rgb.shape[:2]
+    for n_checked, k in enumerate(idx):
+        conf = float(getattr(dets[k], 'conf', 0.0))
+        if conf >= verify_above:
+            keep.append(k); notes.append(f'{conf:.2f} kept'); continue
+        if n_checked >= max_checks:
+            break
+        x0, y0, x1, y1 = _bbox_to_xyxy(dets[k].bbox)
+        px, py = max(16, 0.3 * (x1 - x0)), max(16, 0.3 * (y1 - y0))
+        crop = rgb[int(max(0, y0 - py)):int(min(h, y1 + py)), int(max(0, x0 - px)):int(min(w, x1 + px))]
+        if crop.size == 0:
+            continue
+        if min(crop.shape[:2]) < 224:
+            f = 224 / min(crop.shape[:2])
+            crop = cv2.resize(crop, (int(crop.shape[1] * f), int(crop.shape[0] * f)), interpolation=cv2.INTER_CUBIC)
+        body = {'model': cfg['model'], 'stream': False, 'think': False, 'keep_alive': cfg['keep_alive'],
+                'format': {'type': 'object', 'properties': {'answer': {'type': 'string', 'enum': ['yes', 'no']}},
+                           'required': ['answer']},
+                'options': {'temperature': 0.0, 'num_predict': 16},
+                'messages': [{'role': 'user', 'images': [_qa._b64jpeg(crop, 448)],
+                              'content': f'Is the main object in the middle of this photo a {name}? '
+                                         f'Answer yes or no.'}]}
+        try:
+            ans = json.loads(_qa._post_chat(cfg, body).json()['message']['content']).get('answer', 'no')
+        except Exception as e:
+            log_data({'msg': f'find verify: VLM error ({e}), keeping the detections'})
+            return idx
+        notes.append(f'{conf:.2f} {ans}')
+        if ans == 'yes':
+            keep.append(k)
+    log_data({'msg': f'find verify {name}: ' + ', '.join(notes) + f' ({_t.time() - t0:.1f} s, {_qa._vlm_label(cfg)})'})
+    return keep
 
 
 # ── Public skills ─────────────────────────────────────────────────────────────
@@ -723,7 +794,9 @@ def find_place(node, **kwargs) -> dict:
 
     # avoid obstacle
     if place_beside and 'trash' not in inputs and 'sink' not in inputs and 'laundry' not in inputs:
-        point3d = _detect_nearest(node=node, pose=point3d)
+        point3d = _detect_nearest(node=node, pose=point3d, obj_radius=kwargs.get('obj_radius'))
+        if point3d is None:
+            raise Exception(f'find_place: no free spot on {inputs} clear of its edges and of the objects on it')
         
         
 

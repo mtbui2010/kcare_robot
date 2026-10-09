@@ -46,7 +46,7 @@ HRI_CONFIGS = {   'source': 'dashboard',
                     'vi': ''}}
 
 QA_CONFIGS = {   'url': 'https://ollama.aistations.org',
-    'model': 'qwen3-vl:32b-instruct',
+    'model': 'qwen3-vl:8b-instruct',          # 2026-10-09: 8b vs 32b on every LLM role (bench_llm): 8b as good, ~3x faster
     'num_ctx': 8192,
     'camera': 'head_rgb',
     'views': ['up', 'straight', 'down'],

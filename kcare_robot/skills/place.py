@@ -1,14 +1,13 @@
-"""Place / wipe / card skills. Public API:
+"""Place / wipe skills. Public API:
 
-  - `place`        : pick (if needed) then `placeat` at the reverse location.
-  - `collect_card` : pick_card then deposit at destination box.
-  - `return_card`  : ensure holding then deposit back at source box.
+  - `place`        : pick (if needed), then approach the destination and release.
   - `wipe`         : `place` with `to_wipe=True` and wrist tilted for wiping.
 
 Heavy lifting is split into helpers in `_place_helpers.py`. This file is the
 orchestration only — flow matches the original module 1:1.
 """
 
+import math
 import time
 
 from robot_agent.skill_configs import ENV, ME
@@ -17,11 +16,10 @@ from kcare_robot.utils import get_closest_loc, get_env_specs
 from kcare_robot.skills.head import get_robot_mode
 
 from kcare_robot.skills.calibrattion import Head2BaseCalibration
-from kcare_robot.skills.approach import approach, __TURN_ANGLE, placeat  # noqa: F401
 from kcare_robot.skills.arm import movet, movel, movej, arm_exception_handler
 from kcare_robot.skills.grip import grip
 from kcare_robot.skills.mobile import move
-from kcare_robot.skills.pick import pick, pick_card
+from kcare_robot.skills.pick import pick
 from kcare_robot.skills.recognition import grasp_succeed, find_place
 from kcare_robot.skills.mobile import forward
 from kcare_robot.skills.lift import lift
@@ -75,6 +73,23 @@ def approach_place(node, **kwargs) -> dict:
     kwargs['isdone'] = True
     return kwargs
 
+def _held_name():
+    """What the robot believes it holds (Robot State `holding`, set by pick), without the '@place' part."""
+    try:
+        from robot_agent.state import current
+        h = getattr(current().world, 'holding', None)
+        return str(h).split('@')[0].strip() or None if h else None
+    except Exception:
+        return None
+
+
+def _verify_placed(node, obj_name=None, **_):
+    """After the release and the lift: the gripper ROI must be empty (the same presence check pick uses)."""
+    if grasp_succeed(node=node)['isdone']:
+        return {'isdone': False, 'msg': f'place: {obj_name or "the object"} seems to be still in the gripper'}
+    return {'isdone': True, 'verified': 'gripper empty after the release'}
+
+
 @arm_exception_handler
 def place(node, **kwargs):
     """Place the held object at `inputs` (format: `'[target>>]rev_loc'`).
@@ -91,12 +106,14 @@ def place(node, **kwargs):
     for k in ['object_from_drawer', 'pose_after_open', 'lift_after_open', 'forward_after_open', 'init_pose_fixed']:
         kwargs.pop(k, None)
     inputs = kwargs.pop('inputs', None)
+    held = _held_name()
 
     splits = inputs.split('>>')
     target, destination = splits  if len(splits)==2 else (None, splits[-1])
     if target is not None or not grasp_succeed(node=node):
         kwargs.update(pick(node=node, inputs=target,  **kwargs))
         assert kwargs['isdone'], f'{kwargs}'
+        held = (target or '').split('@')[0].strip() or _held_name() or held
     
     kwargs.update(approach_place(node=node, inputs=destination, **kwargs))
     assert kwargs['isdone'], f'{kwargs}'
@@ -129,6 +146,9 @@ def place(node, **kwargs):
     ret = movel(node=node, dz=0.15 if kwargs['islying'] else 0.25)
     assert  ret['isdone'], f'{ret}'
 
+    # look back before leaving: the wrist camera is above the spot it just let go of
+    check = _verify_placed(node, held, lifted=0.15 if kwargs['islying'] else 0.25)
+
     if kwargs['islying']:
         ret = movej(node=node, inputs='approach_lying')
         assert  ret['isdone'], f'{ret}'
@@ -138,6 +158,10 @@ def place(node, **kwargs):
         lambda: forward(node=node, inputs=-kwargs.get('mforward', 0 )) 
     })
     assert  ret['isdone'], f'{ret}'
+
+    if not check['isdone']:                 # retreated safely, but the object is not where it was put
+        return check
+    kwargs['place_check'] = check.get('verified')
 
     # ret = movej(node=node, inputs='give')
     # assert ret['isdone'], f'{ret}'
@@ -151,89 +175,6 @@ def place(node, **kwargs):
 
     return kwargs
     
-
-
-@arm_exception_handler
-def collect_card(**kwargs):
-    """Pick a card (if not already held) then deposit at the destination box.
-    Includes a 180° wrist twist + counter-twist before retract to register the
-    card in the slot."""
-    node = kwargs.pop('node')
-    inp = kwargs.pop('inputs', None)
-    inp = 'box@destination' if inp is None else inp
-    target_loc, rev_loc = _h.parse_card_loc(inp)
-
-    if not grasp_succeed(node=node)['isdone']:
-        ret = pick_card(node=node, inputs=target_loc, dpull=50)
-        if not ret['isdone']:
-            return ret
-
-    ret = approach(node=node, inputs=rev_loc, **kwargs)
-    if not ret['isdone']:
-        return ret
-
-    ret = movet(node=node, drz=180, wait=True)
-    if not ret['isdone']:
-        return ret
-
-    time.sleep(1)
-
-    ret = movet(node=node, drz=-180, wait=True)
-    if not ret['isdone']:
-        return ret
-
-    robot_mode = get_robot_mode(node=node)
-    turn_angle = _h.turn_signed(kwargs.pop('turn_angle', __TURN_ANGLE), robot_mode)
-
-    ret = _h.turn_base(node, turn_angle)
-    if not ret['isdone']:
-        return ret
-
-    ret = movej(node=node, inputs='fold', dr0=0 if turn_angle is None else turn_angle, wait=True)
-    if not ret['isdone']:
-        return ret
-
-    if turn_angle is not None:
-        ret = movej(node=node, dr0=-turn_angle, wait=True)
-        if not ret['isdone']:
-            return ret
-    return {'isdone': True}
-
-
-@arm_exception_handler
-def return_card(**kwargs):
-    """Return the held card to the source box. If nothing is held, collects
-    one first via `collect_card`."""
-    node = kwargs.pop('node')
-    inp = kwargs.pop('inputs', None)
-    inp = 'box@source' if inp is None else inp
-
-    if not grasp_succeed(node=node)['isdone']:
-        ret = collect_card(node=node)
-        if not ret['isdone']:
-            return ret
-
-    ret = approach(node=node, inputs=inp, **kwargs)
-    if not ret['isdone']:
-        return ret
-
-    ret = movel(node=node, dz=-40, wait=False)
-    if not ret['isdone']:
-        return ret
-
-    ret = grip(node=node, inputs='open', wait=True)
-    if not ret['isdone']:
-        return ret
-
-    ret = movel(node=node, dz=-30, speed=2., wait=False)
-    if not ret['isdone']:
-        return ret
-
-    ret = movet(node=node, dz=-150)
-    if not ret['isdone']:
-        return ret
-
-    return movej(node=node, inputs='fold', wait=True)
 
 
 @arm_exception_handler

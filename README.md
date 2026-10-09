@@ -41,7 +41,7 @@ implemented in [`kcare_robot/skills/`](kcare_robot/skills/).
 | Group | Skills |
 |---|---|
 | **Perception** | `find`, `detect`, `find_arm`, `grasp_succeed`, `get3d`, `inform` |
-| **Manipulation** | `pick`, `pick_no_sound`, `pick_card`, `fine_move`, `place`, `placeat`, `placep`, `open_drawer`, `close_drawer`, `collect_card`, `return_card`, `stack`, `wipe` |
+| **Manipulation** | `pick`, `fine_move`, `place`, `open_drawer`, `close_drawer`, `stack`, `wipe` |
 | **Arm motion** | `arm_joints`, `arm_pose`, `movel`, `movej`, `movet`, `movelf` |
 | **Mobile base** | `move`, `forward`, `turn`, `rotate`, `moveb`, `mobile_pose` |
 | **Head / lift / gripper** | `moveh`, `head_state`, `lift`, `lift_state`, `dlift`, `grip` |
@@ -100,7 +100,7 @@ full pick:
 4. `grasp_succeed()` — verify by re-imaging the gripper ROI and checking depth
    in a ±0.27 m window
 
-Place is the mirror: `placeat()` / `placep()` plus retraction choreography.
+Place is the mirror: `approach_place()`, release, then a gripper-empty check (`grasp_succeed`).
 Drawer skills detect the handle as a separate class and run open/close as
 a constrained Cartesian movement.
 
@@ -131,7 +131,7 @@ keyed on the kcare skill name:
 |---|---|
 | `find` / `find_arm` / `find_once` | set `found`; stash `found_pose` (`loc_3d`/`pose_3d`/`grasppose` from `ins[name]`, stamped with the base pose at detection) |
 | `pick` / `grasp` | `holding` ← prior `found`; clear `found`/`found_pose`; set `holding_since` + `holding_pose` (grasp `pick` returns) |
-| `placeat` / `place` / `put` / `putin` / `give` | clear `holding` |
+| `place` / `put` / `putin` / `give` | clear `holding` |
 | `open_drawer` / `open` · `close_drawer` / `close` | add / remove in `opened` |
 | `move` | `arrived` — set by sensor reconcile (localization), not the hook |
 
@@ -338,7 +338,6 @@ kcare_robot/
     │   ├── recognition.py    perception + 3D + grasp pose
     │   ├── pick.py           pick / fine_move / drawer / verification
     │   ├── _pick_helpers.py  workspace checks, retraction choreography
-    │   ├── approach.py       object-guided arm pre-positioning
     │   ├── mobile.py         Nav2 + parallel lift coordination
     │   ├── grip.py · lift.py · arm.py · head.py · place.py · vlm.py …
     └── template_skills/      three reference patterns (NOT auto-registered)

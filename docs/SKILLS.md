@@ -22,9 +22,9 @@ Failures are surfaced as `{'isdone': False, 'msg': ...}` (most skills wrapped by
 
 ---
 
-## 1. Registered skills (44 names)
+## 1. Registered skills
 
-`detect`≡`find` and `approach`≡`approach_close` are **aliases** (same function under
+`detect`≡`find` is an **alias** (same function under
 two names). One entry (`enable`) is commented out.
 
 ### Perception — `skills/recognition.py`
@@ -41,26 +41,14 @@ two names). One entry (`enable`) is commented out.
 |---|---|---|---|---|
 | `fine_move` | `fine_move` | Wrist-guided grasp with re-detect retry loop | `inputs='obj'`, `num_trials=2`, `dpull` | `{isdone, dd:[dx,dy,dz]}` |
 | `pick` | `pick` | Full pick (open→approach→grasp→retract→verify) + TTS | `inputs='obj[@loc|num_trials]'`, `type` | `{isdone}` |
-| `pick_card` | `pick_card` | Domain pick: blue surface → white handle | `inputs='box@loc'` | `{isdone}` |
 | `open_drawer` | `open_drawer` | Approach + pull handle + retract | `inputs='drawer_loc'`, `stay_here` | `{isdone, object_from_drawer, pose_after_open, ...}` |
 | `close_drawer` | `close_drawer` | Push handle to close (mirror of open) | `inputs='drawer_loc'`, `pose_after_open` | `{isdone}` |
 | `stack` | `stack` | Hardcoded stacking demo | `inputs` (unused) | `{isdone}` |
-
-### Approach / place-at — `skills/approach.py`
-| Skill | func | Purpose | Key params | Returns |
-|---|---|---|---|---|
-| `approach` *(alias)* | `approach_close` | Move arm to approach pose of target | `inputs='[x,y,z]'\|'loc'\|'obj@loc'` | `{isdone, wrist_angle, mforward, ...}` |
-| `approach_close` | `approach_close` | (same as above) | … | … |
-| `approach_closef` | `approach_closef` | `approach_close(init_pose_fixed=True)` | … | … |
-| `placeat` | `placeat` | Approach target → release/wipe → retract + TTS | `inputs='target'`, `to_wipe`, `dlift_up` | `{isdone}` |
-| `placep` | `placep` | `placeat(stay_here=True)` (no base motion) | … | `{isdone}` |
 
 ### Place (high-level) — `skills/place.py`
 | Skill | func | Purpose | Key params | Returns |
 |---|---|---|---|---|
 | `place` | `place` | Pick-if-needed, then place at reverse loc | `inputs='[target>>]rev_loc'`, `force` | `{isdone}` |
-| `collect_card` | `collect_card` | Pick card (if needed) → dest → twist → fold | `inputs='box@dest'`, `turn_angle` | `{isdone}` |
-| `return_card` | `return_card` | Return held card to source | `inputs='box@source'` | `{isdone}` |
 | `wipe` | `wipe` | `place(to_wipe=True, wrist_angle=30)` | `inputs='towel>>spill'` | `{isdone}` |
 
 ### Arm primitives — `skills/arm.py`
@@ -114,16 +102,11 @@ two names). One entry (`enable`) is commented out.
 **Composite skills** (orchestrate other registered skills + helpers):
 
 ```
-pick ─► pick_no_sound* ─► grip(open) ─► approach_close ─► {fine_move | direct} ─► post_pick_retract* ─► grasp_succeed
+pick ─► grip(open) ─► approach_pick ─► fine_move ─► movej(give, fold) ─► grasp_succeed
                                                               └► fine_move ─► find_arm ─► movet ─► grip(close) ─► grasp_succeed
 open_drawer ─► move ─► lift ─► movej ─► movel/movet ─► find_arm ─► fine_move ─► grip ─► dlift ─► retract_from_drawer*
 close_drawer ─► movej ─► movel/movet ─► lift ─► [find_arm] ─► movet ─► retract_from_drawer*
-pick_card ─► approach_close ─► movel ─► fine_move ─► movej
-approach_close ─► resolve_pose_3d*(may call find/move) ─► move_forward_and_fold* ─► execute_approach_motion*(movel/movej/lift)
-placeat ─► placeat_no_sound* ─► approach ─► grip(open)|wipe ─► retract_after_place*(movej/dlift/forward)
-place ─► grasp_succeed ─► [pick] ─► placeat
-collect_card ─► grasp_succeed ─► [pick_card] ─► approach ─► movet ─► movej ─► turn_base*
-return_card ─► grasp_succeed ─► [collect_card] ─► approach ─► movel ─► grip ─► movet ─► movej
+place ─► grasp_succeed ─► [pick] ─► approach_place ─► grip(open) ─► grasp_succeed (gripper empty)
 wipe ─► place(to_wipe=True)
 move ─► moveh ─► moveb ─► forward ─► lift ─► movej(fold) ─► turn
 find ─► find_once*(loop) ─► [move] ─► moveh ─► detect ─► moveh
@@ -152,14 +135,11 @@ code logic, not an explicit guard.
 | `find_arm` | ✗ | ✗ | ✗ | ✓ | ✗ | wrist cam live |
 | `grasp_succeed` | ✗ | ~ | ✗ | ✓ | ✗ | checks depth ROI (post-grasp verify) |
 | `fine_move` | ~ | ✗ | ✗ | ✓ | ✗ | re-detects via `find_arm`; retry loop |
-| `pick` / `pick_no_sound` | ~ | ✗ | ~ | ✓ | ✗ | `approach_close` must pass; `grasp_succeed` verify |
+| `pick` | ~ | ✗ | ~ | ✓ | ✗ | `approach_pick` must pass; `grasp_succeed` verify |
 | `open_drawer` | ✗ | ✗ | ✓ | ✓ | ✗ | ENV needs `handle`+`handle_height` |
 | `close_drawer` | ~ | ✗ | ✓ | ✓ | ✓(drawer) | re-detects handle if no `pose_after_open` |
-| `approach`/`approach_close` | ~ | ✗ | ~ | ✓ | ✗ | `resolve_pose_3d` may call `find`/`move` |
-| `placeat`/`placep` | ✗ | ✓ | ✓ | ✓ | ✗ | needs object in gripper |
 | `place` | ✗ | ~ | ~ | ✓ | ✗ | `grasp_succeed`; `pick` if empty or `force` |
 | `wipe` | ✗ | ✓ | ✓ | ✓ | ✗ | wrapper of `place` |
-| `collect_card`/`return_card` | ✗ | ~ | ✓ | ✓ | ✗ | domain card flow |
 | `move` | ✗ | ✗ | ✓(ENV) | ✓ | ✗ | ENV dict lookup; folds arm |
 | `movel/movej/movet/movelf` | ✗ | ✗ | ✗ | ✓ | ✗ | arm pose readable |
 | `lift/dlift/lift_state` | ✗ | ✗ | ✗ | ✗ | ✗ | lift agent live; range-clipped |
@@ -173,12 +153,11 @@ code logic, not an explicit guard.
 
 ## 4. Canonical macro-sequences
 
-**Pick** (`pick_no_sound`): `grip(open)` → `approach_close` (resolve via find/loc/pose)
-→ `fine_move | direct grasp` → `post_pick_retract` (grip close, lift, fold, base back)
-→ `grasp_succeed`.
+**Pick** (`pick`): `grip(open)` → `approach_pick` → `fine_move` (grip close, wait, `grasp_succeed`)
+→ `movej(give)`, `movej(fold)`, base back.
 
-**Place** (`placeat_no_sound`): `approach` (resolve dest) → `grip(open) | wipe`
-→ `retract_after_place` (fold, dlift, base back).
+**Place** (`place`): `approach_place` (find_place on the destination) → `grip(open) | wipe`
+→ lift up → `grasp_succeed` must be False (gripper empty) → retract.
 
 **Drawer open**: `move` → `lift`+`movej` → `movel(ry=-90)` → `movet(dz)` →
 `movel(z=handle_height)` → `forward(mforward)` → `fine_move(handle)` → `grip(open)`
@@ -230,8 +209,8 @@ Every target name below is a registered skill from §1.
 | `MoveTo` | `move` | `to_loc(Loc)` | ENV location key |
 | `Find` | `find` | `to_obj(Obj)` | open-vocab detector string |
 | `Pick` | `pick` | `to_obj(world.found or Obj)`, `type='fine_move'` | GRACE `Pick` carries no object; taken from world state |
-| `Place` | `placeat` | `_to_obj_or_loc(Recept)` | receptacle resolved as location-then-object |
-| `PutIn` | `placeat` | `_to_obj_or_loc(Cont)` | realized as place-into-open-container |
+| `Place` | `place` | `_to_obj_or_loc(Recept)` | receptacle resolved as location-then-object |
+| `PutIn` | `place` | `_to_obj_or_loc(Cont)` | realized as place-into-open-container |
 | `Open` | `open_drawer` | `to_loc(Cont)` | **drawers only** — non-drawer `Open` is unsupported |
 | `Close` | `close_drawer` | `to_loc(Cont)` | drawers only; ActionMapper threads the matching `open_drawer`'s `pose_after_open` |
 
@@ -240,7 +219,7 @@ The **inverse** mapping (skill → symbolic effect) is
 the open-loop / direct path to update `WorldState` from a raw skill that just
 ran (keyed on the kcare skill name, applied only on `isdone`): `find*` → `found`
 + `found_pose`; `pick`/`grasp` → `holding` (clears `found`/`found_pose`,
-stamps `holding_since`); `placeat`/`place`/`put`/`putin`/`give` → clears
+stamps `holding_since`); `place`/`put`/`putin`/`give` → clears
 `holding`; `open_drawer`/`open` · `close_drawer`/`close` → `opened`. `move`'s
 `arrived` comes from sensor reconcile, not this hook.
 
@@ -309,10 +288,9 @@ returns permissive (`True`, …) so a flaky verifier does not stall a good plan.
 | Module | Skills (with approx line) |
 |---|---|
 | `skills/recognition.py` | `detect`/`find`(805), `find_arm`(841), `grasp_succeed`(877), `get_side_pose_3d`(892) |
-| `skills/pick.py` | `fine_move`(50), `open_drawer`(126), `close_drawer`(237), `pick_no_sound`(337), `pick_card`(441), `stack`(472), `pick`(530) |
-| `skills/approach.py` | `approach_close`(73), `approach_closef`(153), `approach`(160), `placeat_no_sound`(176), `placeat`(209), `placep`(230) |
+| `skills/pick.py` | `fine_move`(50), `open_drawer`(126), `close_drawer`(237), `stack`(472), `pick`(530) |
 | `skills/arm.py` | `arm_joints`(9), `arm_pose`(18), `movel`(28), `movej`(53), `movet`(101), `movelf`(120) |
-| `skills/place.py` | `place`(34), `collect_card`(82), `return_card`(129), `wipe`(165) |
+| `skills/place.py` | `place`, `wipe` |
 | `skills/lift.py` | `lift`(7), `lift_state`(31), `dlift`(38) |
 | `skills/mobile.py` | `mobile_pose`(24), `moveb`(33), `turn`(43), `rotate`(52), `forward`(62), `move`(81) |
 | `skills/head.py` | `head_state`(8), `moveh`(35) |

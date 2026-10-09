@@ -112,8 +112,8 @@ the `WorldState` the mapper maintains in lock-step with the executed plan.
 | **MoveTo** `Loc` | `move` | `{'inputs': to_loc(Loc)}` | `<loc>` must exist in robot ENV; an unknown one should surface as a replan-able failure. |
 | **Find** `Obj` | `find` | `{'inputs': to_obj(Obj)}` | Keep GRACE's explicit MoveTo+Find split; don't collapse into `find::obj@loc`. |
 | **Pick** | `pick` (`obj = world.found`) | `{'inputs': to_obj(world.found or Obj), 'type': 'fine_move'}` | GRACE `Pick` carries no object → taken from `world.found`. `pick` self-verifies via `grasp_succeed`. |
-| **Place** `Recept` | `placeat` | `{'inputs': to_obj_or_loc(Recept)}` | Robot already `arrived==recept` (GRACE precond). |
-| **PutIn** `Container` | `placeat` | `{'inputs': to_obj_or_loc(Cont)}` | Realized as place-into-open-container; requires a prior `Open`. See §5. |
+| **Place** `Recept` | `place` | `{'inputs': to_obj_or_loc(Recept)}` | Robot already `arrived==recept` (GRACE precond). |
+| **PutIn** `Container` | `place` | `{'inputs': to_obj_or_loc(Cont)}` | Realized as place-into-open-container; requires a prior `Open`. See §5. |
 | **Open** `Container` | `open_drawer` | `{'inputs': to_loc(Cont)}` | **Drawers only.** Non-drawer Open → physically unsupported (no generic fridge/cabinet open). |
 | **Close** `Container` | `close_drawer` | `{'inputs': to_loc(Cont)}` | **Drawers only.** Pair with the Open of the same container; thread its `pose_after_open/lift_after_open/forward_after_open`. See §5. |
 | **TurnOn** `Appl` | **UNSUPPORTED** (no `SKILL_MAP` entry) | — | No appliance-toggle skill → `Unmappable`. §6. |
@@ -129,8 +129,8 @@ SKILL_MAP = {
     "MoveTo": "move",
     "Find":   "find",
     "Pick":   "pick",
-    "Place":  "placeat",
-    "PutIn":  "placeat",        # realized as place-into-open-container
+    "Place":  "place",
+    "PutIn":  "place",        # realized as place-into-open-container
     "Open":   "open_drawer",    # drawers only; non-drawer Open is unsupported
     "Close":  "close_drawer",   # drawers only
 }
@@ -143,10 +143,10 @@ Note `SUPPORTED_ACTIONS` is **derived** (`SKILL_MAP.keys() ∪ NOOP_ACTIONS`), s
 mappable set and the no-op set are the single source of truth — `TurnOn/TurnOff/Wash`
 are absent and therefore unsupported by construction.
 
-> Skills like `grip`, `approach_close`, `fine_move`, `movel/j/t`, `lift`, `moveh`,
+> Skills like `grip`, `approach_pick`, `fine_move`, `movel/j/t`, `lift`, `moveh`,
 > `find_arm`, `grasp_succeed` are **sub-skills** invoked *inside* the high-level skills
 > above — they are **not** direct GRACE targets. The mapper targets only the coarse
-> registered names in `SKILL_MAP` (`move`, `find`, `pick`, `placeat`, `open_drawer`,
+> registered names in `SKILL_MAP` (`move`, `find`, `pick`, `place`, `open_drawer`,
 > `close_drawer`); kcare's composites drive the primitives.
 
 **Coverage summary:** clean 1:1 for the manipulation core (`MoveTo, Find, Pick, Place`);
@@ -233,7 +233,7 @@ hooks → graceful fallback):
   → set `found` + stash `found_pose` (from `result['ins'][name]`, stamped with the
   base pose at detection); `pick`/`grasp` → `holding`=prior `found`, clear
   `found`/`found_pose`, set `holding_since` + `holding_pose` (the grasp `pick`
-  returns, `{grasppose, ts, robot_pose}`); `placeat`/`place`/`put`/`putin`/`give`
+  returns, `{grasppose, ts, robot_pose}`); `place`/`put`/`putin`/`give`
   → clear `holding`; `open_drawer`/`open` · `close_drawer`/`close` → `opened`.
   Applied only on `result['isdone']`. `arrived` and `on` are not set here.
 - `reconcile_world(node, world)` — full override of the `arrived` sensor pass; or
@@ -314,7 +314,7 @@ Open   Drawer   → open_drawer::drawer_loc          (capture pose_after_open, .
 Find   Obj      → find / find_arm  (inside drawer; wrist cam → prefer find_arm)
 Pick            → pick::obj  ({'type': 'fine_move'})
 Close  Drawer   → close_drawer::drawer_loc  (pass the captured open-state)
-PutIn  Drawer   → placeat::drawer_loc   (while opened)
+PutIn  Drawer   → place::drawer_loc   (while opened)
 ```
 
 The `open_drawer` result fields (`pose_after_open`, `lift_after_open`,

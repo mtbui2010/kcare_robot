@@ -296,13 +296,14 @@
   },
   {
     "type": "llm",
-    "name": "llama3.2",
+    "name": "qwen3-vl-8b-a6000",
     "config": {
       "name": "llama",
-      "agent_name": "llama3.2",
+      "agent_name": "qwen3-vl-8b-a6000",
       "url": "http://10.252.205.103:11434",
-      "model": "llama3.2",
-      "is_active": false
+      "model": "qwen3-vl:8b-instruct",
+      "is_active": false,
+      "num_ctx": 8192
     }
   },
   {
@@ -382,13 +383,14 @@
   },
   {
     "type": "llm",
-    "name": "qwen2.5:7b",
+    "name": "qwen3-vl:8b-instruct",
     "config": {
       "name": "llama",
-      "agent_name": "qwen2.5:7b",
+      "agent_name": "qwen3-vl:8b-instruct",
       "url": "http://192.168.1.11:11434",
-      "model": "qwen2.5:7b",
-      "is_active": false
+      "model": "qwen3-vl:8b-instruct",
+      "is_active": false,
+      "num_ctx": 8192
     }
   },
   {
@@ -398,8 +400,9 @@
       "name": "llama",
       "agent_name": "ollama",
       "url": "http://192.168.1.11:11434",
-      "model": "qwen2.5:7b",
-      "is_active": true
+      "model": "qwen3-vl:8b-instruct",
+      "is_active": true,
+      "num_ctx": 8192
     }
   },
   {

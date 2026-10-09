@@ -105,49 +105,6 @@ def retract_from_drawer(node, lift_height, mforward,  robot_mode=None):
 # Pick step helpers
 # ---------------------------------------------------------------------------
 
-def pickup_motion_direct(node, dz):
-    """Direct grasp: dive `dz`, close gripper, retract `dz`, lift 50 mm."""
-    ret = movet(node=node, dz=dz, speed=0.5)
-    if not ret['isdone']:
-        return ret
-    ret = grip(node=node, inputs='close', wait=True)
-    if not ret['isdone']:
-        return ret
-    ret = movet(node=node, dz=-dz)
-    if not ret['isdone']:
-        return ret
-    return movel(node=node, dz=50, wait=True)
-
-
-def post_pick_retract(node, robot_mode, lift_height, mforward):
-    """Post-pick retract: keep gripper closed while lifting + going to 'give',
-    then fold and drive the base back."""
-    ret = run_parallel_check(funcs=[
-        lambda: grip(node=node, inputs='close', wait=False),
-        lambda: lift(node=node, inputs=lift_height, wait=True),
-        lambda: movej(node=node, inputs='give', mode=robot_mode, wait=False),
-    ])
-    if not ret['isdone']:
-        return ret
-    return run_parallel_check(funcs=[
-        lambda: grip(node=node, inputs='close', wait=False),
-        lambda: movej(node=node, inputs='fold', mode=robot_mode, wait=True),
-        lambda: forward(node=node, inputs=-mforward, wait=True),
-    ])
-
-
-def post_drawer_open_prep(node, robot_mode):
-    """After opening a drawer: ease the lift down + fold, then assume the
-    'approach_lying' pose so the gripper is angled into the drawer."""
-    ret = run_parallel_check(funcs=[
-        lambda: dlift(node=node, inputs=0.1, wait=True),
-        lambda: movej(node=node, inputs='fold', mode=robot_mode, wait=True),
-    ])
-    if not ret['isdone']:
-        return ret
-    return movej(node=node, inputs='approach_lying', mode=robot_mode, wait=True)
-
-
 # ---------------------------------------------------------------------------
 # fine_move sub-step: compute grasp from detected pose
 # ---------------------------------------------------------------------------
