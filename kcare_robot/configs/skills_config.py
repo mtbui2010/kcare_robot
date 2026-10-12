@@ -10,6 +10,8 @@ SKILL_CONFIGS: dict[str, tuple[str, str]] = {
     'grasp_succeed':    (f'{_PKG}.recognition', 'grasp_succeed'),
     'get_side_pose_3d': (f'{_PKG}.recognition', 'get_side_pose_3d'),
     'pick':             (f'{_PKG}.pick',        'pick'),
+    'pick_vla':         (f'{_PKG}.pick',        'pick_vla'),
+    'vla_pick_approach': (f'{_PKG}.vla',        'vla_pick_approach'),
     'fine_move':        (f'{_PKG}.pick',        'fine_move'),
     'open_drawer':      (f'{_PKG}.pick',        'open_drawer'),
     'close_drawer':     (f'{_PKG}.pick',        'close_drawer'),

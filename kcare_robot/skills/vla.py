@@ -45,3 +45,21 @@ def vla_drawer_open(node, **kwargs) -> dict:
     prompt = kwargs.get('inputs', 'pull the gray handle on the third floor drawer')
     robot_mode = get_robot_mode(node)
     return node.agents['vla_drawer_open'].send({'mode':robot_mode, 'prompt': prompt})
+
+
+def vla_pick_approach(node, **kwargs) -> dict:
+    """PICK phase A with a VLA ("reach to view"): from the mode's start pose, arm + lift + a small base nudge
+    bring the wrist camera to the object (sim: vla_pick_node, /pick/approach). The grasp itself is fine_move's.
+
+    inputs: the object ('cup' -> prompt 'reach the cup'; a full prompt is passed through).
+    mode:   'front' | 'left' | 'right' (default: the head's current side)."""
+    obj = str(kwargs.get('inputs') or '').strip()
+    prompt = obj if obj.split(' ')[0] in ('reach', 'go', 'look') else f'reach the {obj}'
+    mode = kwargs.get('mode') or get_robot_mode(node) or 'right'
+    ret = node.agents['vla_pick_approach'].send({'mode': mode, 'prompt': prompt})
+    try:
+        import json
+        ret.update(json.loads(ret.get('msg') or '{}'))
+    except Exception:
+        pass
+    return ret

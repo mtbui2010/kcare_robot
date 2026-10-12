@@ -554,6 +554,51 @@ def pick(node, **kwargs):
 
 
 @arm_exception_handler
+def pick_vla(node, **kwargs):
+    """Pick with a VLA for the approach and fine_move for the grasp.
+
+      1. (optional) move to `loc` / the `obj@loc` place, as pick does;
+      2. vla_pick_approach: the policy brings the wrist camera to the object (arm, lift, base nudge <= 0.2 m);
+         if it does not settle, approach_pick (the scripted approach) takes over;
+      3. fine_move: wrist re-detection of the named object, grasp, grasp_succeed;
+      4. give -> fold, as pick.
+    The object's identity stays with the detector (fine_move), not the policy."""
+    from kcare_robot.skills.vla import vla_pick_approach
+    loc_name = kwargs.pop('inputs', None)
+    said = spoken('inputs', loc_name)
+    splits = loc_name.split('|')
+    loc_name, num_trials = splits if len(splits) == 2 else (splits[0], 2)
+    caption, loc = _h.split_loc(loc_name)
+    announce_picking(said or caption)
+    if NO_ACTION:
+        return {'isdone': True}
+    env = get_env_specs(loc, ENV) if loc else {}
+    if env:
+        ret = move(node=node, inputs=loc, wait=True)
+        assert ret['isdone'], f'{ret}'
+    mode = kwargs.pop('mode', None) or get_robot_mode(node=node, env=env)
+    ret = vla_pick_approach(node=node, inputs=caption, mode=mode)
+    used_vla = bool(ret.get('isdone'))
+    if not used_vla:
+        log_data({'msg': f'pick_vla: the policy did not settle ({ret.get("msg")}); scripted approach instead'})
+        kwargs.update(approach_pick(node=node, inputs=loc_name, **kwargs))
+        assert kwargs['isdone'], f'{kwargs}'
+    kwargs['inputs'] = caption
+    kwargs.update(fine_move(node=node, num_trials=int(num_trials), **kwargs))
+    assert kwargs['isdone'], f'{kwargs}'
+    if kwargs.get('islying'):
+        ret = movej(node=node, inputs='approach_lying', wait=True)
+        assert ret['isdone'], f'{ret}'
+    ret = movej(node=node, inputs='give')
+    assert ret['isdone'], f'{ret}'
+    ret = movej(node=node, inputs='fold', wait=True)
+    assert ret['isdone'], f'{ret}'
+    kwargs.pop('inputs', None)
+    kwargs['approach'] = 'vla' if used_vla else 'scripted'
+    return kwargs
+
+
+@arm_exception_handler
 def pushing(**kwargs):
     """Push (rather than pick) a target along the detected grasp axis.
 
