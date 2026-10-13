@@ -22,7 +22,7 @@ HEAD_CONFIGS = {   'ry_range': [-50, 10],
     'rz': {'front': 0, 'left': -70, 'right': 70},
     'ry': {'up': 10, 'straight': -40, 'down': -50}}
 
-# Visual Q&A (skills/qa.py). The vision model runs in Ollama on the dev PC
+# Visual Q&A (`qa` in skills/hri.py). The vision model runs in Ollama on the dev PC
 # (RTX 3090); `views` are HEAD_CONFIGS['ry'] names, photographed in order.
 # Ollama on the 4xA6000 server, leaving the dev PC's 3090 to visionserve.
 # 2026-09-30, 22 where-questions on dressroom / cabinet / dining photos:
@@ -42,15 +42,13 @@ HRI_CONFIGS = {   'source': 'dashboard',
     'dashboard_stt': 'whisper',
     'stt': '',
     'stt_hint': {   'ko': '와인잔, 머그컵, 텀블러, 컵, 접시, 선반, 서랍, 옷장, 행거. 어디에 있어?',
-                    'en': '',
-                    'vi': ''}}
+                    'en': ''}}
 
 QA_CONFIGS = {   'url': 'https://ollama.aistations.org',
     'model': 'qwen3-vl:8b-instruct',          # 2026-10-09: 8b vs 32b on every LLM role (bench_llm): 8b as good, ~3x faster
     'num_ctx': 8192,
     'camera': 'head_rgb',
     'views': ['up', 'straight', 'down'],
-    'refresh_sec': 20.0,
     'idle_turns': 6}
 
 ARM_CONFIGS = {   'calib_offset': [0, 0, -0.03],

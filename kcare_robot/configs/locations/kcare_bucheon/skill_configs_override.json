@@ -182,7 +182,7 @@
       },
       "height": 1.1,
       "loc": {
-        "x": 2.5,
+        "x": 2.55,
         "y": 4,
         "rz": 90
       },
@@ -249,28 +249,8 @@
         "views": [
           "up"
         ],
-        "scene": "a wall cabinet above the kitchen counter, with two columns of shelves split by a vertical divider, and a dish drying rack under it",
-        "frame": "robot",
-        "places": {
-          "left": {
-            "desc": "the left column of the cabinet (any shelf on the left of the divider)",
-            "ko": "\uc67c\ucabd \uc120\ubc18",
-            "en": "on the left shelf",
-            "vi": "\u1edf k\u1ec7 b\u00ean tr\u00e1i"
-          },
-          "right": {
-            "desc": "the right column of the cabinet (any shelf on the right of the divider)",
-            "ko": "\uc624\ub978\ucabd \uc120\ubc18",
-            "en": "on the right shelf",
-            "vi": "\u1edf k\u1ec7 b\u00ean ph\u1ea3i"
-          },
-          "rack": {
-            "desc": "the dish drying rack under the cabinet, outside it",
-            "ko": "\uc120\ubc18 \uc544\ub798 \uc2dd\uae30 \uac74\uc870\ub300",
-            "en": "in the dish rack under the cabinet",
-            "vi": "\u1edf gi\u00e1 ph\u01a1i b\u00e1t d\u01b0\u1edbi t\u1ee7"
-          }
-        }
+        "shelves": true,
+        "scene": "an open wall cabinet above the kitchen sink"
       }
     },
     "dressroom": {
@@ -279,7 +259,7 @@
         "dx": 0,
         "dy": 0
       },
-      "height": 0.8,
+      "height": 1.1,
       "loc": {
         "x": 6.3,
         "y": 3.7,

@@ -119,7 +119,7 @@ def place(node, **kwargs):
     assert kwargs['isdone'], f'{kwargs}'
 
     if kwargs['islying']:
-        ret = movet(node=node, dz=kwargs['dapproach']+kwargs['dz_up']/2, wait=True)
+        ret = movet(node=node, dz=kwargs['dapproach']+(kwargs['dz_up']/2 if lower_before_open else 0), wait=True)
     else:
         ret = movet(node=node, dz=kwargs['dapproach'], wait=True)
         assert ret['isdone'], f'{ret}'

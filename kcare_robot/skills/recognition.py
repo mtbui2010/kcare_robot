@@ -311,6 +311,58 @@ def _object_entry(node, name, target, res, rgb, depth, cam_params, w, h, with_gr
     return entry
 
 
+# The wrist camera sees the robot's own gripper along the image bottom. On
+# find::black bag at the dressroom (2026-10-13) the detector boxed the black
+# gripper base (conf 0.38–0.46, median depth 114 mm) and gave the bag itself
+# 0.28–0.38, below box_threshold 0.35 in 2 of 3 frames; with the gripper painted
+# grey the bag scored 0.69–0.71 (beige / blue bags unchanged). So the gripper is
+# hidden from the detector (_hide_gripper) and any box still on it is dropped
+# (_robot_body). "The gripper" = depth nearer than the tool tip
+# (wrist_tool_length + FIND_CONFIGS.self_depth_margin, 0.02 m).
+
+def _gripper_near_mm() -> float:
+    return (ARM_CONFIGS['wrist_tool_length'] + FIND_CONFIGS.get('self_depth_margin', 0.02)) * 1000.
+
+
+def _hide_gripper(rgb, depth):
+    """`rgb` with the pixels nearer than the tool tip painted grey — what the
+    detector is shown; geometry and grasping keep the real image."""
+    if depth is None:
+        return rgb
+    near = ((depth > 0) & (depth < _gripper_near_mm())).astype(np.uint8)
+    if near.shape[:2] != rgb.shape[:2]:
+        near = cv2.resize(near, (rgb.shape[1], rgb.shape[0]), interpolation=cv2.INTER_NEAREST)
+    if not near.any():
+        return rgb
+    near = cv2.morphologyEx(near, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))   # depth holes on the gripper
+    near = cv2.dilate(near, np.ones((9, 9), np.uint8)) > 0
+    out = rgb.copy()
+    out[near] = 128
+    return out
+
+
+def _robot_body(res, depth, rgb_shape) -> set:
+    """Indices of wrist-camera detections that are the robot's own gripper:
+    at least `self_min_frac` of the box's depth nearer than the tool tip."""
+    if depth is None:
+        return set()
+    near_mm = _gripper_near_mm()
+    min_frac = FIND_CONFIGS.get('self_min_frac', 0.5)
+    dh, dw = depth.shape[:2]
+    sx, sy = dw / rgb_shape[1], dh / rgb_shape[0]
+    out = set()
+    for k, d in enumerate(res.detections):
+        x, y, w, h = (float(v) for v in d.bbox)
+        roi = depth[max(0, int(y * sy)):int((y + h) * sy), max(0, int(x * sx)):int((x + w) * sx)]
+        valid = roi[roi > 0]
+        if valid.size >= 20 and float((valid < near_mm).mean()) >= min_frac:
+            out.add(k)
+            log_data({'msg': f"{getattr(d, 'cls', '?')} {float(getattr(d, 'conf', 0)):.2f} at "
+                             f"[{x:.0f}, {y:.0f}, {w:.0f}, {h:.0f}] is the gripper "
+                             f"({100 * float((valid < near_mm).mean()):.0f}% nearer than {near_mm:.0f} mm) — skipped"})
+    return out
+
+
 def _detect_objects(node, obj_names, **kwargs) -> dict:
     """Detect `obj_names` on one camera and return a per-object entry.
 
@@ -329,7 +381,7 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     ``simple_return``).
 
     All names go to the detector in ONE request per trial ("cup. bottle.").
-    ``max_instances`` (1 | N | 'all'): with more than 1, each name's entry is
+    ``max_instances`` (1 | N | 'all', or per name {name: …, '*': …}): with more than 1, each name's entry is
     its best object plus ``instances`` (up to N entries, best first) and
     ``count``."""
     simple_return    = kwargs.pop('simple_return', False)
@@ -361,8 +413,15 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
 
     # max_instances: 1 (default) → the best object per name, as before; N or
     # 'all' → up to N (every) object, best first, in entry['instances'].
+    # A dict sets it per name: {'foot': 2, 'spoon': 1} ('*' = the others).
     max_inst = kwargs.pop('max_instances', 1)
-    max_inst = None if str(max_inst).strip().lower() == 'all' else max(1, int(max_inst))
+
+    def _limit(v):
+        return None if str(v).strip().lower() == 'all' else max(1, int(v))
+    if isinstance(max_inst, dict):
+        limits = {n: _limit(max_inst.get(n, max_inst.get('*', 1))) for n in obj_names}
+    else:
+        limits = {n: _limit(max_inst) for n in obj_names}
 
     # What to ask the detector for each name: a product (신라면 …) is detected
     # as its generic class and told apart afterwards; others by their name.
@@ -393,16 +452,18 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
             vals = [plans[n][1][k] for n in missing if plans[n][1].get(k) is not None]
             if vals:
                 req_cfg[k] = min(vals)
-        res_all = _predict_detect(rgb, ' '.join(f'{p}.' for p in prompts), req_cfg)
+        det_rgb = rgb if use_head else _hide_gripper(rgb, depth)
+        res_all = _predict_detect(det_rgb, ' '.join(f'{p}.' for p in prompts), req_cfg)
         if min_conf > 0:
             res_all = res_all.filter_by_conf(min_conf=min_conf)
         owner = [_label_owner(getattr(d, 'cls', ''), prompts) for d in res_all.detections]
+        body = set() if use_head else _robot_body(res_all, depth, rgb.shape)
         reports = {}                 # (prompt, floor) → classify() of those packs, shared by products
         for n in missing:
             prompt, cfg, product = plans[n]
             floor = float(cfg.get('box_threshold') or 0.0)
             idx = [k for k, d in enumerate(res_all.detections)
-                   if owner[k] == prompt and float(getattr(d, 'conf', 0.0)) >= floor]
+                   if owner[k] == prompt and float(getattr(d, 'conf', 0.0)) >= floor and k not in body]
             if verify and product is None and idx:
                 idx = _vlm_filter(rgb, res_all, idx, n, verify_above)
             if not idx:
@@ -428,6 +489,7 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
         res, rgb, depth, cam_params = found[name]
         h, w = rgb.shape[:2]
         entries, remaining = [], res
+        max_inst = limits[name]
         while max_inst is None or len(entries) < max_inst:
             target, k = select_target_object(
                 remaining, cls=name, image_size=(w, h), depth_result=depth,
@@ -823,7 +885,7 @@ def find_place(node, **kwargs) -> dict:
         approach_pose[2] += dapproach*np.sin(15*np.pi/180)
         approach_pose += [-180, -75, 100+ry if robot_mode=='right' else -100-ry]
         approach_lying=False
-    mforward = approach_pose[0] - np.clip(approach_pose[0], 0.15, 0.55)
+    mforward = approach_pose[0] - np.clip(approach_pose[0], 0.15, 0.35)
     mforward = 0 if abs(mforward)<0.1 else mforward
     approach_pose[0] -= mforward
 

@@ -45,7 +45,7 @@ _COMMANDS = {'press': b'\x57\x01\x00', 'on': b'\x57\x01\x01', 'off': b'\x57\x01\
 _RESULTS = {1: 'ok', 3: 'low battery', 5: 'busy / password protected', 11: 'action failed'}
 # Spoken / typed forms of the actions.
 _ALIASES = {'on': 'on', 'off': 'off', 'press': 'press', 'toggle': 'press',
-            '켜': 'on', '켜줘': 'on', '꺼': 'off', '꺼줘': 'off', 'bật': 'on', 'tắt': 'off',
+            '켜': 'on', '켜줘': 'on', '꺼': 'off', '꺼줘': 'off',
             'true': 'on', 'false': 'off', '1': 'on', '0': 'off'}
 _DEFAULTS = {'scan_sec': 5.0, 'retries': 3}
 
@@ -290,7 +290,7 @@ def turn_light(node=None, **kwargs):
     """Turn a light on / off with its SwitchBot Bot.
 
     Params:
-        inputs: 'on' | 'off' | 'press' (also 켜 / 꺼, bật / tắt).
+        inputs: 'on' | 'off' | 'press' (also 켜 / 꺼).
         loc: the light — a switchbot connection's loc ('laundry room'), its
             id or MAC, or 'all'; default the connection marked default.
             (`device` is accepted as an old name for it.)
