@@ -221,6 +221,19 @@
     "aliases": []
   },
   {
+    "name": "pnp",
+    "type": "internal",
+    "description": "pick an object and put it on / into another object at the same location, in one motion: pnp::apple>>bowl@table",
+    "module_path": "kcare_robot.skills.pnp",
+    "func_name": "pnp",
+    "url": "",
+    "timeout": 120.0,
+    "method": "POST",
+    "headers": {},
+    "plan": "",
+    "aliases": []
+  },
+  {
     "name": "wipe",
     "type": "internal",
     "description": "from kcare_robot.skills.place:wipe",
@@ -663,7 +676,7 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": "\nlift::0.9\nmovej::pre_pick\nlift::0.65&&movej::dr6=-90\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\n\nforward::-0.5\nturn::90\nforward::1.1\nannounce::\uc2dd\ud0c1 \uc704\uc5d0 \ub0c4\ube44 \ub193\uace0 \uc788\uc5b4\uc694.\n\nmovel::dz=-0.25\ngrip::open\nforward::-0.5\nmovej::fold\nannounce::\uc2dd\ud0c1 \uc704\uc5d0 \ub0c4\ube44 \uc62c\ub824\ub480\uc2b5\ub2c8\ub2e4.",
+    "plan": "\nlift::0.9\nmovej::pre_pick\nlift::0.65&&movej::dr6=-90\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\n\nforward::-0.5\nturn::90\nforward::1.1\nannounce::식탁 위에 냄비 놓고 있어요.\n\nmovel::dz=-0.25\ngrip::open\nforward::-0.5\nmovej::fold\nannounce::식탁 위에 냄비 올려뒀습니다.",
     "aliases": [
       "냄비 전달"
     ]

@@ -23,6 +23,7 @@ SKILL_CONFIGS: dict[str, tuple[str, str]] = {
     'movet':            (f'{_PKG}.arm',         'movet'),
     'movelf':           (f'{_PKG}.arm',         'movelf'),
     'place':            (f'{_PKG}.place',       'place'),
+    'pnp':              (f'{_PKG}.pnp',         'pnp'),
     'wipe':             (f'{_PKG}.place',       'wipe'),
     'init_arm':         (f'{_PKG}.goto_ready',  'init_arm'),
     # 'enable':           (f'{_PKG}.goto_ready',  'enable'),

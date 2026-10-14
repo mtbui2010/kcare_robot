@@ -817,6 +817,7 @@ def find_place(node, **kwargs) -> dict:
     inputs = kwargs.pop('inputs', None)
     islying = kwargs.pop('islying', False)
     placeside = kwargs.pop('placeside', None)
+    dest_pose = kwargs.pop('dest_pose', None)     # the destination object's pose, already found (pnp): no head find
     
     assert inputs is not None or point3d is not None
     robot_mode = get_robot_mode(node=node)
@@ -845,8 +846,11 @@ def find_place(node, **kwargs) -> dict:
             )
         #
         if dest_obj is not None: 
-            ret = find(node=node, inputs=dest_obj, cameras="head", simple_return=True)
-            p3 = ret['ins'][dest_obj]['pose']
+            if dest_pose is not None:
+                p3 = list(dest_pose)
+            else:
+                ret = find(node=node, inputs=dest_obj, cameras="head", simple_return=True)
+                p3 = ret['ins'][dest_obj]['pose']
             if point3d is None:
                 point3d = p3
             else:
