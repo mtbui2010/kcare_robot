@@ -78,6 +78,32 @@
     "aliases": []
   },
   {
+    "name": "pick_vla",
+    "type": "internal",
+    "description": "from kcare_robot.skills.pick:pick_vla",
+    "module_path": "kcare_robot.skills.pick",
+    "func_name": "pick_vla",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {},
+    "plan": "",
+    "aliases": []
+  },
+  {
+    "name": "vla_pick_approach",
+    "type": "internal",
+    "description": "from kcare_robot.skills.vla:vla_pick_approach",
+    "module_path": "kcare_robot.skills.vla",
+    "func_name": "vla_pick_approach",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {},
+    "plan": "",
+    "aliases": []
+  },
+  {
     "name": "fine_move",
     "type": "internal",
     "description": "from kcare_robot.skills.pick:fine_move",
@@ -223,11 +249,11 @@
   {
     "name": "pnp",
     "type": "internal",
-    "description": "pick an object and put it on / into another object at the same location, in one motion: pnp::apple>>bowl@table",
+    "description": "from kcare_robot.skills.pnp:pnp",
     "module_path": "kcare_robot.skills.pnp",
     "func_name": "pnp",
     "url": "",
-    "timeout": 120.0,
+    "timeout": 30.0,
     "method": "POST",
     "headers": {},
     "plan": "",
@@ -323,7 +349,7 @@
     "headers": {},
     "plan": "",
     "aliases": [
-      "이동"
+      "\uc774\ub3d9"
     ]
   },
   {
@@ -613,6 +639,71 @@
     "aliases": []
   },
   {
+    "name": "check_fall",
+    "type": "internal",
+    "description": "SIMULATED fall check: ask \uad1c\ucc2e\uc73c\uc2e0\uac00\uc694?, call 119 (simulated) on help / no clear answer",
+    "module_path": "kcare_robot.skills.emergency",
+    "func_name": "check_fall",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {},
+    "plan": "",
+    "aliases": []
+  },
+  {
+    "name": "check_restroom",
+    "type": "internal",
+    "description": "SIMULATED restroom-too-long check: ask, call 119 (simulated) on help / no clear answer",
+    "module_path": "kcare_robot.skills.emergency",
+    "func_name": "check_restroom",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {},
+    "plan": "",
+    "aliases": []
+  },
+  {
+    "name": "call_119",
+    "type": "internal",
+    "description": "SIMULATED 119 call: siren on the robot speaker + spoken notice + log",
+    "module_path": "kcare_robot.skills.emergency",
+    "func_name": "call_119",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {},
+    "plan": "",
+    "aliases": []
+  },
+  {
+    "name": "announce",
+    "type": "internal",
+    "description": "from kcare_robot.skills.hri:announce",
+    "module_path": "kcare_robot.skills.hri",
+    "func_name": "announce",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {},
+    "plan": "",
+    "aliases": []
+  },
+  {
+    "name": "wait",
+    "type": "internal",
+    "description": "from kcare_robot.skills.hri:wait",
+    "module_path": "kcare_robot.skills.hri",
+    "func_name": "wait",
+    "url": "",
+    "timeout": 30.0,
+    "method": "POST",
+    "headers": {},
+    "plan": "",
+    "aliases": []
+  },
+  {
     "name": "turn_light",
     "type": "internal",
     "description": "from kcare_robot.skills.switchbot:turn_light",
@@ -663,7 +754,7 @@
     "headers": {},
     "plan": "move::$inputs$\nlift::highest\nmovej::pre_pick\nforward::0.1",
     "aliases": [
-      "높이 이동"
+      "\ub192\uc774 \uc774\ub3d9"
     ]
   },
   {
@@ -676,9 +767,9 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": "\nlift::0.9\nmovej::pre_pick\nlift::0.65&&movej::dr6=-90\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\n\nforward::-0.5\nturn::90\nforward::1.1\nannounce::식탁 위에 냄비 놓고 있어요.\n\nmovel::dz=-0.25\ngrip::open\nforward::-0.5\nmovej::fold\nannounce::식탁 위에 냄비 올려뒀습니다.",
+    "plan": "\nlift::0.9\nmovej::pre_pick\nlift::0.75&&movej::dr6=-90, dr5=10\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\n\nforward::-0.5&&movej::dr5=-10\nturn::90\nforward::1.05\nannounce::\uc2dd\ud0c1 \uc704\uc5d0 \ub0c4\ube44 \ub193\uace0 \uc788\uc5b4\uc694.\n\nmovej::dr5=10\nmovet::dz=0.2\nmovel::dz=-0.20\ngrip::open\nforward::-0.5\nmovej::fold\nannounce::\uc2dd\ud0c1 \uc704\uc5d0 \ub0c4\ube44 \uc62c\ub824\ub480\uc2b5\ub2c8\ub2e4.",
     "aliases": [
-      "냄비 전달"
+      "\ub0c4\ube44 \uc804\ub2ec"
     ]
   },
   {
@@ -691,7 +782,7 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": "lift::0.7\nmovej::pre_pick\nlift::0.4&&movej::dr6=-90, dr5=10\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\nlift::0.9\nturn::-90\nforward::0.3\n\nmovej::dr5=20\nmovet::dz=0.35\ngrip::open\nmovet::dz=-0.35&&forward::-0.5\nmovej::fold\n",
+    "plan": "lift::0.9&&forward::0.45\nturn::90&&moveh::front&&movej::give\nforward::-0.3&&movej::pre_pick\nlift::0.5&&movej::dr6=90, dr5=10\n\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\nlift::0.9&&movej::dr5=-10\nturn::-90\nforward::0.45\n\nmovej::dr5=30\nmovet::dz=0.3\ngrip::open\nmovet::dz=-0.3&&forward::-0.5\nmovej::fold\n",
     "aliases": []
   },
   {
@@ -708,32 +799,6 @@
     "aliases": []
   },
   {
-    "name": "announce",
-    "type": "internal",
-    "description": "from kcare_robot.skills.hri:announce",
-    "module_path": "kcare_robot.skills.hri",
-    "func_name": "announce",
-    "url": "",
-    "timeout": 30.0,
-    "method": "POST",
-    "headers": {},
-    "plan": "",
-    "aliases": []
-  },
-  {
-    "name": "wait",
-    "type": "internal",
-    "description": "from kcare_robot.skills.hri:wait",
-    "module_path": "kcare_robot.skills.hri",
-    "func_name": "wait",
-    "url": "",
-    "timeout": 30.0,
-    "method": "POST",
-    "headers": {},
-    "plan": "",
-    "aliases": []
-  },
-  {
     "name": "arm_down",
     "type": "plan",
     "description": "",
@@ -745,7 +810,7 @@
     "headers": {},
     "plan": "movej::give\nlift::lowest&&movej::dr5=-20",
     "aliases": [
-      "바닥 찾기"
+      "\ubc14\ub2e5 \ucc3e\uae30"
     ]
   }
 ]

@@ -13,8 +13,8 @@ from kcare_robot.skills.grip import grip
 
 HOME_JOINTS = [0, 0, 0, 20, 0, 20, -180]     # ready_shoes 의 최초 홈 자세
 APPROACH_DZ = 0.2    # movel 어프로치: 신발 표면 z 위로 띄우는 높이 (m)
-GRASP_DZ    = 0.21    # 집기: movet 로 내려갔다(+) 올라오는(-) 거리 (m)
-PLACE_DZ    = 0.15    # 놓기: movet 로 내려갔다(+) 올라오는(-) 거리 (m)
+GRASP_DZ    = 0.2    # 집기: movet 로 내려갔다(+) 올라오는(-) 거리 (m)
+PLACE_DZ    = 0.2    # 놓기: movet 로 내려갔다(+) 올라오는(-) 거리 (m)
 
 
 @exception_handler

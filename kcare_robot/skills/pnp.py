@@ -63,7 +63,7 @@ def _find_both(node, obj, dest, loc):
     out = {}
 
     def head():
-        out['dest'] = find(node=node, inputs=q(dest), cameras='head', simple_return=True)
+        out['dest'] = find(node=node, inputs=q(dest), cameras='head', simple_return=True, main_body=True)
     th = threading.Thread(target=head, daemon=True)
     th.start()
     ret = find(node=node, inputs=q(obj), cameras='arm')
@@ -110,41 +110,22 @@ def _grasp(node, obj, num_trials=2):
     return {'isdone': False, 'msg': f'pnp: could not grasp {obj} in {num_trials} tries'}
 
 
-@arm_exception_handler
-def pnp(node, **kwargs):
-    """Pick `object` and put it on / into `destination_object` at the same location, in one motion.
-
-    inputs: 'object>>destination_object@location'. Options: num_trials (grasp tries, 2), placeside (passed to
-    find_place: place beside instead of on the destination object), lower_before_open (as place)."""
-    inputs = kwargs.pop('inputs', None)
-    said = spoken('inputs', inputs)
-    num_trials = int(kwargs.pop('num_trials', 2))
-    lower_before_open = kwargs.pop('lower_before_open', None)
-    placeside = kwargs.pop('placeside', None)
-    for k in ['object_from_drawer', 'pose_after_open', 'lift_after_open', 'forward_after_open', 'init_pose_fixed']:
-        kwargs.pop(k, None)
-    obj, dest, loc = _parse(inputs)
-    T, t0 = {}, [time.time()]
-
-    def lap(name):                        # step timings, returned as 'timings' [s] and logged
-        t = time.time(); T[name] = round(t - t0[0], 2); t0[0] = t
-        log_data({'msg': f'pnp {name}: {T[name]:.1f} s'})
-
-    announce_picking((said or obj).split('>>')[0].split('@')[0])
-    if NO_ACTION:
-        return {'isdone': True}
-
+def pick_and_carry(node, obj, dest, loc, num_trials, lap, placeside=None, islying=None, tag='pnp'):
+    """Steps 1-3 of pnp, also used by wipe: move to `loc` once, one look (wrist: `obj`, head: `dest`), pick `obj`,
+    then straight to `dest`'s approach pose holding it (no give / fold / drive back in between). `islying` forces
+    the place posture (wipe: False); None = the picked object's. Returns (pick entry, find_place result)."""
     # 1. one trip, one look (wrist: the object, head: the destination, at the same time)
     if loc and get_env_specs(loc, ENV):
         ret = move(node=node, inputs=loc, wait=True)
         assert ret['isdone'], f'{ret}'
     lap('move')
     pk, dest_pose = _find_both(node, obj, dest, loc)
-    pl = find_place(node=node, inputs=f'{dest}@{loc}' if loc else dest, islying=pk['islying'], dest_pose=dest_pose,
+    pl = find_place(node=node, inputs=f'{dest}@{loc}' if loc else dest,
+                    islying=pk['islying'] if islying is None else islying, dest_pose=dest_pose,
                     **({'placeside': placeside} if placeside is not None else {}))
     assert pl['isdone'], f'{pl}'
     lap('find')
-    log_data({'msg': f"pnp: pick {obj} (lying {pk['islying']}, forward {pk['mforward']:.2f}) -> "
+    log_data({'msg': f"{tag}: pick {obj} (lying {pk['islying']}, forward {pk['mforward']:.2f}) -> "
                      f"{dest} (forward {pl['mforward']:.2f}, lift {pl['lift_to']:.2f})"})
 
     # 2. pick
@@ -177,6 +158,34 @@ def pnp(node, **kwargs):
     ret = movel(node=node, **pl['approach_pose'])
     assert ret['isdone'], f'{ret}'
     lap('place_approach')
+    return pk, pl
+
+
+@arm_exception_handler
+def pnp(node, **kwargs):
+    """Pick `object` and put it on / into `destination_object` at the same location, in one motion.
+
+    inputs: 'object>>destination_object@location'. Options: num_trials (grasp tries, 2), placeside (passed to
+    find_place: place beside instead of on the destination object), lower_before_open (as place)."""
+    inputs = kwargs.pop('inputs', None)
+    said = spoken('inputs', inputs)
+    num_trials = int(kwargs.pop('num_trials', 2))
+    lower_before_open = kwargs.pop('lower_before_open', None)
+    placeside = kwargs.pop('placeside', None)
+    for k in ['object_from_drawer', 'pose_after_open', 'lift_after_open', 'forward_after_open', 'init_pose_fixed']:
+        kwargs.pop(k, None)
+    obj, dest, loc = _parse(inputs)
+    T, t0 = {}, [time.time()]
+
+    def lap(name):                        # step timings, returned as 'timings' [s] and logged
+        t = time.time(); T[name] = round(t - t0[0], 2); t0[0] = t
+        log_data({'msg': f'pnp {name}: {T[name]:.1f} s'})
+
+    announce_picking((said or obj).split('>>')[0].split('@')[0])
+    if NO_ACTION:
+        return {'isdone': True}
+
+    pk, pl = pick_and_carry(node, obj, dest, loc, num_trials, lap, placeside=placeside)
 
     # 4. place (as place)
     if lower_before_open is None:

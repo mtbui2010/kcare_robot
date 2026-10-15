@@ -41,15 +41,34 @@ HEAD_CONFIGS = {   'ry_range': [-50, 10],
 HRI_CONFIGS = {   'source': 'dashboard',
     'dashboard_stt': 'whisper',
     'stt': '',
+    'earcon': True,             # "your turn" / "got it" tones around each listen (robot speaker or browser)
+    'earcon_volume': 0.3,       # 0..1
+    'speech_rate': 1.3,         # how fast the dashboard speaks (1.0 = the browser's normal, 0.5..2.0); a call's rate= wins
     'stt_hint': {   'ko': '와인잔, 머그컵, 텀블러, 컵, 접시, 선반, 서랍, 옷장, 행거. 어디에 있어?',
                     'en': ''}}
+
+# Emergency checks (skills/emergency.py, SIMULATED: nothing is dialled). check_fall / check_restroom ask, then
+# listen in windows of reprompt_sec until timeout_sec is used up; no clear "괜찮아" -> call_119 (siren + notice).
+# demo: True uses the demo_* times (5 s / 15 s) instead of 20 s / 60 s.
+EMERGENCY_CONFIGS = {   'timeout_sec': 60,
+    'reprompt_sec': 20,
+    'demo': True,
+    'demo_timeout_sec': 15,
+    'demo_reprompt_sec': 5,
+    'source': None,             # None = HRI_CONFIGS.source (kcare-3 has no robot speaker / mic wired)
+    'energy_threshold': None,
+    'detect_sec': 2,            # check_fall / check_restroom "look" this long after "확인하고 있습니다"
+    'simulate': True,
+    'alarm_volume': 0.6,
+    'alarm_cycles': 3}
 
 QA_CONFIGS = {   'url': 'https://ollama.aistations.org',
     'model': 'qwen3-vl:8b-instruct',          # 2026-10-09: 8b vs 32b on every LLM role (bench_llm): 8b as good, ~3x faster
     'num_ctx': 8192,
     'camera': 'head_rgb',
     'views': ['up', 'straight', 'down'],
-    'idle_turns': 6}
+    'idle_ask_sec': 60,         # qa: silence this long → "더 궁금하신 게 있으세요?"; 0 = never
+    'idle_end_sec': 30}         # ... and this much more → "대답이 없으셔서 대화를 마칠게요." (ends)
 
 ARM_CONFIGS = {   'calib_offset': [0, 0, -0.03],
     'wrist_cam_offset': [-0.02, -0.075, 0],
@@ -174,7 +193,14 @@ FIND_CONFIGS = {   'detect_object': {   'model': 'rfdetr-gdino-sam-etri',
                         'near_point': 'center',
                         'weight': {'quality': 0.78, 'distance': 0.2, 'near': 0.02},
                         'gripper_min': 10,
-                        'gripper_max': 500},
+                        'gripper_max': 500,
+                        # tool-tip depth (_recognition_helpers._grasp_tip_depth): ratio of the gap to what is
+                        # behind, within [min, max] mm; nothing seen behind -> no_back mm
+                        'depth_ratio': 0.5,
+                        'depth_min_mm': 15,
+                        'depth_max_mm': 50,
+                        'depth_no_back_mm': 40,
+                        'depth_clearance_mm': 3},
     'detect_background': {   'use': True,
                              'stride': 20,
                              'avoid_model': 'grounding-dino',

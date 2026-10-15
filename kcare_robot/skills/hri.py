@@ -38,12 +38,12 @@ import cv2
 import numpy as np
 import requests
 
-from robot_agent.core.run_control import cancel_requested
+from robot_agent.core.run_control import cancel_requested, dialog_begin, dialog_end, end_dialog_requested
 from robot_agent.skill_configs import ENV, HRI_CONFIGS, QA_CONFIGS
 from robot_agent.skills import log_data as _emit
 from robot_agent.utils import (
-    exception_handler, listen_dashboard, play_audio, record_phrase, say_to_user,
-    speech_to_text,
+    EARCON_GAP_SEC, exception_handler, listen_dashboard, play_audio, play_earcon, record_phrase, say_to_user,
+    set_speech_rate, speech_to_text,
 )
 
 from ..utils import env_key, get_closest_loc
@@ -110,7 +110,8 @@ def _truthy(v) -> bool:
 
 def _hri_cfg() -> dict:
     """HRI_CONFIGS (Global Configs) with defaults filled in."""
-    cfg = {'source': 'robot', 'dashboard_stt': 'whisper', 'stt': '', 'stt_hint': {}}
+    cfg = {'source': 'robot', 'dashboard_stt': 'whisper', 'stt': '', 'stt_hint': {}, 'earcon': True, 'earcon_volume': 0.3,
+           'speech_rate': 1.3}
     try:
         cfg.update(dict(HRI_CONFIGS.items()))
     except Exception:
@@ -118,8 +119,25 @@ def _hri_cfg() -> dict:
     return cfg
 
 
+SPEECH_RATE_RANGE = (0.5, 2.0)
+
+
+def _set_rate(kwargs: dict, hri: dict | None = None) -> float:
+    """How fast the dashboard says this call's lines: the call's `rate=`, else HRI_CONFIGS.speech_rate,
+    within SPEECH_RATE_RANGE; handed to say_to_user / listen_dashboard (robot_agent.utils.set_speech_rate)."""
+    hri = hri or _hri_cfg()
+    try:
+        rate = float(kwargs.pop('rate', None) or hri.get('speech_rate') or 1.0)
+    except (TypeError, ValueError):
+        rate = 1.0
+    rate = min(max(rate, SPEECH_RATE_RANGE[0]), SPEECH_RATE_RANGE[1])
+    set_speech_rate(rate)
+    return rate
+
+
 def _common(kwargs: dict):
     hri = _hri_cfg()
+    _set_rate(kwargs, hri)
     lang = str(kwargs.pop('lang', 'ko') or 'ko').lower()
     if lang not in LANGS:
         raise ValueError(f'lang must be one of {LANGS}, got {lang!r}')
@@ -142,6 +160,9 @@ def _common(kwargs: dict):
         'capture': str(kwargs.pop('stt', None) or hri['dashboard_stt'] or 'whisper').lower(),
         'stt': str(hri.get('stt') or '') or None,
         'hint': kwargs.pop('stt_hint', None) or _hint_for(hri.get('stt_hint'), lang),
+        # "your turn" / "got it" tones around each listen (robot_agent.utils.earcon), volume 0 = off;
+        # HRI_CONFIGS earcon / earcon_volume, a call's earcon=False wins
+        'earcon': float(hri.get('earcon_volume') or 0.3) if _truthy(kwargs.pop('earcon', hri.get('earcon', True))) else 0.0,
     }
     if listen['capture'] not in ('whisper', 'browser'):
         raise ValueError(f"stt must be 'whisper' or 'browser', got {listen['capture']!r}")
@@ -184,7 +205,7 @@ def _hear(prompt, lang: str, source: str, listen: dict):
                                     mode='text' if typed else 'voice',
                                     capture=listen['capture'], hint=listen['hint'],
                                     silence_sec=listen['silence_sec'], stt=listen['stt'],
-                                    audio_out=keep)
+                                    audio_out=keep, earcon=listen['earcon'])
             if keep:
                 listen['last_audio'] = keep[0]              # (bytes, mime)
         except RuntimeError as e:
@@ -203,9 +224,13 @@ def _hear(prompt, lang: str, source: str, listen: dict):
     else:
         if prompt:
             say_to_user(prompt, lang=lang, source='robot')
+        if play_earcon('listen', listen['earcon']):          # "your turn" — over before the mic opens
+            time.sleep(EARCON_GAP_SEC)
         audio = record_phrase(max_sec=listen['max_sec'],
                               silence_sec=listen['silence_sec'],
                               energy_threshold=listen['energy_threshold'])
+        if audio is not None:
+            play_earcon('heard', listen['earcon'])           # "got it"; nothing when nobody spoke
         text = (speech_to_text(audio, lang=lang, prompt=listen['hint'], stt=listen['stt'])
                 if audio is not None else None)
         if keep is not None and audio is not None:
@@ -371,8 +396,13 @@ def ask(node, **kwargs):
             as "검은 가방->black bag"). Without "->" both are the option itself. They are also Whisper's hint
             words, so it hears 신라면, not 실라면. When None, the answer is
             simply repeated back.
-        read_options (bool): on a non-matching answer, read the options out
-            ("… 중에서 골라 주세요") instead of repeating the question. Default False.
+        The options' spoken parts are read out with the question, every time
+            it is asked ("어떤 가방을 가져갈까요? 베이지색 핸드백, 검은색 핸드백 중에서
+            골라 주세요"): a blind user cannot answer a choice they were not told.
+        read_options: no longer used (the options are always read); accepted for old plans.
+        confirm (bool): True (default) — say back what was understood: the
+            chosen option ("검은색핸드백, 알겠습니다") or, without options, the
+            user's words ('"…"라고 들었어요'). False — say nothing, go on.
         retries (int):  extra attempts after the first, for no answer or no
             match. Default 2.
         match_threshold (float): fuzzy-match floor, 0..1. Default 0.7.
@@ -400,7 +430,8 @@ def ask(node, **kwargs):
         options = spoken
     retries = max(0, int(kwargs.pop('retries', RETRIES)))
     threshold = float(kwargs.pop('match_threshold', MATCH_THRESHOLD))
-    read_options = _truthy(kwargs.pop('read_options', False))
+    kwargs.pop('read_options', None)            # the options are always read now
+    confirm = _truthy(kwargs.pop('confirm', True))
     own_hint = 'stt_hint' in kwargs          # _common pops it
     lang, source, listen = _common(kwargs)
     if options and not own_hint:
@@ -409,29 +440,31 @@ def ask(node, **kwargs):
         # was read out instead of confirming.
         listen['hint'] = ', '.join(options)
 
-    prompt, last_text = question or None, ''
+    # The question with the choices: said first and with every repeat.
+    asked = ' '.join(p for p in (question, options and _phrase('choose', lang, options=', '.join(options))) if p)
+    prompt, last_text = asked or None, ''
     for attempt in range(1, retries + 2):
         text, _audio = _hear(prompt, lang, source, listen)   # ask confirms the option, not the audio
         if not text:
             # Nobody answered: say so, then put the question again.
-            prompt = ' '.join(p for p in (_phrase('not_heard', lang), question) if p)
+            prompt = ' '.join(p for p in (_phrase('not_heard', lang), asked) if p)
             continue
         last_text = text
 
         if options is None:
-            _say(_phrase('heard_text', lang, text=text), lang, source)
+            if confirm:
+                _say(_phrase('heard_text', lang, text=text), lang, source)
             return {'isdone': True, 'answer': text, 'answer_text': text, 'text': text, 'attempts': attempt}
 
         choice = match_option(text, options, threshold)
         if choice is not None:
-            _say(_phrase('confirm', lang, choice=choice), lang, source)
+            if confirm:
+                _say(_phrase('confirm', lang, choice=choice), lang, source)
             return {'isdone': True, 'answer': values.get(choice, choice), 'answer_text': choice,
                     'text': text, 'attempts': attempt, 'options': options}
-        # An answer, just not one of the options: ask again (the list only
-        # with read_options).
+        # An answer, just not one of the options: ask again, the choices with it.
         log_data({'msg': f'ask: "{text}" matches none of {options}'})
-        prompt = (_phrase('choose', lang, options=', '.join(options)) if read_options
-                  else ' '.join(p for p in (_phrase('not_heard', lang), question) if p))
+        prompt = ' '.join(p for p in (_phrase('not_heard', lang), asked) if p)
 
     _say(_phrase('not_heard', lang), lang, source)
     msg = ('answer did not match any option' if last_text and options
@@ -458,6 +491,7 @@ def announce(node, **kwargs):
         source: 'dashboard' / 'robot' — default HRI_CONFIGS['source'].
         wait (bool): True (default) — return once the line has been spoken, so
             the next step does not start under it; False — go on at once.
+        rate (float): how fast the dashboard says it — default HRI_CONFIGS['speech_rate'].
 
     Usage:
         announce::식사 준비가 다 되었어요
@@ -474,6 +508,7 @@ def announce(node, **kwargs):
     if source not in SOURCES:
         raise ValueError(f'source must be one of {SOURCES}, got {source!r}')
     wait = _truthy(kwargs.pop('wait', True))
+    _set_rate(kwargs)
     log_data({'msg': f'robot: {text}'})
     say_to_user(text, lang=lang, source=source, wait=wait)
     return {'isdone': True, 'said': text, 'lang': lang, 'waited': wait}
@@ -547,6 +582,13 @@ _QA_PHRASES = {
               'en': "I didn't catch what you are looking for. Please say it again."},
     'unseen': {'ko': '보이지 않아요.',
                'en': "I can't see it."},
+    # Long silence in a conversation (idle_ask_sec / idle_end_sec).
+    'idle_ask': {'ko': '더 궁금하신 게 있으세요? 대답이 없으시면 잠시 후 대화를 마칠게요.',
+                 'en': "Anything else you'd like to know? If I hear nothing, I'll end our chat shortly."},
+    'idle_bye': {'ko': '대답이 없으셔서 대화를 마칠게요.',
+                 'en': "I didn't hear anything, so I'll end our chat."},
+    'go_on':    {'ko': '네, 말씀하세요.',
+                 'en': 'Sure, go ahead.'},
 }
 
 _LANG_NAME = {'ko': 'Korean', 'en': 'English'}
@@ -590,7 +632,12 @@ _QA_DEFAULTS = {
     'camera': 'head_rgb',
     'arm_camera': 'arm_rgb',    # qa::cam='arm' — one photo, the head does not move
     'views': ['up', 'straight', 'down'],
-    'idle_turns': 6,
+    # A conversation nobody talks to: after idle_ask_sec of silence the robot asks
+    # whether there is anything else ('idle_ask'), and ends idle_end_sec after that
+    # question if still nobody speaks. 0 = never (listen until a stop word / Cancel).
+    # Not for typed input or once.
+    'idle_ask_sec': 60,
+    'idle_end_sec': 30,
     'history_turns': 4,
     'max_side': 1280,           # full head-cam width: small things (towels) read better
     'settle_sec': 0.4,
@@ -1862,6 +1909,8 @@ _NO = re.compile(r'아니|아뇨|괜찮|그대로|그냥\s?둬|놔둬|\bno\b|\bn
 # A new question rather than an answer to "꺼 드릴까요?".
 _QUESTION_WORD = re.compile(r'어디|뭐|무엇|무슨|몇|어떤|어때|누구|언제'
                             r'|\b(where|what|which|how|who|when)\b|\b(is|are) there\b', re.IGNORECASE)
+# A short "no more" to "더 궁금하신 게 있으세요?" (_NO, or 없어 / 없습니다 alone).
+_NONE_LEFT = re.compile(r'^\s*(없어|없어요|없습니다|없음|없다)\s*[.!]?\s*$')
 OFFER_RETRIES = 2     # unclear answers to "꺼 드릴까요?" asked again before leaving the light
 
 
@@ -2061,8 +2110,14 @@ def qa(node, **kwargs):
     listening — the opening question, then each answer — is the prompt of the
     listen, so it is spoken to completion and the mic opens right after. No
     answer is not an end: the robot listens again (silently, so it does not
-    keep talking at an empty room). Only a stop word (그만, 종료, stop …,
-    on a short utterance) or Cancel / Stop on the dashboard ends it.
+    keep talking at an empty room). A stop word (그만, 종료, stop …, on a
+    short utterance) or Cancel / Stop on the dashboard ends it, and so does a
+    long silence: after `idle_ask_sec` (60 s) nobody spoke, the robot asks "더
+    궁금하신 게 있으세요? …"; "아니요" / "없어요" ends it, "네" carries on, and
+    `idle_end_sec` (30 s) more of silence ends it ("대답이 없으셔서 …").
+    The dashboard's "End Q&A" button (POST /agent/qa/end) ends it like a stop
+    word: an answer already worked out is still said, then "대화를 마칠게요.";
+    success, so the plan goes on. Not during the emergency exchange.
 
     Params:
         inputs (str): the opening question, said instead of the default
@@ -2091,24 +2146,61 @@ def qa(node, **kwargs):
         products: False turns off the product recogniser (default on): a
             question about 라면 / a product name is answered with the names it
             is sure of (configs/products), never a name the model read.
+        context: what an earlier step hands over. The context of check_fall /
+            check_restroom (``qa::context={answer}, cam=None``): nothing
+            detected → a short notice; detected → the notice and the
+            "괜찮으신가요?" exchange (emergency.dialog: confirm, or call 119 —
+            simulated). Then qa ends and stops the plan (``stop``); with a
+            camera a "fine" carries on into the usual conversation instead.
+        cam=None: no camera at all — only with such a context.
 
     Returns ``{'isdone', 'turns', 'ended', 'history'}`` (+ ``answer`` with
-    once) — `ended` is 'stop word', 'cancelled', 'answered' or 'no answer'
-    (once, nobody spoke; isdone False).
+    once) — `ended` is 'stop word', 'cancelled', 'answered', 'idle' (long
+    silence), 'nothing more' (no to "더 궁금하신 게 있으세요?"), 'operator'
+    ("End Q&A" on the dashboard) or 'no answer'
+    (once, nobody spoke; isdone False). With an emergency context ended may
+    also be 'fine' / 'emergency', with ``outcome``, ``called_119`` and the
+    exchange in ``emergency_check``.
     """
 
     opening = str(kwargs.pop('inputs', '') or '').strip()   # a bare "qa::" carries nothing
     loc = kwargs.pop('loc', None)
-    cam = str(kwargs.pop('cam', 'head') or 'head').lower()
+    context = kwargs.pop('context', None)
+    emergency = isinstance(context, dict) and bool(context.get('emergency'))
+    cam_arg = kwargs.pop('cam', 'head')
+    cam = None if cam_arg is None or str(cam_arg).strip().lower() in ('', 'none', 'null') \
+        else str(cam_arg).strip().lower()
     once = _truthy(kwargs.pop('once', False))
     retries = max(0, int(kwargs.pop('retries', RETRIES)))
     use_products = _truthy(kwargs.pop('products', True))
-    if cam not in ('head', 'arm'):
-        raise ValueError(f"cam must be 'head' or 'arm', got {cam!r}")
+    if cam not in ('head', 'arm', None):
+        raise ValueError(f"cam must be 'head', 'arm' or None, got {cam!r}")
+    if cam is None and not emergency:
+        raise ValueError('qa: cam=None (no camera) needs the context of check_fall / check_restroom '
+                         '(qa::context={answer}, cam=None)')
+    if emergency:                           # the detector's mic / language, unless this call names one
+        for k in ('source', 'lang'):
+            if k not in kwargs and context.get(k):
+                kwargs[k] = context[k]
     explicit_views = 'views' in kwargs
     cfg = _qa_config(kwargs)
     cfg['cam'] = cam
     lang, source, listen = _common(kwargs)
+    if emergency:
+        from . import emergency as _em      # emergency imports this module
+        over = {k: kwargs.pop(k) for k in list(kwargs) if k in _em._DEFAULTS}
+        check = _em.dialog(node, context, lang, source, listen, **over)
+        log_data({'msg': f"qa: {check['kind']} → {check['outcome']}"
+                         + (' (119 called, simulated)' if check['called_119'] else '')})
+        if cam is None or check['outcome'] != 'fine':
+            # Said what had to be said: the plan ends here (stop), whatever the outcome.
+            ended = {'fine': 'fine', 'nothing': 'nothing detected',
+                     'cancelled': 'cancelled'}.get(check['outcome'], 'emergency')
+            return {'isdone': check['outcome'] != 'cancelled', 'ended': ended, 'outcome': check['outcome'],
+                    'called_119': check['called_119'], 'answer': check['answer'], 'emergency_check': check,
+                    'turns': len(check['turns']), 'history': [],
+                    'stop': check['outcome'] != 'cancelled', 'stop_reason': f"{check['kind']}: {ended}"}
+        opening = None                      # fine, and a camera: the usual conversation, silently listening
     # A typed question is waited for until it comes or the run is cancelled: a
     # listen that times out would leave the browser's Q&A card waiting on the
     # old request, and the line typed next would go to it and be lost.
@@ -2146,200 +2238,244 @@ def qa(node, **kwargs):
     light_ctx = None                        # the light just asked about, for "응" / "꺼줘"
     ended = 'cancelled'
     silent = 0
-    opening = opening or _qa_phrase('start', lang)
-    prompt = opening                        # said by the first listen, as `ask` does
+    idle_ask = 0.0 if once else float(cfg.get('idle_ask_sec') or 0)
+    idle_end = float(cfg.get('idle_end_sec') or 0)
+    quiet_since = time.monotonic()          # the robot's last line / the user's last words
+    asked_idle = False                      # "더 궁금하신 게 있으세요?" said, no answer yet
+    if opening is None:                     # after the emergency exchange: it has spoken already
+        opening, prompt = _qa_phrase('start', lang), None
+    else:
+        opening = opening or _qa_phrase('start', lang)
+        prompt = opening                    # said by the first listen, as `ask` does
 
-    while not cancel_requested():
-        # After "꺼 드릴까요?" Whisper is told to expect 네 / 아니요 (_offer_hint).
-        pending = (light_ctx or {}).get('offer')
-        listen['hint'] = (_offer_hint(pending[0], lang) if pending else None) or base_hint
-        try:
-            text, _audio = _hear(prompt, lang, source, listen)
-        except RuntimeError:
-            if cancel_requested():          # the dashboard mic was released by Stop
+    pending_answer = None
+    dialog_begin()                          # "End Q&A" may end it from here on
+    _emit({'qa_state': {'active': True}})
+    try:
+        while not cancel_requested():
+            if end_dialog_requested():          # "End Q&A" on the dashboard: as a stop word
+                if pending_answer:              # the answer already worked out is still said
+                    _say(pending_answer, lang, source)
+                ended = 'operator'
                 break
-            raise
-        _save_audio(listen, text, lang)
-        prompt = None                       # nothing heard: listen again, quietly
-        if not text:
-            silent += 1
-            if once and silent > retries:   # one-shot: give up like `ask` does
-                ended = 'no answer'
-                break
-            if once:                        # one-shot: ask again, as `ask` does
-                prompt = ' '.join(p for p in (_phrase('not_heard', lang), opening) if p)
-            continue
-        silent = 0
-        if _is_stop(text):
-            ended = 'stop word'
-            break
-
-        # Lights. "세탁실 불 켜져 있어?" → light_state, answered with an offer
-        # ("꺼 드릴까요?"); "불 꺼줘" — or right after, "응" / "꺼줘" — → say it
-        # will, then turn_light (_light_command).
-        last_light, light_ctx = light_ctx, None
-        if _light_question(text):
-            loc, said = _light_device(text)
-            _say(_light_phrase('check', 'on', lang), lang, source)
+            # After "꺼 드릴까요?" Whisper is told to expect 네 / 아니요 (_offer_hint).
+            pending = (light_ctx or {}).get('offer')
+            listen['hint'] = (_offer_hint(pending[0], lang) if pending else None) or base_hint
+            had_prompt = bool(prompt)
             try:
-                answer, offer = _light_state_answer(node, loc, said, lang)
-            except Exception as e:                      # no SwitchBot / BLE error
-                log_data({'msg': f'qa: light_state: {e}'})
-                answer, offer = _light_phrase('unknown', 'on', lang, said or ''), None
-            history.append((text, answer))
-            if once:
-                _say(answer, lang, source)
-                ended = 'answered'
+                text, _audio = _hear(prompt, lang, source, listen)
+            except RuntimeError:
+                if cancel_requested():          # the dashboard mic was released by Stop
+                    break
+                raise
+            _save_audio(listen, text, lang)
+            pending_answer = None
+            if end_dialog_requested():          # pressed while listening: what was heard is dropped
+                ended = 'operator'
                 break
-            if offer:
-                name = said or (_light_name(offer[1], lang) if offer[1] != 'all' else '')
-                light_ctx = {'loc': loc, 'said': said, 'offer': offer, 'name': name, 'tries': 0}
-            prompt = answer                 # spoken by the next listen, then the mic opens
-            continue
-        light = None
-        offer = (last_light or {}).get('offer')
-        if offer and not _LIGHT_NOUN.search(text):
-            # The answer to "꺼 드릴까요?": yes / no / 꺼줘 do it; anything unclear
-            # ("택시, 고죠") is asked again, never guessed and never sent to the
-            # camera; a new question ("와인잔 어디 있어?") is answered as usual.
-            reply = _offer_reply(text)
-            if reply == 'no':
-                answer = _light_phrase('leave', 'on', lang)
-                history.append((text, answer))
-                prompt = answer
+            prompt = None                       # nothing heard: listen again, quietly
+            if text or had_prompt:              # the silence is counted from here
+                quiet_since = time.monotonic()
+            if not text:
+                silent += 1
+                if once and silent > retries:   # one-shot: give up like `ask` does
+                    ended = 'no answer'
+                    break
+                if once:                        # one-shot: ask again, as `ask` does
+                    prompt = ' '.join(p for p in (_phrase('not_heard', lang), opening) if p)
+                elif idle_ask > 0 and listen.get('mode') != 'text':   # typed input waits as long as it takes
+                    quiet = time.monotonic() - quiet_since
+                    if asked_idle and quiet >= idle_end:
+                        ended = 'idle'
+                        break
+                    if not asked_idle and quiet >= idle_ask:
+                        log_data({'msg': f'qa: nobody spoke for {quiet:.0f} s — asking whether to go on'})
+                        prompt, asked_idle = _qa_phrase('idle_ask', lang), True
                 continue
-            if reply == 'yes':
-                light = offer
-            elif reply in ('on', 'off'):
-                light = (reply, offer[1] if reply == offer[0] else last_light['loc'])
-            elif not _QUESTION_WORD.search(text):
-                tries = last_light['tries'] + 1
-                if tries > OFFER_RETRIES:
-                    answer = _light_phrase('gave_up', 'on', lang)
-                else:
-                    answer = _light_phrase('again', offer[0], lang, last_light['name'])
-                    light_ctx = {**last_light, 'tries': tries}
-                log_data({'msg': f'qa: unclear answer to the light offer ({tries}/{OFFER_RETRIES})'})
-                history.append((text, answer))
-                prompt = answer
-                continue
-        if light is None:
-            light = _light_command(text, follow_up=last_light is not None and not offer)
-        if light is not None:
-            action, loc = light
-            said = _light_device(text)[1] if loc else None
-            if loc is None and last_light:              # "꺼줘" about the light just asked about
-                loc = offer[1] if offer and offer[0] == action else last_light['loc']
-                said = last_light['said'] if loc == last_light['loc'] else None
-            loc = loc or _default_light()
-            name = said or (_light_name(loc, lang) if loc and loc != 'all' else '')
-            ack = _light_phrase('ack', action, lang, name)
-            _say(ack, lang, source)
-            try:
-                ok, note = _do_light(node, action, loc, lang)
-            except Exception as e:                      # no SwitchBot / BLE error
-                ok, note = False, f'turn_light {action}: {e}'
-            log_data({'msg': f'qa: {note}'})
-            answer = ack
-            if not ok:
-                answer = _light_phrase('fail', action, lang)
-                _say(answer, lang, source)
-            history.append((text, answer))
-            if once:
-                ended = 'answered'
+            silent = 0
+            if _is_stop(text):
+                ended = 'stop word'
                 break
-            continue                                    # listen again (already spoken)
+            if asked_idle:                      # the answer to "더 궁금하신 게 있으세요?"
+                asked_idle = False
+                short = len(re.sub(r'\W', '', text)) <= 10 and not _QUESTION_WORD.search(text)
+                if short and (_NO.search(text) or _NONE_LEFT.match(text)):
+                    ended = 'nothing more'
+                    break
+                if short and _YES.search(text):
+                    prompt = _qa_phrase('go_on', lang)
+                    continue
+                # anything else: a question, answered as usual
 
-        # A new question: clear the previous answer's picture; the photos the
-        # model is given for this answer are logged once it has answered.
-        log_data({'log_image_reset': True})
-        # "숟가락 어디에 떨어졌어?" — the arm camera + geometry, no head photos /
-        # model (see _drop_answer).
-        # Any "…떨어졌어?" goes here, even when the object word was not
-        # understood (it asks again) — never to the left / right place answer.
-        drop = _is_drop_question(text)
-        fresh = (shots and _truthy(cfg['reuse_photos'])
-                 and time.time() - shot_at <= float(cfg['refresh_sec']))
-        if not drop and not fresh:          # new photos unless reuse_photos says otherwise
-            _say(_qa_phrase('look', lang), lang, source)
-            shots, shot_at = _look_around(node, cfg), time.time()
+            # Lights. "세탁실 불 켜져 있어?" → light_state, answered with an offer
+            # ("꺼 드릴까요?"); "불 꺼줘" — or right after, "응" / "꺼줘" — → say it
+            # will, then turn_light (_light_command).
+            last_light, light_ctx = light_ctx, None
+            if _light_question(text):
+                loc, said = _light_device(text)
+                _say(_light_phrase('check', 'on', lang), lang, source)
+                try:
+                    answer, offer = _light_state_answer(node, loc, said, lang)
+                except Exception as e:                      # no SwitchBot / BLE error
+                    log_data({'msg': f'qa: light_state: {e}'})
+                    answer, offer = _light_phrase('unknown', 'on', lang, said or ''), None
+                history.append((text, answer))
+                if once:
+                    _say(answer, lang, source)
+                    ended = 'answered'
+                    break
+                if offer:
+                    name = said or (_light_name(offer[1], lang) if offer[1] != 'all' else '')
+                    light_ctx = {'loc': loc, 'said': said, 'offer': offer, 'name': name, 'tries': 0}
+                prompt = pending_answer = answer                 # spoken by the next listen, then the mic opens
+                continue
+            light = None
+            offer = (last_light or {}).get('offer')
+            if offer and not _LIGHT_NOUN.search(text):
+                # The answer to "꺼 드릴까요?": yes / no / 꺼줘 do it; anything unclear
+                # ("택시, 고죠") is asked again, never guessed and never sent to the
+                # camera; a new question ("와인잔 어디 있어?") is answered as usual.
+                reply = _offer_reply(text)
+                if reply == 'no':
+                    answer = _light_phrase('leave', 'on', lang)
+                    history.append((text, answer))
+                    prompt = pending_answer = answer
+                    continue
+                if reply == 'yes':
+                    light = offer
+                elif reply in ('on', 'off'):
+                    light = (reply, offer[1] if reply == offer[0] else last_light['loc'])
+                elif not _QUESTION_WORD.search(text):
+                    tries = last_light['tries'] + 1
+                    if tries > OFFER_RETRIES:
+                        answer = _light_phrase('gave_up', 'on', lang)
+                    else:
+                        answer = _light_phrase('again', offer[0], lang, last_light['name'])
+                        light_ctx = {**last_light, 'tries': tries}
+                    log_data({'msg': f'qa: unclear answer to the light offer ({tries}/{OFFER_RETRIES})'})
+                    history.append((text, answer))
+                    prompt = pending_answer = answer
+                    continue
+            if light is None:
+                light = _light_command(text, follow_up=last_light is not None and not offer)
+            if light is not None:
+                action, loc = light
+                said = _light_device(text)[1] if loc else None
+                if loc is None and last_light:              # "꺼줘" about the light just asked about
+                    loc = offer[1] if offer and offer[0] == action else last_light['loc']
+                    said = last_light['said'] if loc == last_light['loc'] else None
+                loc = loc or _default_light()
+                name = said or (_light_name(loc, lang) if loc and loc != 'all' else '')
+                ack = _light_phrase('ack', action, lang, name)
+                _say(ack, lang, source)
+                try:
+                    ok, note = _do_light(node, action, loc, lang)
+                except Exception as e:                      # no SwitchBot / BLE error
+                    ok, note = False, f'turn_light {action}: {e}'
+                log_data({'msg': f'qa: {note}'})
+                answer = ack
+                if not ok:
+                    answer = _light_phrase('fail', action, lang)
+                    _say(answer, lang, source)
+                history.append((text, answer))
+                if once:
+                    ended = 'answered'
+                    break
+                continue                                    # listen again (already spoken)
+
+            # A new question: clear the previous answer's picture; the photos the
+            # model is given for this answer are logged once it has answered.
+            log_data({'log_image_reset': True})
+            # "숟가락 어디에 떨어졌어?" — the arm camera + geometry, no head photos /
+            # model (see _drop_answer).
+            # Any "…떨어졌어?" goes here, even when the object word was not
+            # understood (it asks again) — never to the left / right place answer.
+            drop = _is_drop_question(text)
+            fresh = (shots and _truthy(cfg['reuse_photos'])
+                     and time.time() - shot_at <= float(cfg['refresh_sec']))
+            if not drop and not fresh:          # new photos unless reuse_photos says otherwise
+                _say(_qa_phrase('look', lang), lang, source)
+                shots, shot_at = _look_around(node, cfg), time.time()
+                if cancel_requested():
+                    break
+
+            facts = None
+            recall = history if _truthy(cfg['memory']) else []     # earlier turns only with memory=True
+            if drop:
+                t0 = time.time()
+                try:
+                    answer = _drop_answer(node, cfg, text, lang)
+                except Exception as e:
+                    log_data({'msg': f'qa: dropped-object search failed: {e}'})
+                    answer = _qa_phrase('error', lang)
+                log_data({'msg': f'qa: answered in {time.time() - t0:.1f}s from the arm camera (feet + object)'})
+            elif not shots:
+                answer = _qa_phrase('blind', lang)
+            else:
+                t0 = time.time()
+                try:
+                    named = []
+                    if use_products and _is_product_question(text):
+                        if inv_at != shot_at:       # once per set of photos
+                            t1 = time.time()
+                            inv, inv_at = _inventory(cfg, shots), shot_at
+                            log_data({'msg': f'qa: products ({time.time() - t1:.1f}s): ' + (', '.join(
+                                f"{p['name'] or '?'}@{p['side']} {p['sim']:.2f}" for p in inv) or 'none')})
+                        from . import _products
+                        named = _products.names_in(text)
+                        facts = _product_facts(inv)
+                    unknown = _unknown_names(text) if facts else []
+                    if named:                       # "신라면 있어?" — straight from the recogniser
+                        answer = _product_answer(named, inv, lang)
+                    elif unknown:                   # "진라면 있어?" — not a product it knows: never yes / no
+                        answer = _unrecognised_answer(unknown, inv, lang)
+                    elif facts and _LIST_QUESTION.search(text):
+                        # "무슨 라면 있어?" — the recogniser's list, no model: the model
+                        # answered it in Chinese and dropped the unnamed pack.
+                        answer = _product_list(inv, lang)
+                        log_data({'msg': 'qa: answer by product list'})
+                    elif facts:                     # other product questions — model, with the verified names
+                        answer = _ask_vlm(cfg, shots, text, recall, lang, facts=facts)
+                        if _unknown_names(answer):   # it named a product anyway: use the list
+                            log_data({'msg': f'qa: model named an unverified product — {answer!r}'})
+                            answer = _product_list(inv, lang)
+                    else:
+                        answer, route = None, ''
+                        where = bool(_WHERE.search(text.lower()))
+                        if where and getattr(shots, 'geo', None) and (not qa_cfg or qa_cfg.get('shelves')):
+                            answer = _ask_shelves(cfg, shots, text, recall, lang, qa_cfg)
+                            route = 'shelves' if answer is not None else 'shelves found nothing → '
+                        elif where:
+                            route = ('no depth → ' if not getattr(shots, 'geo', None)
+                                     else 'place block without shelves → ')
+                        if answer is None:
+                            use_place = bool(qa_cfg and qa_cfg.get('places'))
+                            answer = (_ask_place(cfg, shots, text, recall, lang, qa_cfg) if use_place
+                                      else _ask_vlm(cfg, shots, text, recall, lang))
+                            route += 'place layout' if use_place else 'free answer'
+                        log_data({'msg': f'qa: answer by {route}'})
+                except Exception as e:
+                    log_data({'msg': f'qa: vision model failed ({_vlm_label(cfg)}): {e}'})
+                    answer = ''
+                log_data({'msg': f'qa: answered in {time.time() - t0:.1f}s by {_vlm_label(cfg)} '
+                                 f'from {len(shots)} photo(s) taken {time.time() - shot_at:.0f}s ago '
+                                 f"({', '.join(v for v, _ in shots)})",
+                          'log_image': _mosaic(shots)})
+                answer = answer or _qa_phrase('error', lang)
             if cancel_requested():
                 break
+            history.append((text, answer))
+            if once:                            # one question: say the answer and end
+                _say(answer, lang, source)
+                ended = 'answered'
+                break
+            prompt = pending_answer = answer                     # spoken by the next listen, then the mic opens
 
-        facts = None
-        recall = history if _truthy(cfg['memory']) else []     # earlier turns only with memory=True
-        if drop:
-            t0 = time.time()
-            try:
-                answer = _drop_answer(node, cfg, text, lang)
-            except Exception as e:
-                log_data({'msg': f'qa: dropped-object search failed: {e}'})
-                answer = _qa_phrase('error', lang)
-            log_data({'msg': f'qa: answered in {time.time() - t0:.1f}s from the arm camera (feet + object)'})
-        elif not shots:
-            answer = _qa_phrase('blind', lang)
-        else:
-            t0 = time.time()
-            try:
-                named = []
-                if use_products and _is_product_question(text):
-                    if inv_at != shot_at:       # once per set of photos
-                        t1 = time.time()
-                        inv, inv_at = _inventory(cfg, shots), shot_at
-                        log_data({'msg': f'qa: products ({time.time() - t1:.1f}s): ' + (', '.join(
-                            f"{p['name'] or '?'}@{p['side']} {p['sim']:.2f}" for p in inv) or 'none')})
-                    from . import _products
-                    named = _products.names_in(text)
-                    facts = _product_facts(inv)
-                unknown = _unknown_names(text) if facts else []
-                if named:                       # "신라면 있어?" — straight from the recogniser
-                    answer = _product_answer(named, inv, lang)
-                elif unknown:                   # "진라면 있어?" — not a product it knows: never yes / no
-                    answer = _unrecognised_answer(unknown, inv, lang)
-                elif facts and _LIST_QUESTION.search(text):
-                    # "무슨 라면 있어?" — the recogniser's list, no model: the model
-                    # answered it in Chinese and dropped the unnamed pack.
-                    answer = _product_list(inv, lang)
-                    log_data({'msg': 'qa: answer by product list'})
-                elif facts:                     # other product questions — model, with the verified names
-                    answer = _ask_vlm(cfg, shots, text, recall, lang, facts=facts)
-                    if _unknown_names(answer):   # it named a product anyway: use the list
-                        log_data({'msg': f'qa: model named an unverified product — {answer!r}'})
-                        answer = _product_list(inv, lang)
-                else:
-                    answer, route = None, ''
-                    where = bool(_WHERE.search(text.lower()))
-                    if where and getattr(shots, 'geo', None) and (not qa_cfg or qa_cfg.get('shelves')):
-                        answer = _ask_shelves(cfg, shots, text, recall, lang, qa_cfg)
-                        route = 'shelves' if answer is not None else 'shelves found nothing → '
-                    elif where:
-                        route = ('no depth → ' if not getattr(shots, 'geo', None)
-                                 else 'place block without shelves → ')
-                    if answer is None:
-                        use_place = bool(qa_cfg and qa_cfg.get('places'))
-                        answer = (_ask_place(cfg, shots, text, recall, lang, qa_cfg) if use_place
-                                  else _ask_vlm(cfg, shots, text, recall, lang))
-                        route += 'place layout' if use_place else 'free answer'
-                    log_data({'msg': f'qa: answer by {route}'})
-            except Exception as e:
-                log_data({'msg': f'qa: vision model failed ({_vlm_label(cfg)}): {e}'})
-                answer = ''
-            log_data({'msg': f'qa: answered in {time.time() - t0:.1f}s by {_vlm_label(cfg)} '
-                             f'from {len(shots)} photo(s) taken {time.time() - shot_at:.0f}s ago '
-                             f"({', '.join(v for v, _ in shots)})",
-                      'log_image': _mosaic(shots)})
-            answer = answer or _qa_phrase('error', lang)
-        if cancel_requested():
-            break
-        history.append((text, answer))
-        if once:                            # one question: say the answer and end
-            _say(answer, lang, source)
-            ended = 'answered'
-            break
-        prompt = answer                     # spoken by the next listen, then the mic opens
-
-    if ended not in ('cancelled', 'answered'):
-        _say(_qa_phrase('bye', lang), lang, source)
+        if ended not in ('cancelled', 'answered'):
+            _say(_qa_phrase('idle_bye' if ended == 'idle' else 'bye', lang), lang, source)
+    finally:
+        dialog_end()
+        _emit({'qa_state': {'active': False}})
     out = {'isdone': ended != 'no answer', 'turns': len(history), 'ended': ended,
            'history': [{'q': q, 'a': a} for q, a in history]}
     if once and history:

@@ -255,8 +255,43 @@ def _label_owner(cls: str, prompts: list):
     return max(hits, key=len) if hits else None
 
 
+# find::main_body=True (find_place's destination). A pot's box takes its handle: on find_place::steel pot
+# (2026-10-14, head down, 27 frames) the top box held the handle in every frame for steel pot / stainless
+# steel pot / cooking pot / saucepan / pot (metal bowl 4/15, at 0.43), and the box centre was 6.8-7.2 cm
+# off the pot's centre. A handle is thin next to the body: opening the mask with a disk of BODY_OPEN_K x
+# the largest inscribed radius cut it off in 27 / 27 frames (0 handle pixels left). The pose is then taken
+# from the box of what is left, the same way as from a detection box.
+BODY_OPEN_K = 0.5
+
+
+def _main_body(mask):
+    """The object's main body in `mask` (bool, same size): thin parts (a handle, a spout, a strap) cut off by an
+    opening with a disk of BODY_OPEN_K x the largest inscribed radius; None when the mask is missing or tiny."""
+    if mask is None:
+        return None
+    full = np.asarray(mask) > 0
+    vv, uu = np.nonzero(full)
+    if not len(uu):
+        return None
+    y0, y1, x0, x1 = vv.min(), vv.max() + 1, uu.min(), uu.max() + 1        # work on the mask's own box (~1 ms vs 0.2 s)
+    m = np.pad(full[y0:y1, x0:x1].astype(np.uint8), 1)
+    dt = cv2.distanceTransform(m, cv2.DIST_L2, 5)
+    R = float(dt.max())
+    if R < 5:
+        return None
+    rad = max(2, int(BODY_OPEN_K * R))
+    opened = cv2.morphologyEx(m, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * rad + 1, 2 * rad + 1)))
+    _, lab = cv2.connectedComponents(opened)
+    v0, u0 = np.unravel_index(np.argmax(dt), dt.shape)
+    if lab[v0, u0] == 0:
+        return None
+    body = np.zeros_like(full)
+    body[y0:y1, x0:x1] = (lab == lab[v0, u0])[1:-1, 1:-1]
+    return body
+
+
 def _object_entry(node, name, target, res, rgb, depth, cam_params, w, h, with_grasp, grasp_configs,
-                  keep_orientation, gravity_cam, use_head, robot_mode, simple_return, panels, tag):
+                  keep_orientation, gravity_cam, use_head, robot_mode, simple_return, panels, tag, main_body=False):
     """One detected object's entry (pose, approach, grasp …) — and its panel."""
     det_box = _bbox_to_xyxy(target.bbox)        # object bbox → islying + viz
 
@@ -284,8 +319,21 @@ def _object_entry(node, name, target, res, rgb, depth, cam_params, w, h, with_gr
     if grasp is not None:
         pose, ebox, escore, box_depths = grasp['pose_3d'], grasp['box'], grasp['score'], grasp['depths']
     else:
-        box_depths = _box_depths(depth, det_box)
-        pose   = _object_pose_3d(node, det_box, box_depths, depth, cam_params, use_head=use_head)
+        pose_box = det_box
+        if main_body:
+            body = _main_body(mask)
+            if body is None:
+                log_data({'msg': f'find {tag}: no mask for main_body, detection box used'})
+            else:
+                vv, uu = np.nonzero(body)
+                pose_box = [int(uu.min()), int(vv.min()), int(uu.max()) + 1, int(vv.max()) + 1]
+                log_data({'msg': f'find {tag}: main body box {pose_box} (detection box {[int(v) for v in det_box]}, '
+                                 f'{int((np.asarray(mask) > 0).sum() - body.sum())} px cut off)'})
+        box_depths = _box_depths(depth, pose_box)
+        pose   = _object_pose_3d(node, pose_box, box_depths, depth, cam_params, use_head=use_head)
+        if use_head:
+            # head camera calibration error: ARM_CONFIGS.calib_offset [dx, dy, dz] (m, base frame)
+            pose = [float(p) + float(o) for p, o in zip(pose, ARM_CONFIGS.get('calib_offset') or [0, 0, 0])]
         ebox, escore = det_box, float(getattr(target, 'conf', 0.0))
 
     if simple_return:
@@ -380,11 +428,15 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     grasppose?, grasp_score?}}}`` (or ``{pose, islying, grasppose?}`` when
     ``simple_return``).
 
+    ``main_body=True``: the pose comes from the box of the object's main body (handle / thin parts cut off
+    its mask, see _main_body) instead of the detection box.
+
     All names go to the detector in ONE request per trial ("cup. bottle.").
     ``max_instances`` (1 | N | 'all', or per name {name: …, '*': …}): with more than 1, each name's entry is
     its best object plus ``instances`` (up to N entries, best first) and
     ``count``."""
     simple_return    = kwargs.pop('simple_return', False)
+    main_body        = bool(kwargs.pop('main_body', False))
     camera           = kwargs.pop('camera', 'arm')
     estimate_grasp   = kwargs.pop('estimate_grasp', False)
     keep_orientation = kwargs.pop('keep_orientation', False)
@@ -401,8 +453,20 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     min_conf = kwargs.pop('min_conf', 0.1 if any('handle' in n for n in obj_names) else 0.0)
     # verify=True: a VLM looks at the crop of each detection scoring below `verify_above` ("is this a cup?")
     # and drops the ones it says are not (the detector "finds" absent objects at 0.4-0.6).
-    verify       = bool(kwargs.pop('verify', False))
+    verify       = str(kwargs.pop('verify', False)).strip().lower() in ('1', 'true', 'yes', 'on')
     verify_above = float(kwargs.pop('verify_above', 0.75))
+    # others='beige bag, blue bag': what the asked object must be told apart from (ask's other options). They go
+    # into the same detector request and each box goes to the name it matches best; a box taken by one of them is
+    # not the asked object. Asked for "black bag" alone the detector boxed the beige bag (0.45 vs 0.39-0.42: it
+    # scores "a bag", hardly the colour); with all three names the black bag got 0.79-0.86 (2026-10-15).
+    others = _other_names(kwargs.pop('others', None), obj_names)
+    # others_strict False (find_grasp, the wrist close-up once pick is in front of the object): a box another
+    # name claims is only a last resort, kept when no other box of the asked name is left. Up close the colour
+    # is read worse: pick::black bag lost the black bag to "blue bag" (0.43-0.45 vs 0.35-0.39, same box) in
+    # every frame of both grasp trials, with find's own choice already made (2026-10-15).
+    others_strict = str(kwargs.pop('others_strict', True)).strip().lower() in ('1', 'true', 'yes', 'on')
+    if others:
+        log_data({'msg': f"find {', '.join(obj_names)}: told apart from {', '.join(others)}"})
     # Grasp selection uses the closer `detect_grasp` profile; plain detection the
     # default `detect_object` profile.
     cfg_key = 'detect_grasp' if with_grasp else 'detect_object'
@@ -446,7 +510,7 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
             break
         cam = fetch_camera_data(node, camera)
         rgb, depth, cam_params = cam.rgb, cam.depth, cam.cam_params
-        prompts = list(dict.fromkeys(plans[n][0] for n in missing))
+        prompts = list(dict.fromkeys([plans[n][0] for n in missing] + others))
         req_cfg = dict(det_configs)
         for k in ('box_threshold', 'text_threshold'):
             vals = [plans[n][1][k] for n in missing if plans[n][1].get(k) is not None]
@@ -458,12 +522,21 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
             res_all = res_all.filter_by_conf(min_conf=min_conf)
         owner = [_label_owner(getattr(d, 'cls', ''), prompts) for d in res_all.detections]
         body = set() if use_head else _robot_body(res_all, depth, rgb.shape)
+        taken = _taken_by_others(res_all, owner, set(others)) if others else {}
         reports = {}                 # (prompt, floor) → classify() of those packs, shared by products
         for n in missing:
             prompt, cfg, product = plans[n]
             floor = float(cfg.get('box_threshold') or 0.0)
             idx = [k for k, d in enumerate(res_all.detections)
                    if owner[k] == prompt and float(getattr(d, 'conf', 0.0)) >= floor and k not in body]
+            mine = [k for k in idx if k not in taken]
+            for k in idx:
+                if k in taken:
+                    c = float(getattr(res_all.detections[k], 'conf', 0.0))
+                    log_data({'msg': f'{prompt} {c:.2f}: the same box is {taken[k][0]} {taken[k][1]:.2f} — '
+                                     + ('dropped' if others_strict or mine else 'kept, nothing else is a ' + prompt)})
+            if mine or others_strict:
+                idx = mine
             if verify and product is None and idx:
                 idx = _vlm_filter(rgb, res_all, idx, n, verify_above)
             if not idx:
@@ -476,7 +549,9 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
                 res, report = _products.match(_vs_client(), rgb, res, product[0], product[2],
                                               label=n, report=reports[key])
                 log_data({'msg': f'{n} = {product[0]}: ' + ', '.join(
-                    f"{r['best']} {r['sim']:.2f}{'' if r['sure'] else '?'}" for r in report)
+                    f"{r['best']} {r['sim']:.2f}{'' if r['sure'] else '?'}"
+                    + (f" (masked {r['masked']['best']} {r['masked']['sim']:.2f}/{r['masked']['margin']:.3f})"
+                       if 'best' in r.get('masked', {}) else '') for r in report)
                     + ('' if res.detections else ' — not sure which pack, not picking')})
             if res.detections:
                 found[n] = (res, rgb, depth, cam_params)
@@ -499,7 +574,7 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
             entry = _object_entry(node, name, target, remaining, rgb, depth, cam_params, w, h,
                                   with_grasp, grasp_configs, keep_orientation, gravity_cam,
                                   use_head, robot_mode, simple_return, panels,
-                                  tag=name if not entries else f'{name}#{len(entries) + 1}')
+                                  tag=name if not entries else f'{name}#{len(entries) + 1}', main_body=main_body)
             entries.append(entry)
             rest = [x for x in range(len(remaining.detections)) if x != k]
             if not rest:
@@ -524,17 +599,62 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
 
 
 
+def _other_names(others, obj_names) -> list:
+    """`others` ('a, b' or a list; ask's 'said=real' / 'said->real' pairs give their real side) as detector
+    prompts, without the asked names themselves — so every option can be passed whatever the answer was."""
+    if not others:
+        return []
+    items = others if isinstance(others, (list, tuple)) else str(others).split(',')
+    asked = {str(n).strip().lower() for n in obj_names}
+    out = []
+    for it in items:
+        it = str(it)
+        for sep in ('->', '='):
+            if sep in it:
+                it = it.split(sep)[-1]
+        it = ' '.join(it.strip().lower().split())
+        if it and it not in asked and it not in out:
+            out.append(it)
+    return out
+
+
+def _taken_by_others(res, owner, others, iou_min=0.5) -> dict:
+    """{index: (other name, its score)} for the detections one of `others` claims better: the detector boxes ONE
+    object once per name (the blue bag alone in view: blue 0.60, beige 0.50, black 0.45, same box), so a box
+    overlapping (IoU >= `iou_min`) a box of a different name that one of `others` owns with a higher score is
+    not the asked object."""
+    dets = res.detections
+    boxes = [_bbox_to_xyxy(d.bbox) for d in dets]
+    conf = [float(getattr(d, 'conf', 0.0)) for d in dets]
+
+    def iou(a, b):
+        ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+        iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+        inter = ix * iy
+        union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+        return inter / union if union > 0 else 0.0
+    out = {}
+    for k in range(len(dets)):
+        if owner[k] in others:
+            continue
+        for j in range(len(dets)):
+            if owner[j] in others and conf[j] > conf[k] and iou(boxes[k], boxes[j]) >= iou_min:
+                out[k] = (owner[j], conf[j])
+                break
+    return out
+
+
 def _vlm_filter(rgb, res, idx, name, verify_above, max_checks=3):
     """The detections of `idx` a VLM agrees are a `name` (crop + yes / no). Above `verify_above` a detection
     is kept unchecked; at most `max_checks` are checked (best first), the rest are dropped. On a VLM error the
     detections are kept as they were (a broken check must not hide real objects)."""
     import time as _t
-    from kcare_robot.skills import qa as _qa
     dets = res.detections
     idx = sorted(idx, key=lambda k: -float(getattr(dets[k], 'conf', 0.0)))
     keep, notes, t0 = [], [], _t.time()
     try:
-        cfg = _qa._config({})
+        from kcare_robot.skills import hri as _qa       # the VLM helpers (qa.py was folded into hri.py on 2026-10-13)
+        cfg = _qa._qa_config({})
     except Exception as e:
         log_data({'msg': f'find verify: no VLM config ({e}), not verifying'})
         return idx
@@ -657,7 +777,13 @@ def find_once(node, **kwargs):
 def find(node, **kwargs):
     """Find objects from the head camera (grounding-dino). `inputs` is
     'cup,bottle@table' (objects, optional '@location'). Retries over `views`
-    and, if `once=False`, over every ENV location."""
+    and, if `once=False`, over every ENV location.
+
+    Telling look-alikes apart (black / beige / blue bag), both off by default:
+      others='beige bag, blue bag' — the other things in view, detected in the same request; a box one of them
+          matches better is not the asked one. No extra time. The asked name may be in the list too.
+      verify=True — a VLM checks each box scoring below verify_above (0.75; 1 = every box, at most 3) on its
+          crop ("is this a black bag?"), ~0.2-0.8 s per box."""
     reset_log_image('head')
     loc_name = kwargs.pop('inputs', None)
     splits = loc_name.split('|')
@@ -712,6 +838,7 @@ def find_grasp(node, **kwargs):
     reset_log_image('arm')
     kwargs['estimate_grasp'] = True
     kwargs.pop('detector', None)
+    kwargs.setdefault('others_strict', False)       # pick is already in front of the one find chose
     return _detect_objects(node, obj_names, camera='arm', **kwargs)
 
 
@@ -849,7 +976,9 @@ def find_place(node, **kwargs) -> dict:
             if dest_pose is not None:
                 p3 = list(dest_pose)
             else:
-                ret = find(node=node, inputs=dest_obj, cameras="head", simple_return=True)
+                ret = find(node=node, inputs=dest_obj, cameras="head", simple_return=True, main_body=True)
+                if dest_obj not in (ret.get('ins') or {}):
+                    raise Exception(f'find_place: {dest_obj} not found')
                 p3 = ret['ins'][dest_obj]['pose']
             if point3d is None:
                 point3d = p3

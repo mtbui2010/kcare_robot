@@ -648,7 +648,12 @@
         "near": 0.02
       },
       "gripper_min": 10,
-      "gripper_max": 500
+      "gripper_max": 500,
+      "depth_ratio": 0.5,
+      "depth_min_mm": 15,
+      "depth_max_mm": 50,
+      "depth_no_back_mm": 40,
+      "depth_clearance_mm": 3
     },
     "detect_background": {
       "use": true,

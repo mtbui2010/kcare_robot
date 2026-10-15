@@ -129,18 +129,40 @@ def classify(client, rgb, res, settings: dict) -> list:
     inner = float(settings.get('inner', 1.0))
     refs = _ref_embeddings(client, model, inner)
     dets = list(res.detections)
+    masks = list(getattr(res, 'masks', None) or [])
     report = []
+
+    def best_of(crop):
+        v = _embed(client, crop, model)
+        scores = sorted(((float((m @ v).max()), k) for k, m in refs.items()), reverse=True)
+        return scores[0][1], scores[0][0], scores[0][0] - (scores[1][0] if len(scores) > 1 else 0.0)
+
     for i in _single_items([d.bbox for d in dets]):
         crop = _inner(_crop(rgb, dets[i].bbox), inner)
         if crop.size == 0 or not refs:
             continue
-        v = _embed(client, crop, model)
-        scores = sorted(((float((m @ v).max()), k) for k, m in refs.items()), reverse=True)
-        best, name = scores[0]
-        margin = best - (scores[1][0] if len(scores) > 1 else 0.0)
-        report.append({'index': i, 'box': [round(float(b)) for b in dets[i].bbox], 'best': name,
-                       'sim': round(best, 3), 'margin': round(margin, 3),
-                       'sure': best >= min_sim and margin >= min_margin})
+        name, best, margin = best_of(crop)
+        sure = best >= min_sim and margin >= min_margin
+        e = {'index': i, 'box': [round(float(b)) for b in dets[i].bbox], 'best': name,
+             'sim': round(best, 3), 'margin': round(margin, 3), 'sure': sure}
+        # Second look, only when unsure: the pack alone (everything outside its own mask grey), whole box. A pack
+        # lying over its neighbour (신라면 on 짜파게티 at shelf1, 2026-10-14) had the neighbour in ~30 % of its
+        # crop: 신라면 first but 0.006-0.025 ahead, never sure; masked, 0.043-0.056 ahead in 5 / 5 frames. Masked
+        # crops score lower against the unmasked refs (짜파게티 0.76-0.79 < min_sim), so this never replaces the
+        # first look, and it counts only when both looks name the same product.
+        if not sure and len(masks) == len(dets):
+            try:
+                h, w = rgb.shape[:2]
+                mk = masks[i].to_ndarray(width=w, height=h) > 0
+                only = np.array(rgb, copy=True)
+                only[~mk] = 128
+                name2, best2, margin2 = best_of(_crop(only, dets[i].bbox))
+                e['masked'] = {'best': name2, 'sim': round(best2, 3), 'margin': round(margin2, 3)}
+                if name2 == name and best2 >= min_sim and margin2 >= min_margin:
+                    e['sure'] = True
+            except Exception as ex:                 # no usable mask: the first look stands
+                e['masked'] = {'error': str(ex)[:80]}
+        report.append(e)
     return report
 
 
