@@ -291,7 +291,8 @@ def _main_body(mask):
 
 
 def _object_entry(node, name, target, res, rgb, depth, cam_params, w, h, with_grasp, grasp_configs,
-                  keep_orientation, gravity_cam, use_head, robot_mode, simple_return, panels, tag, main_body=False):
+                  keep_orientation, gravity_cam, use_head, robot_mode, simple_return, panels, tag, main_body=False,
+                  force_lying=None):
     """One detected object's entry (pose, approach, grasp …) — and its panel."""
     det_box = _bbox_to_xyxy(target.bbox)        # object bbox → islying + viz
 
@@ -305,6 +306,11 @@ def _object_entry(node, name, target, res, rgb, depth, cam_params, w, h, with_gr
                                           select_target_grasp=select_target_grasp)
     mask = obj_mask if obj_mask is not None else _mask_for_target(res, target, w, h)
     islying = _box_islying_pca(name, det_box, depth, cam_params, gravity_cam, mask=mask)
+    if force_lying is not None and bool(force_lying) != bool(islying):
+        # the caller says how the object lies (pick: islying=False unless 'auto'); the approach follows it
+        log_data({'msg': f'find {tag}: islying {bool(force_lying)} as asked (the depth estimate said {bool(islying)})'})
+    if force_lying is not None:
+        islying = bool(force_lying)
 
     panels.append({
         'name': tag, 'box': det_box, 'vote': islying,
@@ -437,6 +443,11 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     ``count``."""
     simple_return    = kwargs.pop('simple_return', False)
     main_body        = bool(kwargs.pop('main_body', False))
+    # islying True / False: how the object lies, given by the caller (pick's default False) — the approach pose
+    # follows it; None / 'auto' (find's default): estimated from the depth (PCA).
+    force_lying      = kwargs.pop('islying', None)
+    force_lying      = (None if force_lying is None or str(force_lying).strip().lower() == 'auto'
+                        else str(force_lying).strip().lower() in ('1', 'true', 'yes', 'on'))
     camera           = kwargs.pop('camera', 'arm')
     estimate_grasp   = kwargs.pop('estimate_grasp', False)
     keep_orientation = kwargs.pop('keep_orientation', False)
@@ -574,7 +585,8 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
             entry = _object_entry(node, name, target, remaining, rgb, depth, cam_params, w, h,
                                   with_grasp, grasp_configs, keep_orientation, gravity_cam,
                                   use_head, robot_mode, simple_return, panels,
-                                  tag=name if not entries else f'{name}#{len(entries) + 1}', main_body=main_body)
+                                  tag=name if not entries else f'{name}#{len(entries) + 1}', main_body=main_body,
+                                  force_lying=force_lying)
             entries.append(entry)
             rest = [x for x in range(len(remaining.detections)) if x != k]
             if not rest:

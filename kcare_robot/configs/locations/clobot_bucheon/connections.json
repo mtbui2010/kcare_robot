@@ -427,5 +427,57 @@
       "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'msg': res.message}"
     }
+  },
+  {
+    "type": "llm",
+    "name": "qwen3-vl-8b-a6000",
+    "config": {
+      "name": "llama",
+      "agent_name": "qwen3-vl-8b-a6000",
+      "url": "http://10.252.205.103:11434",
+      "model": "qwen3-vl:8b-instruct",
+      "is_active": false,
+      "num_ctx": 8192
+    }
+  },
+  {
+    "type": "visionserve",
+    "name": "detect_head",
+    "config": {
+      "is_client": true,
+      "url": "http://192.168.1.11:11435",
+      "model": "grounding-dino",
+      "agent_name": "detect_head"
+    }
+  },
+  {
+    "type": "visionserve",
+    "name": "rf-detr",
+    "config": {
+      "is_client": true,
+      "url": "http://10.252.205.103:11435",
+      "model": "rf-detr"
+    }
+  },
+  {
+    "type": "llm",
+    "name": "vlm",
+    "config": {
+      "name": "llama",
+      "agent_name": "vlm",
+      "url": "http://192.168.0.6:11434",
+      "model": "qwen3-vl:8b-instruct",
+      "num_ctx": 8192,
+      "is_active": true
+    }
+  },
+  {
+    "type": "stt",
+    "name": "whisper",
+    "config": {
+      "agent_name": "whisper",
+      "url": "http://192.168.0.6:8000",
+      "model": "deepdml/faster-whisper-large-v3-turbo-ct2"
+    }
   }
 ]

@@ -145,7 +145,7 @@
       "height": 0.91,
       "loc": {
         "x": 3,
-        "y": 4,
+        "y": 4.05,
         "rz": 90
       },
       "dforward": 0,
@@ -259,7 +259,7 @@
         "dx": 0,
         "dy": 0
       },
-      "height": 0.95,
+      "height": 0.9,
       "loc": {
         "x": 6.3,
         "y": 3.7,
@@ -401,9 +401,9 @@
       },
       "height": 0.5,
       "loc": {
-        "x": 1.4,
-        "y": 0.15,
-        "rz": 0
+        "x": 2.6,
+        "y": 2.8,
+        "rz": 90
       },
       "dforward": 0,
       "dshift": 0,
@@ -882,8 +882,8 @@
       "gripper_max": 500,
       "depth_ratio": 0.7,
       "depth_min_mm": 15,
-      "depth_max_mm": 40,
-      "depth_no_back_mm": 30
+      "depth_max_mm": 35,
+      "depth_no_back_mm": 20
     },
     "detect_background": {
       "use": true,

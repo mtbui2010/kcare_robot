@@ -29,8 +29,8 @@
     },
     "ry": {
       "up": 10,
-      "straight": -40,
-      "down": -50
+      "straight": -20,
+      "down": -40
     }
   },
   "MOBILE_CONFIGS": {
@@ -124,9 +124,9 @@
       "default_mode": "front",
       "height": 0.456,
       "loc": {
-        "x": 4,
-        "y": -0.5,
-        "rz": -180
+        "x": 1.7,
+        "y": 0.43,
+        "rz": 0
       },
       "dforward": 0,
       "dshift": 0
@@ -266,6 +266,22 @@
       },
       "dshift": 0,
       "dforward": 0
+    },
+    "restroom_front": {
+      "label": "\uc11c\ub78d",
+      "default_mode": "right",
+      "height": 0,
+      "placepose": {
+        "dx": 0,
+        "dy": 0
+      },
+      "loc": {
+        "x": 3.24,
+        "y": 2.3,
+        "rz": 90
+      },
+      "dshift": 0,
+      "dforward": -0.3
     },
     "entrance": {
       "label": "\uc2a4\ub808\uae30\ud1b5",

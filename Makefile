@@ -82,6 +82,13 @@ CONDA_SYS_LIBS ?= portaudio ffmpeg
 # libportaudio2 is the runtime library sounddevice dlopens; the -dev headers are
 # not needed. Set empty to skip:  make install APT_SYS_LIBS=
 APT_SYS_LIBS ?= libportaudio2 ffmpeg
+
+# SwitchBot lights (turn_light / light_state, skills/switchbot.py): bluepy over
+# raw HCI (the container has no D-Bus) plus tools/hci_adv_sniff, both granted
+# network capabilities. `make install` runs `make switchbot`; skip with
+# SWITCHBOT=0. Needs sudo (or root) for apt / setcap.
+SWITCHBOT     ?= 1
+SNIFF_BIN     ?= $(HOME)/.local/bin/hci_adv_sniff
 CONDA_BASE := $(shell conda info --base 2>/dev/null)
 
 ifneq ($(PYTHON),)
@@ -171,7 +178,7 @@ print('[kcare_robot] imports OK (numpy %s)' % numpy.__version__)
 endef
 export VERIFY_IMPORTS_PY
 
-.PHONY: install install-deps sys-libs check-deps env _env-current env-recreate env-info run cli terminate doctor \
+.PHONY: install install-deps sys-libs switchbot check-deps env _env-current env-recreate env-info run cli terminate doctor \
         skill-generic skill-detect skill-external delete-skill rename-skill \
         run-external test clean help _require-env _require-run-py \
         new-robot copy-skill
@@ -192,6 +199,7 @@ help:
 	@echo "  make check-deps                       Verify the sibling repos exist in ../ (run by install)"
 	@echo "  make install-deps                     Editable-install sibling repos only"
 	@echo "  make sys-libs                         Install the native libs HRI voice needs (portaudio, ffmpeg)"
+	@echo "  make switchbot                        SwitchBot lights: bluepy + hci_adv_sniff + capabilities (sudo)"
 	@echo "  make doctor                           Pre-flight check (verifies env, ROS2, skill imports)"
 	@echo ""
 	@echo "Run:"
@@ -392,6 +400,54 @@ sys-libs:
 		echo "[kcare_robot] neither a conda env nor apt-get -- install by hand: $(APT_SYS_LIBS)"; \
 	fi
 
+# SwitchBot lights (skills/switchbot.py). Never fatal: the rest of the robot
+# works without them, so each step only warns.
+#   libglib2.0-dev  -> builds bluepy's bluepy-helper
+#   bluepy          -> turn_light (connects to the Bot), light_state's fallback scan
+#   setcap cap_net_raw,cap_net_admin on bluepy-helper (raw HCI + mgmt commands;
+#                      without it: "Failed to execute management command 'le on'
+#                      (code: 20, error: Permission Denied)")
+#   hci_adv_sniff   -> light_state's own scan (tools/hci_adv_sniff.c), cap_net_raw
+# Capabilities live on the file: re-run after re-creating the container or
+# reinstalling bluepy, e.g. inside the robot's container:
+#   make switchbot USE_CURRENT=1
+switchbot: _require-env
+	@if [ "$(SWITCHBOT)" != "1" ]; then echo "[kcare_robot] SwitchBot setup skipped (SWITCHBOT=$(SWITCHBOT))"; exit 0; fi; \
+	if [ "$$(uname -s)" != Linux ]; then echo "[kcare_robot] SwitchBot (BLE over raw HCI) is Linux-only -- skipped"; exit 0; fi; \
+	if [ "$$(id -u)" = 0 ]; then SUDO=""; \
+	elif command -v sudo >/dev/null 2>&1; then SUDO="sudo"; \
+	else SUDO=""; echo "[kcare_robot] not root and no sudo -- apt / setcap will probably be refused"; fi; \
+	echo "[kcare_robot] SwitchBot: bluepy + hci_adv_sniff"; \
+	if ! $(ENV_PY) -c 'import bluepy' >/dev/null 2>&1; then \
+		if command -v dpkg >/dev/null 2>&1 && ! dpkg -s libglib2.0-dev >/dev/null 2>&1; then \
+			$$SUDO apt-get install -y --no-install-recommends libglib2.0-dev pkg-config >/dev/null \
+				|| echo "[kcare_robot] WARNING: apt could not install libglib2.0-dev (bluepy needs it to build)"; \
+		fi; \
+		$(ENV_PIP) install -q bluepy || echo "[kcare_robot] WARNING: pip could not install bluepy"; \
+	fi; \
+	helper=$$($(ENV_PY) -c 'import bluepy, os; print(os.path.join(os.path.dirname(bluepy.__file__), "bluepy-helper"))' 2>/dev/null); \
+	if [ -n "$$helper" ] && [ -f "$$helper" ]; then \
+		$$SUDO setcap cap_net_raw,cap_net_admin+eip "$$helper" \
+			|| echo "[kcare_robot] WARNING: setcap failed on $$helper"; \
+	else \
+		echo "[kcare_robot] WARNING: bluepy-helper not found -- turn_light / light_state will fail"; \
+	fi; \
+	if command -v gcc >/dev/null 2>&1; then \
+		mkdir -p "$$(dirname $(SNIFF_BIN))" \
+			&& gcc -O2 -o "$(SNIFF_BIN)" "$(ROOT)/kcare_robot/skills/tools/hci_adv_sniff.c" \
+			&& { $$SUDO setcap cap_net_raw+eip "$(SNIFF_BIN)" \
+				|| echo "[kcare_robot] WARNING: setcap failed on $(SNIFF_BIN)"; } \
+			|| echo "[kcare_robot] WARNING: could not build $(SNIFF_BIN)"; \
+	else \
+		echo "[kcare_robot] WARNING: no gcc -- light_state falls back to bluepy's scan (gets 'busy' while another program scans)"; \
+	fi; \
+	if command -v getcap >/dev/null 2>&1; then \
+		for f in "$$helper" "$(SNIFF_BIN)"; do \
+			[ -n "$$f" ] && [ -f "$$f" ] && echo "    $$(getcap "$$f" | grep . || echo "$$f: NO capabilities")"; \
+		done; \
+	fi; \
+	true
+
 # Destructive: refuses to touch an env you asked to reuse.
 env-recreate:
 	@if [ "$(USE_CURRENT)" = "1" ]; then \
@@ -475,6 +531,8 @@ install: check-deps env
 	@echo ""
 	@echo "[kcare_robot] verifying the non-ROS imports actually resolve ..."
 	@$(ENV_PY) -c "$$VERIFY_IMPORTS_PY"
+	@echo ""
+	@$(MAKE) --no-print-directory switchbot
 	@echo ""
 	@if [ ! -f "$(ROS_SETUP)" ]; then \
 		echo "  ! ROS 2 not found at $(ROS_SETUP)."; \

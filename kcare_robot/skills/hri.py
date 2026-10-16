@@ -16,7 +16,7 @@ Nobody speaking at all counts as no answer.
 Usage:
     reply                                     # listen, then "들었어요"
     reply::need_confirm=True                  # ..., then '"<text>"라고 들었어요'
-    ask::'어떤 음료 드릴까요?'                   # ask, then repeat the answer back
+    ask::'어떤 음료 드릴까요?'                   # ask (confirm=True: repeat the answer back)
     ask::inputs='어떤 음료 드릴까요?', options=['물', '주스', '커피']
     ask::inputs='어디로 갈까요?', options="식탁 앞->table@kitchen, 옷방->dressroom"
     ask::inputs='Which drink?', lang='en', source='dashboard', options='water,juice'
@@ -42,8 +42,8 @@ from robot_agent.core.run_control import cancel_requested, dialog_begin, dialog_
 from robot_agent.skill_configs import ENV, HRI_CONFIGS, QA_CONFIGS
 from robot_agent.skills import log_data as _emit
 from robot_agent.utils import (
-    EARCON_GAP_SEC, exception_handler, listen_dashboard, play_audio, play_earcon, record_phrase, say_to_user,
-    set_speech_rate, speech_to_text,
+    EARCON_GAP_SEC, choose_close, choose_open, choose_result, exception_handler, listen_dashboard, play_audio,
+    play_earcon, record_phrase, say_to_user, set_speech_rate, speech_to_text,
 )
 
 from ..utils import env_key, get_closest_loc
@@ -69,6 +69,7 @@ SILENCE_SEC = 1.5         # quiet after speech that ends the phrase (s)
 ENERGY_THRESHOLD = 800    # robot-mic VAD level; what this robot's mic loop ran with
 MATCH_THRESHOLD = 0.7     # fuzzy-match floor for `ask` options (edit similarity)
 RETRIES = 2               # attempts after the first, for `ask`
+SCREEN_WAIT_SEC = 30.0    # `ask`: the on-screen buttons stay this long after the last spoken attempt
 # The browser voices the prompt before it opens the mic, so a dashboard listen
 # needs headroom beyond the phrase itself.
 DASHBOARD_SLACK_SEC = 20.0
@@ -396,19 +397,30 @@ def ask(node, **kwargs):
             as "검은 가방->black bag"). Without "->" both are the option itself. They are also Whisper's hint
             words, so it hears 신라면, not 실라면. When None, the answer is
             simply repeated back.
-        The options' spoken parts are read out with the question, every time
-            it is asked ("어떤 가방을 가져갈까요? 베이지색 핸드백, 검은색 핸드백 중에서
-            골라 주세요"): a blind user cannot answer a choice they were not told.
-        read_options: no longer used (the options are always read); accepted for old plans.
-        confirm (bool): True (default) — say back what was understood: the
-            chosen option ("검은색핸드백, 알겠습니다") or, without options, the
-            user's words ('"…"라고 들었어요'). False — say nothing, go on.
+        read_options (bool): False (default, 2026-10-16) — only the question is
+            asked; True — the options' spoken parts are read with it ("어떤 가방을
+            가져갈까요? 베이지색 핸드백, 검은색 핸드백 중에서 골라 주세요"). After an
+            answer that matches no option they are read either way: a blind user
+            cannot answer a choice they were not told.
+        confirm: None (default) — with options the chosen one is said
+            ("검은색핸드백, 알겠습니다"), without options nothing is said back.
+            True — also the user's words when there are no options ('"…"라고
+            들었어요'). False — nothing at all.
         retries (int):  extra attempts after the first, for no answer or no
             match. Default 2.
         match_threshold (float): fuzzy-match floor, 0..1. Default 0.7.
+        screen_choice (bool): True (default) — the first time the robot does
+            not understand (no answer / no match) the options pop up as buttons
+            on the dashboard that started the run, and the robot waits for a
+            click (a helper's: the user is blind) instead of saying it did not
+            hear and asking again; the clicked choice is said as if spoken.
+            Runs without a dashboard (CLI, POST /skill) and screen_choice=False
+            ask again by voice (`retries`).
+        screen_wait_sec (float): how long the buttons wait for a click before
+            the ask fails. Default 30.
         source, lang, max_sec, silence_sec, energy_threshold: as for `reply`.
 
-    Returns ``{'isdone', 'answer', 'answer_text', 'text', 'attempts'}`` —
+    Returns ``{'isdone', 'answer', 'answer_text', 'text', 'attempts'}`` (+ ``'chosen': 'screen'`` for a click) —
     `answer` is the matched option's value (or the transcript when there are no
     options), `answer_text` its spoken part, `text` the
     raw transcript.
@@ -430,8 +442,11 @@ def ask(node, **kwargs):
         options = spoken
     retries = max(0, int(kwargs.pop('retries', RETRIES)))
     threshold = float(kwargs.pop('match_threshold', MATCH_THRESHOLD))
-    kwargs.pop('read_options', None)            # the options are always read now
-    confirm = _truthy(kwargs.pop('confirm', True))
+    read_options = _truthy(kwargs.pop('read_options', False))
+    confirm = kwargs.pop('confirm', None)
+    confirm = None if confirm is None or str(confirm).strip().lower() in ('', 'none', 'auto') else _truthy(confirm)
+    screen_choice = _truthy(kwargs.pop('screen_choice', True))
+    screen_wait = float(kwargs.pop('screen_wait_sec', SCREEN_WAIT_SEC))
     own_hint = 'stt_hint' in kwargs          # _common pops it
     lang, source, listen = _common(kwargs)
     if options and not own_hint:
@@ -440,37 +455,75 @@ def ask(node, **kwargs):
         # was read out instead of confirming.
         listen['hint'] = ', '.join(options)
 
-    # The question with the choices: said first and with every repeat.
-    asked = ' '.join(p for p in (question, options and _phrase('choose', lang, options=', '.join(options))) if p)
-    prompt, last_text = asked or None, ''
-    for attempt in range(1, retries + 2):
-        text, _audio = _hear(prompt, lang, source, listen)   # ask confirms the option, not the audio
-        if not text:
-            # Nobody answered: say so, then put the question again.
-            prompt = ' '.join(p for p in (_phrase('not_heard', lang), asked) if p)
-            continue
-        last_text = text
+    # The question, with the choices when read_options; a repeat after an answer
+    # that matched nothing always reads them.
+    with_options = ' '.join(p for p in (question, options and _phrase('choose', lang, options=', '.join(options))) if p)
+    asked = with_options if read_options else question
+    prompt, last_text = asked or with_options or None, ''
+    screen = None                               # the on-screen buttons' id, once shown
 
-        if options is None:
-            if confirm:
-                _say(_phrase('heard_text', lang, text=text), lang, source)
-            return {'isdone': True, 'answer': text, 'answer_text': text, 'text': text, 'attempts': attempt}
+    def chosen(choice: str, attempt: int, text: str = '', how: str = '') -> dict:
+        if confirm is not False:                     # the chosen option is said unless confirm=False
+            _say(_phrase('confirm', lang, choice=choice), lang, source)
+        # no 'options' in the result: a plan passes every result on to the later steps, and the next
+        # ask (2026-10-16: 무엇이 필요하세요?) then asked for these bag colours
+        out = {'isdone': True, 'answer': values.get(choice, choice), 'answer_text': choice,
+               'text': text or choice, 'attempts': attempt}
+        if how:
+            out['chosen'] = how
+        return out
 
-        choice = match_option(text, options, threshold)
-        if choice is not None:
-            if confirm:
-                _say(_phrase('confirm', lang, choice=choice), lang, source)
-            return {'isdone': True, 'answer': values.get(choice, choice), 'answer_text': choice,
-                    'text': text, 'attempts': attempt, 'options': options}
-        # An answer, just not one of the options: ask again, the choices with it.
-        log_data({'msg': f'ask: "{text}" matches none of {options}'})
-        prompt = ' '.join(p for p in (_phrase('not_heard', lang), asked) if p)
+    def on_screen(attempt: int):
+        """Not understood: the buttons, then the click (or None — no dashboard / screen_choice off). The robot
+        says nothing meanwhile: no "잘 못 들었어요", no question again."""
+        nonlocal screen
+        if not (options and screen_choice):
+            return None
+        screen = choose_open(options, question)
+        if not screen:
+            return None
+        log_data({'msg': f'ask: not understood — waiting for a click on the dashboard ({", ".join(options)}, '
+                         f'{screen_wait:.0f} s)'})
+        c = choose_result(screen, wait=screen_wait)
+        if c is None:
+            log_data({'msg': f'ask: no click within {screen_wait:.0f} s'})
+            return {'isdone': False, 'msg': 'not understood, and nothing chosen on the dashboard',
+                    'answer': None, 'text': last_text, 'attempts': attempt}
+        log_data({'msg': f'ask: {c} (chosen on screen)'})
+        return chosen(c, attempt, how='screen')
 
-    _say(_phrase('not_heard', lang), lang, source)
-    msg = ('answer did not match any option' if last_text and options
-           else 'no speech heard')
-    return {'isdone': False, 'msg': msg, 'answer': None, 'text': last_text,
-            'attempts': retries + 1, 'options': options}
+    try:
+        for attempt in range(1, retries + 2):
+            text, _audio = _hear(prompt, lang, source, listen)   # ask confirms the option, not the audio
+            if not text:
+                if (out := on_screen(attempt)) is not None:
+                    return out
+                # Nobody answered: say so, then put the question again.
+                prompt = ' '.join(p for p in (_phrase('not_heard', lang), asked) if p)
+                continue
+            last_text = text
+
+            if options is None:
+                if confirm:                                  # None / False: the raw words are not repeated
+                    _say(_phrase('heard_text', lang, text=text), lang, source)
+                return {'isdone': True, 'answer': text, 'answer_text': text, 'text': text, 'attempts': attempt}
+
+            choice = match_option(text, options, threshold)
+            if choice is not None:
+                return chosen(choice, attempt, text)
+            log_data({'msg': f'ask: "{text}" matches none of {options}'})
+            if (out := on_screen(attempt)) is not None:
+                return out
+            # An answer, just not one of the options: ask again, the choices with it.
+            prompt = ' '.join(p for p in (_phrase('not_heard', lang), with_options) if p)
+
+        _say(_phrase('not_heard', lang), lang, source)
+        msg = ('answer did not match any option' if last_text and options
+               else 'no speech heard')
+        return {'isdone': False, 'msg': msg, 'answer': None, 'text': last_text,
+                'attempts': retries + 1}
+    finally:
+        choose_close(screen)
 
 
 
@@ -690,13 +743,28 @@ def _vlm_connection(name: str) -> tuple[dict, str]:
         if not saved:
             return {}, f"no connection '{name}'"
         typ, conf, how = saved.get('type'), saved.get('config') or {}, f"connection '{name}' (saved, not connected yet)"
+    if typ == 'vlms':
+        # Several servers in fallback order (robot_agent/connect/pool.py): _post_chat sends through the
+        # pool; url / model are the main server's, for the logs until a call says which one answered.
+        pool = getattr(entry, 'pool', None) if entry is not None else None
+        if pool is None:
+            return {}, f"connection '{name}' (saved, not connected yet)"
+        first = pool.servers[pool.primary() or 0]
+        out = {k: first[k] for k in ('url', 'model', 'num_ctx') if first.get(k)}
+        out['_pool'] = pool
+        return out, how
     if typ != 'llm':
         return {}, f"connection '{name}' is {typ}, not llm"
     return {k: conf[k] for k in ('url', 'model', 'num_ctx') if conf.get(k)}, how
 
 
 def _vlm_label(cfg: dict) -> str:
-    """'model @ server' for the logs."""
+    """'model @ server' for the logs (with a server pool: the server that answered last)."""
+    pool = cfg.get('_pool')
+    if pool is not None:
+        from robot_agent.connect.pool import server_label
+        i = pool.last_used if pool.last_used is not None else (pool.primary() or 0)
+        return server_label('vlms', pool.servers[i])
     from urllib.parse import urlparse
     host = urlparse(str(cfg.get('url', ''))).netloc or cfg.get('url', '?')
     return f"{cfg.get('model', '?')} @ {host}"
@@ -891,7 +959,22 @@ def _mosaic(shots: list, height: int = 240) -> np.ndarray:
 _session = requests.Session()
 
 
+class _PoolReply:
+    """What _post_chat's callers read from an Ollama reply: .json()['message']['content']."""
+
+    def __init__(self, text: str):
+        self._text = text
+
+    def json(self):
+        return {'message': {'role': 'assistant', 'content': self._text}}
+
+
 def _post_chat(cfg: dict, body: dict):
+    pool = cfg.get('_pool')
+    if pool is not None:
+        # The connection's servers in order, with fallback; each server sets its own model / num_ctx
+        # (Ollama) or speaks its own API (OpenAI / Gemini / Claude).
+        return _PoolReply(pool.chat(body, timeout=float(cfg['timeout_sec'])))
     body['options'] = {**body.get('options', {}), 'num_ctx': int(cfg['num_ctx'])}
     r = _session.post(cfg['url'].rstrip('/') + '/api/chat', json=body,
                       timeout=float(cfg['timeout_sec']))
@@ -1382,36 +1465,23 @@ def _inventory_boxes(cfg: dict, use: list) -> dict:
 
 
 def _shelf_words(col: int, ncols: int, level: int, nlevels: int, lang: str, count: str = '') -> str:
-    """"오른쪽 선반 가운데 칸" — `col` from the left, `level` from the bottom
-    (1-based). count 'bottom' / 'top': the other end is out of view, so the
-    level is counted from this end ("아래에서 두 번째 칸"); 'none': both are."""
+    """"밑에서 두 번째 칸 오른쪽" — `col` from the left, `level` from the bottom (1-based). Levels are always
+    counted from the bottom (2026-10-16: "아래 / 가운데 / 위 칸" replaced); count 'top': the bottom is out of
+    view, so from the top ("위에서 두 번째 칸"); 'none': both ends are, the level is left out."""
     if count == 'top':
-        level, nlevels = nlevels - level + 1, nlevels
+        level = nlevels - level + 1
     if lang == 'ko':
         c = {1: [''], 2: ['왼쪽', '오른쪽'], 3: ['왼쪽', '가운데', '오른쪽']}.get(ncols)
         c = c[col - 1] if c else f'왼쪽에서 {col}번째'
         nth = {1: '첫', 2: '두', 3: '세', 4: '네', 5: '다섯'}.get(level, str(level))
-        if count in ('bottom', 'top'):
-            lv = f"{'아래' if count == 'bottom' else '위'}에서 {nth} 번째"
-        elif count == 'none':
-            lv = ''
-        else:
-            lv = {1: [''], 2: ['아래', '위'], 3: ['아래', '가운데', '위']}.get(nlevels)
-            lv = lv[level - 1] if lv else f'아래에서 {nth} 번째'
-        return ' '.join(x for x in (c, '선반', f'{lv} 칸' if lv else '') if x)
+        lv = '' if count == 'none' else f"{'위' if count == 'top' else '밑'}에서 {nth} 번째 칸"
+        return ' '.join(x for x in (lv, c) if x) or '선반'
     c = {1: [''], 2: ['left', 'right'], 3: ['left', 'middle', 'right']}.get(ncols)
     c = c[col - 1] if c else f'column {col} from the left'
-    if count in ('bottom', 'top'):
-        lv = f"shelf {level} from the {count}"
-        return f'{lv}, on the {c}' if c else lv
-    lv = '' if count == 'none' else {1: [''], 2: ['bottom', 'top'], 3: ['bottom', 'middle', 'top']}.get(nlevels)
-    if isinstance(lv, list):
-        lv = lv[level - 1]
-    elif lv is None:
-        lv = f'shelf {level} from the bottom'
+    lv = '' if count == 'none' else f"shelf {level} from the {'top' if count == 'top' else 'bottom'}"
     if lv and c:
-        return f'the {lv} shelf on the {c}' if nlevels <= 3 else f'{lv}, on the {c}'
-    return f'the {lv} shelf' if lv else (f'the {c} side' if c else 'the shelf')
+        return f'{lv}, on the {c}'
+    return lv or (f'the {c} side' if c else 'the shelf')
 
 
 def _shelf_answer(spots: list, lang: str) -> str:

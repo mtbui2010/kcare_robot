@@ -42,12 +42,12 @@
   {
     "id": "831050d0f984",
     "label": "lift up",
-    "plan": "dlift::0.2"
+    "plan": "dlift::0.3"
   },
   {
     "id": "243b13f6235c",
     "label": "lift down",
-    "plan": "dlift::-0.2"
+    "plan": "dlift::-0.3"
   },
   {
     "id": "f2597e5a7c58",

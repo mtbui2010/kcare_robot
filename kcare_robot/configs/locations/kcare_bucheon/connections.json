@@ -274,16 +274,6 @@
     }
   },
   {
-    "type": "tcp",
-    "name": "vlms",
-    "config": {
-      "host": "192.168.1.11",
-      "port": 8805,
-      "is_client": true,
-      "agent_name": "vlms"
-    }
-  },
-  {
     "type": "ros_topic",
     "name": "arm_depth",
     "config": {
@@ -311,59 +301,20 @@
     }
   },
   {
-    "type": "visionserve",
+    "type": "visions",
     "name": "visionserve",
     "config": {
-      "is_client": true,
-      "url": "http://192.168.0.6:11435",
-      "model": "rf-detr",
-      "agent_name": "visionserve"
-    }
-  },
-  {
-    "type": "visionserve",
-    "name": "rf-detr",
-    "config": {
-      "is_client": true,
-      "url": "http://10.252.205.103:11435",
-      "model": "rf-detr"
-    }
-  },
-  {
-    "type": "visionserve",
-    "name": "rf-detr",
-    "config": {
-      "is_client": true,
-      "url": "http://10.252.205.103:11435",
-      "model": "rf-detr"
-    }
-  },
-  {
-    "type": "visionserve",
-    "name": "detserve",
-    "config": {
-      "is_client": true,
-      "url": "http://10.252.205.103:11435",
-      "model": "rf-detr",
-      "agent_name": "detserve"
-    }
-  },
-  {
-    "type": "visionserve",
-    "name": "rf-detr",
-    "config": {
-      "is_client": true,
-      "url": "http://10.252.205.103:11435",
-      "model": "rf-detr"
-    }
-  },
-  {
-    "type": "visionserve",
-    "name": "rf-detr",
-    "config": {
-      "is_client": true,
-      "url": "http://10.252.205.103:11435",
-      "model": "rf-detr"
+      "agent_name": "visionserve",
+      "servers": [
+        {
+          "url": "http://192.168.0.6:11435",
+          "enabled": true
+        },
+        {
+          "url": "http://10.252.205.103:11435",
+          "enabled": true
+        }
+      ]
     }
   },
   {
@@ -393,36 +344,46 @@
     }
   },
   {
-    "type": "llm",
-    "name": "task_planner",
-    "config": {
-      "name": "llama",
-      "agent_name": "task_planner",
-      "url": "http://192.168.1.11:11434",
-      "is_active": false,
-      "model": "qwen3-vl:8b-instruct",
-      "num_ctx": 8192
-    }
-  },
-  {
-    "type": "llm",
+    "type": "vlms",
     "name": "vlm",
     "config": {
-      "name": "llama",
       "agent_name": "vlm",
-      "url": "http://192.168.0.6:11434",
-      "model": "qwen3-vl:8b-instruct",
-      "num_ctx": 8192,
-      "is_active": true
+      "is_active": true,
+      "servers": [
+        {
+          "provider": "ollama",
+          "url": "http://192.168.0.6:11434",
+          "model": "qwen3-vl:8b-instruct",
+          "num_ctx": 8192,
+          "enabled": true
+        },
+        {
+          "provider": "ollama",
+          "url": "http://10.252.205.103:11434",
+          "model": "qwen3-vl:8b-instruct",
+          "num_ctx": 8192,
+          "enabled": true
+        }
+      ]
     }
   },
   {
-    "type": "stt",
+    "type": "voices",
     "name": "whisper",
     "config": {
       "agent_name": "whisper",
-      "url": "http://192.168.0.6:8000",
-      "model": "deepdml/faster-whisper-large-v3-turbo-ct2"
+      "servers": [
+        {
+          "url": "http://192.168.0.6:8000",
+          "model": "deepdml/faster-whisper-large-v3-turbo-ct2",
+          "enabled": true
+        },
+        {
+          "url": "http://192.168.0.6:8000",
+          "model": "Systran/faster-whisper-small",
+          "enabled": true
+        }
+      ]
     }
   },
   {

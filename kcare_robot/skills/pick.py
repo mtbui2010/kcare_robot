@@ -73,6 +73,7 @@ def fine_move(**kwargs):
     fixed_angle = kwargs.pop('fixed_angle', None)
     back_to_init = kwargs.pop('back_to_init', False)
     lift_before_pull_back = kwargs.pop('lift_before_pull_back', None)
+    pointing = kwargs.pop('pointing', False)
     # Step 1: coarse detect + dx nudge. Failure here is non-fatal — we just
     # fall through to the per-trial loop without nudging.
     # try:
@@ -121,6 +122,12 @@ def fine_move(**kwargs):
         # ret = _h.execute_fine_grasp(node, dx, dy, dz, angle, width, eff_dpull, pull_speed=pull_speed)
         # if not ret['isdone']:
         #     return ret
+        if pointing:
+            ret = movet(node=node, dx=dx, dy=dy, wait=True)
+            assert ret['isdone'], f'{ret}'
+            ret = movet(node=node, dz=dz-0.3, acc=0.25, wait=True)
+            assert ret['isdone'], f'{ret}'
+            return {'isdone':True}
 
         ret = run_parallel_check(funcs=[
             lambda: grip(node=node, inputs=width + 0.02, wait=False),
@@ -451,6 +458,9 @@ def approach_pick(node, **kwargs) -> dict:
         ret = move(node=node, inputs=target_loc, wait=True)
         assert ret['isdone'], f'{ret}'
 
+    # islying: False by default (2026-10-16) — the depth estimate took a standing bag for a lying one;
+    # islying=True for a lying object, islying='auto' for the estimate.
+    kwargs['islying'] = kwargs.get('islying', False)
     ret = find(node=node, inputs=inp, **kwargs)
     assert ret['isdone'], f'{ret}'
 
@@ -491,7 +501,9 @@ def approach_pick(node, **kwargs) -> dict:
 
 @arm_exception_handler
 def pick(node, **kwargs):
-    """Approach (`approach_pick`), grasp (`fine_move`) and retract, with picking/picked voice announcements."""
+    """Approach (`approach_pick`), grasp (`fine_move`) and retract, with picking/picked voice announcements.
+    islying: False (default) / True — how the object lies (the approach pose follows it); 'auto' = estimated
+    from the depth."""
     loc_name = kwargs.pop('inputs', None)
     said = spoken('inputs', loc_name)       # pick::컵->cup says 컵
     splits = loc_name.split('|')

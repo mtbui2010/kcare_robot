@@ -12,6 +12,9 @@ kernel's mgmt discovery (that kept getting stuck here; see tools/hci_adv_sniff.c
     gcc -O2 -o ~/.local/bin/hci_adv_sniff tools/hci_adv_sniff.c
     sudo setcap cap_net_raw+eip ~/.local/bin/hci_adv_sniff
 
+``make install`` does all of this (``make switchbot`` alone; in the robot's
+container: ``make switchbot USE_CURRENT=1 PYTHON=/usr/bin/python3``).
+
 Devices are connections of type 'switchbot' (Connections panel, saved in the
 site's connections.json), one per light: config {mac, loc, default}, e.g.
 

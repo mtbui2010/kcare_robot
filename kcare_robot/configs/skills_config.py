@@ -62,4 +62,5 @@ SKILL_CONFIGS: dict[str, tuple[str, str]] = {
     'turn_light': (f'{_PKG}.switchbot', 'turn_light'),
     'light_state': (f'{_PKG}.switchbot', 'light_state'),
     'align_shoes': (f'{_PKG}.align_shoes', 'align_shoes'),
+    'warmup_servers': (f'{_PKG}.warmup', 'warmup_servers'),
 }
