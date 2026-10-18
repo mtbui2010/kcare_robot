@@ -3,11 +3,11 @@
     "type": "ros_topic",
     "name": "head_rgb",
     "config": {
-      "conn_name": "/femto/color/image_raw/compressed",
-      "agent_name": "head_rgb",
+      "conn_name": "/femto/color/image_raw",
       "conn_type": "ros_topic",
-      "data_interface": "sensor_msgs/msg/CompressedImage",
       "is_client": true,
+      "agent_name": "head_rgb",
+      "data_interface": "sensor_msgs/msg/Image",
       "is_camera": true,
       "decode_func": "def decode_func(msg):\n    from robot_agent.connect.ros.codecs import decode_imgmsg\n    return decode_imgmsg(msg)"
     }
@@ -16,11 +16,11 @@
     "type": "ros_topic",
     "name": "head_depth",
     "config": {
-      "conn_name": "/femto/depth/image_raw/compressedDepth",
-      "agent_name": "head_depth",
+      "conn_name": "/femto/depth/aligned",
       "conn_type": "ros_topic",
-      "data_interface": "sensor_msgs/msg/CompressedImage",
       "is_client": true,
+      "agent_name": "head_depth",
+      "data_interface": "sensor_msgs/msg/Image",
       "is_camera": true,
       "decode_func": "def decode_func(msg):\n    from robot_agent.connect.ros.codecs import decode_imgmsg\n    return decode_imgmsg(msg)"
     }
@@ -311,13 +311,20 @@
     }
   },
   {
-    "type": "visionserve",
+    "type": "visions",
     "name": "visionserve",
     "config": {
-      "is_client": true,
-      "url": "http://192.168.1.200:11435",
-      "model": "rf-detr",
-      "agent_name": "visionserve"
+      "agent_name": "visionserve",
+      "servers": [
+        {
+          "url": "http://192.168.0.6:11435",
+          "enabled": true
+        },
+        {
+          "url": "http://10.252.205.103:11435",
+          "enabled": true
+        }
+      ]
     }
   },
   {
@@ -355,9 +362,65 @@
       "name": "llama",
       "agent_name": "llama",
       "url": "http://192.168.1.11:11434",
-      "is_active": true,
+      "is_active": false,
       "model": "qwen3-vl:8b-instruct",
       "num_ctx": 8192
+    }
+  },
+  {
+    "type": "vlms",
+    "name": "vlm",
+    "config": {
+      "agent_name": "vlm",
+      "is_active": true,
+      "servers": [
+        {
+          "provider": "ollama",
+          "url": "http://192.168.0.6:11434",
+          "model": "qwen3-vl:8b-instruct",
+          "num_ctx": 8192,
+          "enabled": true
+        },
+        {
+          "provider": "ollama",
+          "url": "http://10.252.205.103:11434",
+          "model": "qwen3-vl:8b-instruct",
+          "num_ctx": 8192,
+          "enabled": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "voices",
+    "name": "whisper",
+    "config": {
+      "agent_name": "whisper",
+      "servers": [
+        {
+          "url": "http://192.168.0.6:8000",
+          "model": "deepdml/faster-whisper-large-v3-turbo-ct2",
+          "enabled": true
+        },
+        {
+          "url": "http://192.168.0.6:8000",
+          "model": "Systran/faster-whisper-small",
+          "enabled": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ros_topic",
+    "name": "slam_map",
+    "config": {
+      "agent_name": "slam_map",
+      "conn_name": "/map",
+      "conn_type": "ros_topic",
+      "is_client": true,
+      "data_interface": "nav_msgs/msg/OccupancyGrid",
+      "is_camera": false,
+      "decode_func": "def decode_func(msg):\n    import numpy as np\n    i = msg.info\n    return {'grid': np.asarray(msg.data, dtype=np.int16).reshape(i.height, i.width),\n            'info': {'resolution': i.resolution, 'width': i.width, 'height': i.height,\n                     'origin': {'position': {'x': i.origin.position.x, 'y': i.origin.position.y},\n                                'orientation': {'z': i.origin.orientation.z, 'w': i.origin.orientation.w}}}}"
     }
   }
 ]
