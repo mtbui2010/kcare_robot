@@ -37,7 +37,8 @@
     "dforward": 0.2,
     "dshift": -0.2,
     "height": 0.405,
-    "max_shift": 0.6
+    "max_shift": 0.6,
+    "shift_deadband": 0.03
   },
   "ENV": {
     "default_loc@main room": "table",
@@ -504,7 +505,22 @@
     "tool_length": 0.26,
     "wrist_tool_length": 0.17,
     "approach_wrist_angle": 45,
-    "place_liftup": 0.13
+    "place_liftup": 0.13,
+    "approach_x": {
+      "standing": [
+        0.15,
+        0.4
+      ],
+      "lying": [
+        0.15,
+        0.7
+      ]
+    },
+    "place_x": [
+      0.15,
+      0.35
+    ],
+    "max_reach_y": 0.8
   },
   "CALIB_PARAMS": {
     "link2base_robot": [
