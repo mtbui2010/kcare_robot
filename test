@@ -8,158 +8,126 @@
       "dy": -0.05
     },
     "loc": {
-      "x": 2.8,
-      "y": -4.4,
+      "x": 2.4,
+      "y": -0.809,
       "rz": -90
     },
-    "dforward": 0,
-    "dshift": 0
+    "dforward": 0.2,
+    "dshift": -0.15
   },
   "drawer@main room": {
     "label": "서랍",
-    "default_mode": "left",
+    "default_mode": "right",
     "handle": "gray handle",
     "handle_height": 0.415,
     "height": 0.566,
     "placepose": {
-      "dx": 0.1,
-      "dy": -0.1
+      "dx": 0,
+      "dy": 0
     },
     "loc": {
-      "x": 1.38,
-      "y": -0.809,
-      "rz": -90
+      "x": 2.8,
+      "y": -0.3,
+      "rz": 0
     },
-    "dforward": 0.15,
+    "dforward": 0.1,
     "dshift": -0.3
   },
   "bed@main room": {
     "label": "안방 침대",
     "default_mode": "right",
     "placepose": {
-      "dy ": -0.1
+      "dy ": 0
     },
-    "height": 0.4,
+    "height": 0.55,
     "loc": {
-      "x": 2.305,
-      "y": 0.28,
-      "rz": 90
+      "x": -2.2,
+      "y": 0.5,
+      "rz": -90
     },
-    "dforward": 0
-  },
-  "dressroom@main room": {
-    "label": "안방 침대",
-    "default_mode": "right",
-    "placepose": {
-      "dy ": -0.1
-    },
-    "height": 0.4,
-    "loc": {
-      "x": 5.3,
-      "y": -4.7,
-      "rz": -25
-    },
-    "dforward": -0.2
+    "dforward": -0.3
   },
   "table@living room": {
     "label": "거실 테이블",
-    "default_mode": "left",
+    "default_mode": "right",
     "placepose": {
       "dx": 0,
       "dy": -0.1
     },
     "height": 0.456,
     "loc": {
-      "x": 2.5,
-      "y": -1.3,
-      "rz": -180
+      "x": 1.4,
+      "y": -1.6,
+      "rz": 0
     },
-    "dshift": -0.2,
-    "dforward": 0.1
+    "dshift": 0,
+    "dforward": 0
   },
   "wait@living room": {
     "label": "living_room_wait",
     "default_mode": "front",
     "height": 0.456,
     "loc": {
-      "x": 4,
-      "y": -0.5,
-      "rz": -180
+      "x": 1,
+      "y": 0,
+      "rz": 0
     },
     "dforward": 0,
     "dshift": 0
   },
   "trash@living room": {
     "label": "스레기통",
-    "default_mode": "left",
+    "default_mode": "right",
     "placepose": {
       "dy": -0.1,
-      "dx": -0.1
+      "dx": 0
     },
     "height": 0.4,
     "loc": {
-      "x": 3,
-      "y": 1.2,
-      "rz": 0
+      "x": 0.9,
+      "y": -0.7,
+      "rz": 180
     },
     "dforward": 0,
-    "dshift": 0,
-    "aliases": [
-      "sofa"
-    ]
+    "dshift": 0
   },
   "counter@kitchen": {
     "label": "주방 선반",
     "default_mode": "right",
-    "height": 0.91,
-    "placepose": {
-      "dy": -0.1
-    },
-    "loc": {
-      "x": 6.3,
-      "y": -0.6,
-      "rz": 0
-    },
-    "dforward": 0,
-    "dshift": 0
-  },
-  "gas wrench@kitchen": {
-    "label": "주방 선반",
-    "default_mode": "right",
-    "height": 0.85,
+    "height": 0.87,
     "placepose": {
       "dy": 0
     },
     "loc": {
-      "x": 6.3,
-      "y": -1,
-      "rz": 0
+      "x": 1.9,
+      "y": 0.6,
+      "rz": 90
     },
     "dforward": 0,
-    "dshift": 0
+    "dshift": -0.1
   },
   "sink@kitchen": {
     "label": "싱크대",
     "default_mode": "left",
-    "height": 0.91,
+    "height": 0.87,
     "loc": {
-      "x": 6.3,
-      "y": -0.6,
-      "rz": 0
+      "x": 1.9,
+      "y": 2.5,
+      "rz": -180
     },
     "dforward": 0,
     "dshift": 0
   },
   "table@kitchen": {
     "label": "식탁",
-    "default_mode": "right",
-    "height": 0.755,
+    "default_mode": "left",
+    "height": 0.72,
     "placepose": {
       "dy": -0.1
     },
     "loc": {
-      "x": 5.6,
-      "y": -0.1,
+      "x": 2.9,
+      "y": 2.5,
       "rz": 90
     },
     "dforward": 0,
@@ -167,94 +135,28 @@
   },
   "drawer@kitchen": {
     "label": "서랍",
-    "default_mode": "left",
+    "default_mode": "right",
     "handle": "gray handle",
     "handle_height": 0.415,
     "height": 0.566,
     "placepose": {
-      "dx": 0.25,
-      "dy": -0.15
+      "dx": 0,
+      "dy": 0
     },
     "loc": {
-      "x": -2.4,
-      "y": -2.2,
-      "rz": 90
+      "x": 2.8,
+      "y": -0.3,
+      "rz": 0
     },
-    "dshift": -0.15,
-    "dforward": 0.05
-  },
-  "laundry@kitchen": {
-    "label": "서랍",
-    "default_mode": "left",
-    "handle": "gray handle",
-    "handle_height": 0.415,
-    "height": 0.566,
-    "placepose": {
-      "dx": 0.25,
-      "dy": -0.15
-    },
-    "loc": {
-      "x": 5,
-      "y": -0.9,
-      "rz": -90
-    },
-    "dshift": 0,
-    "dforward": 0
+    "dforward": 0.1,
+    "dshift": -0.3
   },
   "wait": {
     "default_mode": "front",
     "loc": {
-      "x": 1.6,
-      "y": -3.4,
-      "rz": -90
-    }
-  },
-  "restroom": {
-    "label": "서랍",
-    "default_mode": "front",
-    "height": 0.5,
-    "placepose": {
-      "dx": 0,
-      "dy": 0
-    },
-    "loc": {
-      "x": 3,
-      "y": 4.5,
-      "rz": -90
-    },
-    "dshift": 0,
-    "dforward": 0
-  },
-  "restroom_front": {
-    "label": "서랍",
-    "default_mode": "front",
-    "height": 0.5,
-    "placepose": {
-      "dx": 0,
-      "dy": 0
-    },
-    "loc": {
-      "x": 3,
-      "y": 4.5,
-      "rz": -90
-    },
-    "dshift": 0,
-    "dforward": 0
-  },
-  "entrance": {
-    "label": "스레기통",
-    "default_mode": "left",
-    "placepose": {
-      "dy": 0,
-      "dx": 0
-    },
-    "height": 0.4,
-    "loc": {
-      "x": 3,
-      "y": 1.6,
+      "x": 1,
+      "y": 0,
       "rz": 0
-    },
-    "dforward": -0.2,
-    "dshift": 0
+    }
   }
 }

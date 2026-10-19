@@ -49,6 +49,7 @@ kcare_robot/skills/switchbot.py
 kcare_robot/skills/template.py
 kcare_robot/skills/vla.py
 kcare_robot/skills/vlm.py
+kcare_robot/skills/warmup.py
 kcare_robot/template_skills/__init__.py
 kcare_robot/template_skills/grip_external.py
 kcare_robot/template_skills/grip_node_agent.py

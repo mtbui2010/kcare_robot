@@ -458,9 +458,9 @@ def approach_pick(node, **kwargs) -> dict:
         ret = move(node=node, inputs=target_loc, wait=True)
         assert ret['isdone'], f'{ret}'
 
-    # islying: False by default (2026-10-16) — the depth estimate took a standing bag for a lying one;
-    # islying=True for a lying object, islying='auto' for the estimate.
-    kwargs['islying'] = kwargs.get('islying', False)
+    # islying: None by default = take it from the detection (depth estimate + lying_obj_names);
+    # islying=True / False given by the caller overrides it.
+    kwargs['islying'] = kwargs.get('islying')
     ret = find(node=node, inputs=inp, **kwargs)
     assert ret['isdone'], f'{ret}'
 
@@ -502,8 +502,8 @@ def approach_pick(node, **kwargs) -> dict:
 @arm_exception_handler
 def pick(node, **kwargs):
     """Approach (`approach_pick`), grasp (`fine_move`) and retract, with picking/picked voice announcements.
-    islying: False (default) / True — how the object lies (the approach pose follows it); 'auto' = estimated
-    from the depth."""
+    islying: None (default) = from the detection; True / False — how the object lies, overriding the
+    detection (the approach pose follows it)."""
     loc_name = kwargs.pop('inputs', None)
     said = spoken('inputs', loc_name)       # pick::컵->cup says 컵
     splits = loc_name.split('|')

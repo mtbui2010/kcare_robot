@@ -139,6 +139,7 @@ def move(node, **kwargs):
     if prev_robot_mode!='front':
         ret = run_parallel_check(funcs=[
             lambda : moveh(node=node, inputs='straight,front', wait=True),
+            lambda : movej(node=node, inputs='fold', robot_mode='front', wait=True),
             # lambda : node.agents['turn'].send({'inputs': back_turn_deg, 'wait': True}),
             lambda : turn(node=node, inputs=back_turn_deg),
         ])
@@ -157,7 +158,7 @@ def move(node, **kwargs):
 
     if 'home' in env_name:
         moveh(node=node, inputs='front', wait=False)
-        return moveb(node=node, wait=True, x=0.5, y=0, rz=0) 
+        return moveb(node=node, wait=True, x=1, y=0, rz=0) 
 
     if 'base' in env_name:
         moveh(node=node, inputs='front', wait=False) 
@@ -169,8 +170,8 @@ def move(node, **kwargs):
     ret = run_parallel_check(funcs=[
         lambda : (time.sleep(3),lift(node=node, inputs='home', mode='front'), time.sleep(2), 
         lift(node=node, inputs='lowest' if robot_mode=='front' else lift_height, mode=robot_mode, wait=True))[-1],
-        # lambda : movej(node=node, inputs='fold', mode=robot_mode),
-        lambda : ( movej(node=node, inputs='fold', mode=prev_robot_mode),time.sleep(2), movej(node=node, inputs='fold', mode='front'))[-1],
+        lambda : movej(node=node, inputs='fold', mode='front'),
+        # lambda : ( movej(node=node, inputs='fold', mode=prev_robot_mode),time.sleep(2), movej(node=node, inputs='fold', mode='front'))[-1],
         lambda : (moveb(node=node, **kwargs), forward(node=node, inputs=dforward, wait=True))[-1]
     ])
     assert ret['isdone'], f'{ret}'

@@ -317,42 +317,10 @@
       "agent_name": "visionserve",
       "servers": [
         {
-          "url": "http://192.168.0.6:11435",
-          "enabled": true
-        },
-        {
-          "url": "http://10.252.205.103:11435",
-          "enabled": true
+          "enabled": true,
+          "url": "http://192.168.1.200:11435"
         }
       ]
-    }
-  },
-  {
-    "type": "visionserve",
-    "name": "rf-detr",
-    "config": {
-      "is_client": true,
-      "url": "http://10.252.205.103:11435",
-      "model": "rf-detr"
-    }
-  },
-  {
-    "type": "visionserve",
-    "name": "rf-detr",
-    "config": {
-      "is_client": true,
-      "url": "http://10.252.205.103:11435",
-      "model": "rf-detr"
-    }
-  },
-  {
-    "type": "visionserve",
-    "name": "detserve",
-    "config": {
-      "is_client": true,
-      "url": "http://10.252.205.103:11435",
-      "model": "rf-detr",
-      "agent_name": "detserve"
     }
   },
   {

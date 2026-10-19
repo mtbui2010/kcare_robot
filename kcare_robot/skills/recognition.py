@@ -307,7 +307,7 @@ def _object_entry(node, name, target, res, rgb, depth, cam_params, w, h, with_gr
     mask = obj_mask if obj_mask is not None else _mask_for_target(res, target, w, h)
     islying = _box_islying_pca(name, det_box, depth, cam_params, gravity_cam, mask=mask)
     if force_lying is not None and bool(force_lying) != bool(islying):
-        # the caller says how the object lies (pick: islying=False unless 'auto'); the approach follows it
+        # the caller says how the object lies (pick: only when islying is given); the approach follows it
         log_data({'msg': f'find {tag}: islying {bool(force_lying)} as asked (the depth estimate said {bool(islying)})'})
     if force_lying is not None:
         islying = bool(force_lying)
@@ -443,7 +443,7 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     ``count``."""
     simple_return    = kwargs.pop('simple_return', False)
     main_body        = bool(kwargs.pop('main_body', False))
-    # islying True / False: how the object lies, given by the caller (pick's default False) — the approach pose
+    # islying True / False: how the object lies, given by the caller (pick's default None) — the approach pose
     # follows it; None / 'auto' (find's default): estimated from the depth (PCA).
     force_lying      = kwargs.pop('islying', None)
     force_lying      = (None if force_lying is None or str(force_lying).strip().lower() == 'auto'

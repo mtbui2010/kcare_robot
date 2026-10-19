@@ -58,90 +58,90 @@
     },
     "drawer@main room": {
       "label": "\uc11c\ub78d",
-      "default_mode": "left",
+      "default_mode": "right",
       "handle": "gray handle",
       "handle_height": 0.415,
       "height": 0.566,
       "placepose": {
-        "dx": 0.2,
-        "dy": -0.1
+        "dx": 0,
+        "dy": 0
       },
       "loc": {
-        "x": 1.38,
-        "y": -0.809,
-        "rz": -90
+        "x": 2.8,
+        "y": -0.3,
+        "rz": 0
       },
-      "dforward": 0.15,
+      "dforward": 0.1,
       "dshift": -0.3
     },
     "bed@main room": {
       "label": "\uc548\ubc29 \uce68\ub300",
       "default_mode": "right",
       "placepose": {
-        "dy ": -0.1
+        "dy ": 0
       },
-      "height": 0.4,
+      "height": 0.55,
       "loc": {
-        "x": 2.305,
-        "y": 0.28,
-        "rz": 90
+        "x": -2.2,
+        "y": 0.5,
+        "rz": -90
       },
-      "dforward": 0
+      "dforward": -0.3
     },
     "table@living room": {
       "label": "\uac70\uc2e4 \ud14c\uc774\ube14",
-      "default_mode": "left",
+      "default_mode": "right",
       "placepose": {
         "dx": 0,
         "dy": -0.1
       },
       "height": 0.456,
       "loc": {
-        "x": 1.5,
-        "y": -4.4,
-        "rz": -90
+        "x": 1.4,
+        "y": -1.6,
+        "rz": 0
       },
-      "dshift": -0.2,
-      "dforward": 0.15
+      "dshift": 0,
+      "dforward": 0
     },
     "wait@living room": {
       "label": "living_room_wait",
       "default_mode": "front",
       "height": 0.456,
       "loc": {
-        "x": 1.673,
-        "y": -3.6,
-        "rz": -90
+        "x": 1,
+        "y": 0,
+        "rz": 0
       },
       "dforward": 0,
       "dshift": 0
     },
     "trash@living room": {
       "label": "\uc2a4\ub808\uae30\ud1b5",
-      "default_mode": "left",
+      "default_mode": "right",
       "placepose": {
         "dy": -0.1,
-        "dx": -0.1
+        "dx": 0
       },
       "height": 0.4,
       "loc": {
-        "x": -0.79,
-        "y": -4.75,
-        "rz": -150
+        "x": 0.9,
+        "y": -0.7,
+        "rz": 180
       },
-      "dforward": 0.15,
+      "dforward": 0,
       "dshift": 0
     },
     "counter@kitchen": {
       "label": "\uc8fc\ubc29 \uc120\ubc18",
-      "default_mode": "left",
-      "height": 0.85,
+      "default_mode": "right",
+      "height": 0.87,
       "placepose": {
-        "dy": -0.1
+        "dy": 0
       },
       "loc": {
-        "x": -4.137,
-        "y": -2.278,
+        "x": 1.9,
+        "y": 0.6,
         "rz": 90
       },
       "dforward": 0,
@@ -149,55 +149,55 @@
     },
     "sink@kitchen": {
       "label": "\uc2f1\ud06c\ub300",
-      "default_mode": "right",
-      "height": 0.85,
+      "default_mode": "left",
+      "height": 0.87,
       "loc": {
-        "x": -4.959,
-        "y": -2.355,
-        "rz": 180
+        "x": 1.9,
+        "y": 2.5,
+        "rz": -180
       },
       "dforward": 0,
-      "dshift": -0.2
+      "dshift": 0
     },
     "table@kitchen": {
       "label": "\uc2dd\ud0c1",
-      "default_mode": "right",
-      "height": 0.755,
+      "default_mode": "left",
+      "height": 0.72,
       "placepose": {
         "dy": -0.1
       },
       "loc": {
-        "x": -2.5,
-        "y": -2.145,
-        "rz": -90
+        "x": 2.9,
+        "y": 2.5,
+        "rz": 90
       },
-      "dforward": 0.2,
+      "dforward": 0,
       "dshift": 0
     },
     "drawer@kitchen": {
       "label": "\uc11c\ub78d",
-      "default_mode": "left",
+      "default_mode": "right",
       "handle": "gray handle",
       "handle_height": 0.415,
       "height": 0.566,
       "placepose": {
-        "dx": 0.25,
-        "dy": -0.15
+        "dx": 0,
+        "dy": 0
       },
       "loc": {
-        "x": -2.4,
-        "y": -2.2,
-        "rz": 90
+        "x": 2.8,
+        "y": -0.3,
+        "rz": 0
       },
-      "dshift": -0.15,
-      "dforward": 0.05
+      "dforward": 0.05,
+      "dshift": -0.3
     },
     "wait": {
       "default_mode": "front",
       "loc": {
-        "x": 1.6,
-        "y": -3.4,
-        "rz": -90
+        "x": 1,
+        "y": 0,
+        "rz": 0
       }
     }
   },
@@ -213,7 +213,7 @@
       -0.03
     ],
     "wrist_cam_offset": [
-      -0.02,
+      0,
       -0.075,
       0
     ],
@@ -669,7 +669,7 @@
       },
       "gripper_min": 10,
       "gripper_max": 500,
-      "depth_ratio": 0.5,
+      "depth_ratio": 0.8,
       "depth_min_mm": 15,
       "depth_max_mm": 50,
       "depth_no_back_mm": 40,
@@ -711,5 +711,75 @@
       "control"
     ],
     "having_handle_obj_names": []
+  },
+  "MAP": {
+    "image": {
+      "file": "map/map.png",
+      "frame": {
+        "origin": [
+          -4.5,
+          -4.75
+        ],
+        "resolution": 0.05000000074505806,
+        "width": 262,
+        "height": 218
+      }
+    },
+    "layers": {
+      "occupancy": {
+        "file": "map/occupancy.png",
+        "frame": {
+          "origin": [
+            -4.5,
+            -4.75
+          ],
+          "resolution": 0.05000000074505806,
+          "width": 262,
+          "height": 218
+        },
+        "values": {
+          "free": 0,
+          "inflated": 128,
+          "occupied": 255
+        }
+      }
+    },
+    "source": {
+      "connection": "slam_map",
+      "saved_at": "2026-10-19 14:08:26",
+      "inflate_m": 0.3,
+      "occupied": 65
+    },
+    "pose": {
+      "agent": "mobile_pose",
+      "x": "pose.position.x",
+      "y": "pose.position.y",
+      "orientation": "pose.orientation",
+      "period_s": 0.5
+    },
+    "confirm_goal": true,
+    "places": "ENV",
+    "goal": {
+      "skill": "moveb",
+      "params": {
+        "x": "{x}",
+        "y": "{y}"
+      }
+    },
+    "rotate": {
+      "skill": "turn",
+      "params": {
+        "inputs": "{deg}"
+      },
+      "step_deg": 15
+    },
+    "lift": {
+      "skill": "lift",
+      "params": {
+        "inputs": "{h}"
+      },
+      "clearance": 0.1,
+      "reach_m": 1.0
+    }
   }
 }

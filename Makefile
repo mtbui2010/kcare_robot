@@ -8,7 +8,7 @@ ROOT  := $(shell pwd)
 # Set one to empty to skip it entirely:
 #   make install PYPLANNER_DIR=          # no GRACE planner
 ROBOT_AGENT_DIR ?= $(ROOT)/../robot_agent
-PYPLANNER_DIR   ?= $(ROOT)/../pyplanner
+PYPLANNER_DIR   ?=
 
 # `visionserve` comes from PyPI (a normal dependency in pyproject.toml), NOT
 # from ../vision_serve/clients/python — that checkout gitignores the package
