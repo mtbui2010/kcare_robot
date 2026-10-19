@@ -75,6 +75,12 @@ ARM_CONFIGS = {   'calib_offset': [0, 0, -0.03],
     'base_x': 0.1915,
     'range': {'x': [0.4415, 0.4915], 'y': [-1, 1], 'z': [-0.1, 1.5]},
     'tool_range': {'x': [-0.5, 0.5], 'y': [-0.5, 0.5], 'z': [0.05, 0.9]},
+    # where along the heading the approach pose must be (base frame); outside it the base drives (mforward).
+    # Standing objects are approached tilted, the pose 0.125 m ahead of the object, so a shorter band.
+    # Sim sweep 2026-10-19 (kitchen counter, left mode). Code defaults if a site override leaves them out.
+    'approach_x': {'standing': [0.15, 0.40], 'lying': [0.15, 0.70]},
+    'place_x': [0.15, 0.35],
+    'max_reach_y': 0.8,          # side modes: an object deeper than this into the table is refused (IK fails beyond)
     'wrist_angle': {'lying': 45, 'standing': 10},
     'approach_d': 0.12,
     'home': {   'front': [0, 15, 0, 15, -180, 0, 0],
@@ -172,6 +178,7 @@ ARM_CONFIGS = {   'calib_offset': [0, 0, -0.03],
 # table@kitchen and table@living room) fails the skill instead of taking the
 # first one. ENV entries may list other names for the same spot in `aliases`.
 MOBILE_CONFIGS = {'dforward': 0.2, 'dshift': -0.2, 'height': 0.405, 'max_shift': 0.6,
+                  'shift_deadband': 0.03,      # base shifts under this are not driven (was 0.1, hard-coded)
                   'strict_loc': False}
 
 FIND_CONFIGS = {   'detect_object': {   'model': 'rfdetr-gdino-sam-etri',

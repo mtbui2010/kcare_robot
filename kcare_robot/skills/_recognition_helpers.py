@@ -656,6 +656,23 @@ def _object_pose_3d(node, box, box_depths, depth, cam_params, *, use_head):
     # return [float(px) / 1000., float(py) / 1000., float(pz) / 1000.]
 
 
+def base_shift(x, band, *, deadband=None):
+    """Forward (+) / backward (-) base shift that brings an approach x [m, base frame] into `band` = [lo, hi].
+    Shifts under MOBILE_CONFIGS['shift_deadband'] (0.03 m) are not driven: 2026-10-19 sweep, a can 2.5 cm past
+    the old 0.1 m deadband was left out of reach (IK failed)."""
+    m = float(x - np.clip(x, band[0], band[1]))
+    dead = MOBILE_CONFIGS.get('shift_deadband', 0.03) if deadband is None else deadband
+    return 0.0 if abs(m) < dead else m
+
+
+def approach_x_band(islying):
+    """ARM_CONFIGS['approach_x'][lying|standing]: where along the heading the approach pose must be for the arm
+    to reach it (base frame). Standing objects are approached tilted from the side, the approach pose 0.125 m ahead
+    of the object, so their band is shorter (sim sweep 2026-10-19: lying 0.15-0.7 and standing 0.15-0.4 both work)."""
+    ax = ARM_CONFIGS.get('approach_x') or {}
+    return ax.get('lying', [0.15, 0.7]) if islying else ax.get('standing', [0.15, 0.4])
+
+
 def _build_approach_pose(pose, islying, robot_mode) -> dict:
     """Approach geometry for a found object (lying vs standing branch)."""
     ap = list(pose)
@@ -673,8 +690,7 @@ def _build_approach_pose(pose, islying, robot_mode) -> dict:
         ap[1] += (-dd if robot_mode == 'right' else dd) * cost
         ap += [-180, -75, 100 + ry if robot_mode == 'right' else -100 - ry]
         approach_lying = False
-    mforward = ap[0] - np.clip(ap[0], 0.15, 0.7 if islying else 0.4)
-    mforward = 0 if abs(mforward) < 0.1 else mforward
+    mforward = base_shift(ap[0], approach_x_band(islying))
     ap[0] -= mforward
     approach_pose = {k: v for k, v in zip(['x', 'y', 'z', 'rx', 'ry', 'rz'], ap)}
     return {

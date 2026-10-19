@@ -15,7 +15,7 @@ import math
 
 import numpy as np
 
-from robot_agent.skill_configs import ENV, ARM_CONFIGS, NO_ACTION
+from robot_agent.skill_configs import ENV, ARM_CONFIGS, MOBILE_CONFIGS, NO_ACTION
 from robot_agent.utils import run_parallel_check
 from kcare_robot.utils import (
     get_env_specs,
@@ -445,6 +445,22 @@ def stack(**kwargs):
 
     return movej(node=node, inputs='fold', wait=True)
 
+def reach_problem(ins, robot_mode, check_depth=True):
+    """Why the arm cannot get to a found object / place spot from here, or ''. 2026-10-19 sim sweep (kitchen
+    counter, left mode): the base shift (mforward) had no limit, and objects deeper than ~0.8 m sideways (into the
+    table; the base never moves sideways) always ended in an IK failure."""
+    mf = float(ins.get('mforward') or 0.0)
+    max_shift = float(MOBILE_CONFIGS.get('max_shift', 0.6))
+    if abs(mf) > max_shift:
+        return (f"needs the base to drive {mf:+.2f} m {'forward' if mf > 0 else 'back'}, more than max_shift "
+                f"{max_shift:.2f} m: move closer first")
+    p = ins.get('pose_3d') or []
+    reach_y = float(ARM_CONFIGS.get('max_reach_y', 0.8))
+    if check_depth and robot_mode != 'front' and len(p) > 1 and abs(p[1]) > reach_y:
+        return f'{abs(p[1]):.2f} m deep from the robot, beyond the arm reach {reach_y:.2f} m'
+    return ''
+
+
 @arm_exception_handler
 def approach_pick(node, **kwargs) -> dict:
     robot_mode = get_robot_mode(node=node)
@@ -468,6 +484,9 @@ def approach_pick(node, **kwargs) -> dict:
     #     return ret
 
     kwargs.update(ret['ins'][obj_name])
+    why = reach_problem(kwargs, robot_mode)
+    if why:
+        return {'isdone': False, 'msg': f'pick: {obj_name} is {why}' if 'deep' in why else f'pick: {obj_name} {why}'}
     ret = run_parallel_check(funcs=[
         lambda: forward(node=node, inputs=kwargs['mforward'], wait=True),
         lambda: movej(node=node, inputs='give', wait=True),

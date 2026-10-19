@@ -46,7 +46,7 @@ from kcare_robot.skills._recognition_helpers import (
     _mask_for_target, _emit_detection_vis, _predict_detect,
     _object_pose_3d, _build_approach_pose, _grasp_from_box, _grasp_label,
     _parse_obj_names,
-    call_detector, make_side_box, _head_calib_func_factory, is_inside_workspace_box,
+    call_detector, make_side_box, _head_calib_func_factory, is_inside_workspace_box, base_shift,
     save_detection_dataset, _normalize_orientation
 )
 
@@ -1030,8 +1030,7 @@ def find_place(node, **kwargs) -> dict:
         approach_pose[2] += dapproach*np.sin(15*np.pi/180)
         approach_pose += [-180, -75, 100+ry if robot_mode=='right' else -100-ry]
         approach_lying=False
-    mforward = approach_pose[0] - np.clip(approach_pose[0], 0.15, 0.35)
-    mforward = 0 if abs(mforward)<0.1 else mforward
+    mforward = base_shift(approach_pose[0], ARM_CONFIGS.get('place_x', [0.15, 0.35]))
     approach_pose[0] -= mforward
 
     approach_pose = {k:v for k,v in zip(['x', 'y', 'z', 'rx', 'ry', 'rz'], approach_pose)}

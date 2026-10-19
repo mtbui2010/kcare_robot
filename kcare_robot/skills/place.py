@@ -52,6 +52,10 @@ def approach_place(node, **kwargs) -> dict:
 
     kwargs.update(find_place(node=node, inputs=inp, **kwargs))
     assert kwargs['isdone'], f'{kwargs}'
+    from kcare_robot.skills.pick import reach_problem
+    why = reach_problem(kwargs, get_robot_mode(node=node), check_depth=False)   # placing deep worked in the sweep
+    if why:
+        return {'isdone': False, 'msg': f'place: the spot {why}'}
 
     ret = run_parallel_check(funcs=[
         lambda: forward(node=node, inputs=kwargs['mforward'], wait=True),
