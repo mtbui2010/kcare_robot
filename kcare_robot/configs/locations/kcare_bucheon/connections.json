@@ -163,7 +163,7 @@
       "agent_name": "grip",
       "data_interface": "control_msgs/action/GripperCommand",
       "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req.command, data)\n    return req",
-      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': True, 'stalled': res.stalled, 'reached': res.reached_goal}",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': True, 'stalled': res.stalled, 'reached': res.reached_goal, 'position': float(res.position)}",
       "timeout": 10.0
     }
   },

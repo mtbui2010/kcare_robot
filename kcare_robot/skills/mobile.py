@@ -86,6 +86,9 @@ def forward(node, **kwargs):
 def move(node, **kwargs):
     agents = node.agents   
     env_name = kwargs.pop('inputs')
+    # keep_arm: drive only (no fold / lift / give), for a skill carrying something in a pose of its own
+    # (align_shoes carries a pair of shoes; folding with them in hand would swing them into the robot)
+    keep_arm = bool(kwargs.pop('keep_arm', False))
 
     env = get_env_specs(env_name, ENV)
     import logging as _lg      # [spoken-debug] temporary
@@ -139,7 +142,7 @@ def move(node, **kwargs):
     if prev_robot_mode!='front':
         ret = run_parallel_check(funcs=[
             lambda : moveh(node=node, inputs='straight,front', wait=True),
-            lambda : movej(node=node, inputs='fold', robot_mode='front', wait=True),
+            (lambda : {'isdone': True}) if keep_arm else (lambda : movej(node=node, inputs='fold', robot_mode='front', wait=True)),
             # lambda : node.agents['turn'].send({'inputs': back_turn_deg, 'wait': True}),
             lambda : turn(node=node, inputs=back_turn_deg),
         ])
@@ -168,9 +171,10 @@ def move(node, **kwargs):
     # move
     kwargs.update({'wait':True})
     ret = run_parallel_check(funcs=[
-        lambda : (time.sleep(3),lift(node=node, inputs='home', mode='front'), time.sleep(2), 
-        lift(node=node, inputs='lowest' if robot_mode=='front' else lift_height, mode=robot_mode, wait=True))[-1],
-        lambda : movej(node=node, inputs='fold', mode='front'),
+        (lambda : {'isdone': True}) if keep_arm else
+        (lambda : (time.sleep(3),lift(node=node, inputs='home', mode='front'), time.sleep(2),
+         lift(node=node, inputs='lowest' if robot_mode=='front' else lift_height, mode=robot_mode, wait=True))[-1]),
+        (lambda : {'isdone': True}) if keep_arm else (lambda : movej(node=node, inputs='fold', mode='front')),
         # lambda : ( movej(node=node, inputs='fold', mode=prev_robot_mode),time.sleep(2), movej(node=node, inputs='fold', mode='front'))[-1],
         lambda : (moveb(node=node, **kwargs), forward(node=node, inputs=dforward, wait=True))[-1]
     ])
@@ -190,7 +194,7 @@ def move(node, **kwargs):
         lambda: turn(node=node, inputs=turn_deg),
         lambda : moveh(node=node, ry='straight', rz=robot_mode, wait=True),
         # lambda : movej(node=node, inputs='fold', mode=robot_mode, wait=True),
-        lambda : (time.sleep(1), movej(node=node, inputs='give', mode=robot_mode, wait=True))[-1],
+        (lambda : {'isdone': True}) if keep_arm else (lambda : (time.sleep(1), movej(node=node, inputs='give', mode=robot_mode, wait=True))[-1]),
     ])
     assert ret['isdone'], f'{ret}'
     
