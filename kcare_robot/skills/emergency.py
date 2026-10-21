@@ -19,12 +19,17 @@ A detector skill only hands over what it found; qa decides what to say and ends 
 `dialog` asks the context's question, then listens in windows of `reprompt_sec` (20 s; 5 s in demo mode)
 until `timeout_sec` (60 s; 15 s in demo) is used up, re-asking with the seconds left:
 
-  - a clear "I'm fine" (괜찮아 / 문제없어 / 별일 없어 …)          → confirm, no call;
+  - a clear "I'm fine" (괜찮아 / 문제없어 / 별일 없어 …, with at most 네 / 저는 … before it) → confirm, no call;
+    anything else before it ("아니면 괜찮아": Whisper's "안 괜찮아") is unclear;
   - asks for help (도와줘 / 아파 / 119 / 넘어졌 …), or denies
     being fine (안 괜찮아), or says both                            → call 119 at once;
   - unclear words                                                 → ask again (the clock keeps running);
   - nothing / Whisper's silence phrases (감사합니다 …)              → ask again;
   - time used up without a clear "fine"                           → call 119.
+
+The first answer not understood puts [괜찮아요] [도와주세요] on the dashboard (as ask's screen_choice); the robot
+keeps asking aloud and counting down, and a click answers like the words. Every answer is kept in
+<log dir>/emergency_audio/ (recording + what Whisper made of it).
 
 Only a clear "fine" stops the call: a false alarm costs less than a missed fall. The time left is counted
 in listen windows, not wall clock, so what the robot says ("10초 뒤") matches what happens; the robot's own
@@ -42,7 +47,9 @@ from robot_agent.core.run_control import cancel_requested
 from robot_agent.skill_configs import _ConfigProxy
 from robot_agent.utils import exception_handler, play_alarm, say_to_user
 
-from .hri import _common, _hear, _hri_cfg, _say, _set_rate, _truthy, log_data
+from robot_agent.utils import choose_close, choose_open, choose_result
+
+from .hri import _common, _hear, _hri_cfg, _save_audio, _say, _set_rate, _truthy, log_data
 
 EMERGENCY_CONFIGS = _ConfigProxy('EMERGENCY_CONFIGS', {})
 _DEFAULTS = {
@@ -70,14 +77,15 @@ _PHRASES = {
                        'en': 'Nothing unusual in the restroom.'},
     'question':       {'ko': '괜찮으신가요?',
                        'en': 'Are you all right?'},
-    'how':            {'ko': "괜찮으시면 '괜찮아'라고 말씀해 주세요.",
-                       'en': "If you are fine, please say 'I am OK'."},
+    'how':            {'ko': "괜찮으시면 '괜찮아요', 도움이 필요하시면 '도와주세요'라고 말씀해 주세요.",
+                       'en': "If you are fine, please say 'I am OK'; if you need help, say 'Help me'."},
     'deadline':       {'ko': '응답 없으시면 {t} 뒤 일일구에 구조요청 하겠습니다.',
                        'en': 'If you do not answer, I will call 119 in {t}.'},
     'again':          {'ko': '괜찮으신가요? {t} 뒤 일일구에 구조요청 하겠습니다.',
                        'en': 'Are you all right? I will call 119 in {t}.'},
-    'unclear':        {'ko': "잘 못 들었어요. 괜찮으시면 '괜찮아'라고 말씀해 주세요. {t} 뒤 일일구에 구조요청 하겠습니다.",
-                       'en': "Sorry, I didn't catch that. If you are fine, please say 'I am OK'. I will call 119 in {t}."},
+    'unclear':        {'ko': "잘 못 들었어요. 괜찮으시면 '괜찮아요', 도움이 필요하시면 '도와주세요'라고 말씀해 주세요. "
+                             "{t} 뒤 일일구에 구조요청 하겠습니다.",
+                       'en': "Sorry, I didn't catch that. Say 'I am OK' or 'Help me'. I will call 119 in {t}."},
     'ok':             {'ko': '괜찮으시다니 다행이에요. 도움이 필요하시면 언제든 불러 주세요.',
                        'en': "I'm glad you're all right. Call me any time you need help."},
     'help':           {'ko': '알겠습니다. 지금 일일구에 구조요청 하겠습니다.',
@@ -89,8 +97,15 @@ _PHRASES = {
 }
 # Whisper's prompt while listening: the answers to expect.
 # Korean says 119 as 일일구: the spoken lines write it so (TTS read "119" as 백십구), and both forms are help.
-_HINT = {'ko': '괜찮아요. 도와주세요. 아파요. 일일구 불러 주세요.',
-         'en': "I'm OK. Help me. It hurts. Call 119."}
+# "안 괜찮아요" too (2026-10-21): with only "괜찮아요" in it, Whisper wrote "안 괜찮아" as "괜찮아" / "아니면 괜찮아".
+_HINT = {'ko': '괜찮아요. 안 괜찮아요. 도와주세요. 아파요. 일일구 불러 주세요.',
+         'en': "I'm OK. I'm not OK. Help me. It hurts. Call 119."}
+# The on-screen buttons once an answer was not understood (dialog): the first is "fine", the second "help".
+_BUTTONS = {'ko': ['괜찮아요', '도와주세요'], 'en': ["I'm OK", 'Help me']}
+# Words that may stand before "괜찮아" in a plain "I'm fine" ("네, 괜찮아요", "저는 괜찮아요"). Anything else there
+# ("아니면 괜찮아" — Whisper's "안 괜찮아", "아니 괜찮아") makes the answer unclear: asked again, with the buttons.
+_FINE_LEAD = {'네', '예', '응', '어', '음', '아', '저', '저는', '전', '나', '나는', '난', '이제', '지금', '정말', '진짜',
+              'yes', 'yeah', 'yep', 'i', 'am', 'really'}
 
 # ── Reading the answer ───────────────────────────────────────────────────────
 # Negated forms first: they contain the plain words ("안 괜찮아" holds 괜찮, "안 아파" holds 아파).
@@ -118,8 +133,13 @@ def reply_kind(text, hint: str = '') -> str:
         t = t.replace(p, ' ')
     if not re.search(r'\w', t):
         return 'none'
-    sentences = [_norm(s) for s in re.split(r'[.?!]', hint or '') if _norm(s)]
-    if sum(s in t for s in sentences) >= 2:             # the hint read back to us, not an answer
+    sentences = sorted({_norm(s) for s in re.split(r'[.?!]', hint or '') if _norm(s)}, key=len, reverse=True)
+    rest, echoed = t, 0
+    for s in sentences:                                  # longest first, each part of the text counted once:
+        if s in rest:                                    # "안 괜찮아요" holds the hint's "괜찮아요" too
+            echoed += 1
+            rest = rest.replace(s, ' ', 1)
+    if echoed >= 2:                                      # the hint read back to us, not an answer
         return 'none'
     if _NOT_FINE.search(t):
         return 'help'
@@ -128,14 +148,35 @@ def reply_kind(text, hint: str = '') -> str:
     help_ = any(w in t for w in _HELP)
     if help_:                                           # "괜찮은데 좀 아파" → help
         return 'help'
-    return 'fine' if fine else 'unclear'
+    if not fine:
+        return 'unclear'
+    # fine only when nothing unexpected comes before it: "아니면 괜찮아" is unclear (asked again), not fine
+    at = min(i for i in (t.find(w) for w in _FINE) if i >= 0)
+    lead = re.findall(r"[\w']+", t[:at])
+    return 'fine' if all(w in _FINE_LEAD for w in lead) else 'unclear'
+
+
+_KO_DIGITS = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구']
+
+
+def _ko_num(n: int) -> str:
+    """Sino-Korean reading of 0..9999 in Hangul (15 -> 십오, 30 -> 삼십, 100 -> 백): the TTS read "15초" oddly, as
+    it read "119" as 백십구 (2026-10-21)."""
+    if n == 0:
+        return '영'
+    out = ''
+    for unit, word in ((1000, '천'), (100, '백'), (10, '십'), (1, '')):
+        d, n = divmod(n, unit)
+        if d:
+            out += ('' if d == 1 and word else _KO_DIGITS[d]) + word
+    return out
 
 
 def _secs(sec: float, lang: str) -> str:
     sec = int(round(sec))
     m, s = divmod(sec, 60)
-    if lang == 'ko':
-        return ' '.join(p for p in (f'{m}분' if m else '', f'{s}초' if s else '') if p) or '0초'
+    if lang == 'ko':                              # written out: "십오 초", "일 분 삼십 초"
+        return ' '.join(p for p in (f'{_ko_num(m)} 분' if m else '', f'{_ko_num(s)} 초' if s else '') if p) or '영 초'
     return ' '.join(p for p in (f"{m} minute{'s' if m > 1 else ''}" if m else '',
                                 f"{s} second{'s' if s > 1 else ''}" if s else '') if p) or '0 seconds'
 
@@ -237,7 +278,9 @@ def dialog(node, context: dict, lang: str, source: str, listen: dict, **over) ->
     timeout = float(cfg['demo_timeout_sec' if demo else 'timeout_sec'])
     reprompt = float(cfg['demo_reprompt_sec' if demo else 'reprompt_sec'])
     windows = max(1, int(round(timeout / reprompt)))
-    listen = dict(listen, max_sec=reprompt, hint=_HINT.get(lang, _HINT['en']), keep_audio=False)
+    # keep_audio: every answer → <log dir>/emergency_audio/ with what Whisper made of it (2026-10-21: there was no
+    # way to hear what "아니면 괜찮아" really was)
+    listen = dict(listen, max_sec=reprompt, hint=_HINT.get(lang, _HINT['en']), keep_audio=True)
     if cfg.get('energy_threshold') is not None:
         listen['energy_threshold'] = float(cfg['energy_threshold'])
     hint = listen['hint']
@@ -247,32 +290,51 @@ def dialog(node, context: dict, lang: str, source: str, listen: dict, **over) ->
     t0, turns, kinds = time.time(), [], []
     prompt = ' '.join([context.get('question') or _phrase('question', lang), _phrase('how', lang),
                        _phrase('deadline', lang, t=_secs(timeout, lang))])
-    outcome = None
-    for k in range(windows):
-        if cancel_requested():
-            break
-        t_listen = time.time()
-        try:
-            text, _audio = _hear(prompt, lang, source, listen)
-            rk = reply_kind(text, hint)
-        except RuntimeError as e:
-            if cancel_requested():                      # the dashboard mic was released by Stop
+    outcome, screen = None, None
+    buttons = _BUTTONS.get(lang, _BUTTONS['en'])
+    try:
+        for k in range(windows):
+            if cancel_requested():
                 break
-            # Whisper down / mic error (2026-10-15: the speaches container had not come back after a reboot).
-            # Not a reason to stop an emergency: count it as not understood, keep the clock going.
-            log_data({'msg': f'{kind}: could not hear ({e}) — counted as unclear'})
-            text, rk = None, 'unclear'
-            time.sleep(max(0.0, reprompt - (time.time() - t_listen)))   # the window still takes its time
-        turns.append({'robot': prompt, 'user': text, 'kind': rk})
-        kinds.append(rk)
-        log_data({'msg': f'{kind}: heard {text!r} → {rk}'})
-        if rk in ('fine', 'help'):
-            outcome = rk
-            break
-        left = timeout - (k + 1) * reprompt
-        if left <= 0:
-            break
-        prompt = _phrase('unclear' if rk == 'unclear' else 'again', lang, t=_secs(left, lang))
+            t_listen = time.time()
+            try:
+                text, _audio = _hear(prompt, lang, source, listen)
+                _save_audio(listen, text, lang, folder='emergency_audio')
+                rk = reply_kind(text, hint)
+            except RuntimeError as e:
+                if cancel_requested():                  # the dashboard mic was released by Stop
+                    break
+                # Whisper down / mic error (2026-10-15: the speaches container had not come back after a reboot).
+                # Not a reason to stop an emergency: count it as not understood, keep the clock going.
+                log_data({'msg': f'{kind}: could not hear ({e}) — counted as unclear'})
+                text, rk = None, 'unclear'
+                time.sleep(max(0.0, reprompt - (time.time() - t_listen)))   # the window still takes its time
+            # a click on the buttons (it also ended the listen in progress) answers, as ask's on-screen choice
+            clicked = choose_result(screen)
+            how = ''
+            if clicked:
+                text, rk, how = clicked, ('fine' if clicked == buttons[0] else 'help'), 'screen'
+            turns.append({'robot': prompt, 'user': text, 'kind': rk, **({'how': how} if how else {})})
+            kinds.append(rk)
+            log_data({'msg': f'{kind}: {"clicked" if how else "heard"} {text!r} → {rk}'})
+            if rk in ('fine', 'help'):
+                outcome = rk
+                break
+            if screen is None:
+                # not understood: the two answers as buttons on the dashboard (none without one); the robot keeps
+                # asking aloud and counting down meanwhile — a click or a clear answer, whichever comes first
+                screen = choose_open(buttons, context.get('question') or _phrase('question', lang))
+                if screen:
+                    log_data({'msg': f'{kind}: not understood — {" / ".join(buttons)} on the dashboard'})
+            left = timeout - (k + 1) * reprompt
+            if left <= 0:
+                break
+            prompt = _phrase('unclear' if rk == 'unclear' else 'again', lang, t=_secs(left, lang))
+        if outcome is None and (clicked := choose_result(screen)):      # clicked as the time ran out
+            outcome = 'fine' if clicked == buttons[0] else 'help'
+            turns.append({'robot': None, 'user': clicked, 'kind': outcome, 'how': 'screen'})
+    finally:
+        choose_close(screen)
 
     result = {'kind': kind, 'turns': turns, 'demo': demo,
               'answer': next((t['user'] for t in reversed(turns) if t['kind'] != 'none'), None)}

@@ -319,9 +319,9 @@ def _object_entry(node, name, target, res, rgb, depth, cam_params, w, h, with_gr
         'grasp_label': _grasp_label(grasp) if grasp else '',
     })
 
-    # Entry geometry: the grasp (pose_3d in the BASE frame, jaw box, grasp
-    # quality) when grasp-gd ran; else the detection box (head → base frame via
-    # get3d, wrist coarse → camera frame via Ixy2xyz).
+    # Entry geometry: the grasp (pose_3d = the grasp's [dx, dy, dz] from the TOOL, the jaw line's box, grasp
+    # quality) when grasp-gd ran — the detector's box / score are then in det_box / det_score; else the detection
+    # box (head → base frame via get3d, wrist coarse → camera frame via Ixy2xyz).
     if grasp is not None:
         pose, ebox, escore, box_depths = grasp['pose_3d'], grasp['box'], grasp['score'], grasp['depths']
     else:
@@ -362,6 +362,8 @@ def _object_entry(node, name, target, res, rgb, depth, cam_params, w, h, with_gr
     if grasp is not None:
         entry['grasppose']   = grasp['grasppose']
         entry['grasp_score'] = grasp['score']
+        entry['det_box']     = det_box
+        entry['det_score']   = float(getattr(target, 'conf', 0.0))
     return entry
 
 

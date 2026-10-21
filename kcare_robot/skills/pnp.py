@@ -91,7 +91,7 @@ def _grasp(node, obj, num_trials=2):
         if g is None:
             continue
         dx, dy, dz, angle, width, dpull = g
-        grip(node=node, inputs=width + 0.02, wait=False)
+        grip(node=node, inputs=width + _h.GRASP_OPEN_MARGIN, wait=False)
         ret = movet(node=node, dx=dx, dy=dy, wait=True)
         assert ret['isdone'], f'{ret}'
         ret = movej(node=node, dr6=angle, wait=True)
@@ -200,6 +200,7 @@ def pnp(node, **kwargs):
             lambda: (time.sleep(0.3 if pl['islying'] else 0.), grip(node=node, inputs='open', wait=True))[-1],
         ])
     else:
+        movel(node=node, dz=-0.03)
         ret = grip(node=node, inputs='open', wait=True)
     assert ret['isdone'], f'{ret}'
     up = 0.15 if pl['islying'] else 0.25

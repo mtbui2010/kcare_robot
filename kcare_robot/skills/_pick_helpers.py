@@ -15,6 +15,7 @@ from kcare_robot.skills.recognition import find_grasp , grasp_succeed, detect
 
 # Drawer pull/push distance and drawer-handle search window.
 DPULL = 0.3
+GRASP_OPEN_MARGIN = 0.03     # the gripper opens to the grasp width + this [m] before closing on it
 DEFAULT_HANDLE = 'brown handle'
 DRAWER_HEIGHT = 0.75
 DRAWER_RANGE = [0.1, 0.4]
@@ -111,7 +112,7 @@ def retract_from_drawer(node, lift_height, mforward,  robot_mode=None):
 
 def grasp_pose_from_ins(ins, dpull):
     """Extract (dx, dy, dz, angle, width, dpull) from a find_grasp `ins` entry.
-    `dz` is forced positive; `angle` is wrist-wrapped; `width` is scaled ×10
+    `dz` is forced positive; `angle` is wrist-wrapped; `width` in metres
     to match the gripper command range. Returns `None` if outside workspace."""
     dx, dy, dz, angle, width = ins['grasppose']
     # width *= 10
@@ -125,7 +126,7 @@ def grasp_pose_from_ins(ins, dpull):
 
 
 def execute_fine_grasp(node, dx, dy, dz, angle, width, dpull, pull_speed=1.0):
-    """Open gripper to `width+200`, move to (dx, dy), rotate to `angle`,
+    """Open gripper to `width + GRASP_OPEN_MARGIN`, move to (dx, dy), rotate to `angle`,
     descend `dz`, close, then pull back `dpull` while keeping the gripper
     closed. Returns the final ret (may be a failure or success dict).
 
@@ -133,7 +134,7 @@ def execute_fine_grasp(node, dx, dy, dz, angle, width, dpull, pull_speed=1.0):
     """
 
     ret = run_parallel_check(funcs=[
-        lambda: grip(node=node, inputs=width + 0.02, wait=False),
+        lambda: grip(node=node, inputs=width + GRASP_OPEN_MARGIN, wait=False),
         lambda: (movet(node=node, dx=dx, dy=dy, wait=True), movej(node=node, dr6=angle, wait=True))[-1]
     ])
     assert ret['isdone'], f'{ret}'

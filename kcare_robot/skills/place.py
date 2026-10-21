@@ -105,7 +105,7 @@ def place(node, **kwargs):
       - `rev_loc=='me'` is rewritten to the `ME` constant.
       - `to_wipe` is auto-set when `'spill'` appears in `rev_loc`.
     """
-    lower_before_open = kwargs.pop('lower_before_open', True)
+    lower_before_open = kwargs.pop('lower_before_open', None)
     big_object  = kwargs.pop('big_object', False)
 
     for k in ['object_from_drawer', 'pose_after_open', 'lift_after_open', 'forward_after_open', 'init_pose_fixed']:
@@ -223,7 +223,7 @@ def wipe(node, **kwargs):
     ret = movet(node=node, dz=kwargs['dapproach'], wait=True)
     assert ret['isdone'], f'{ret}'
 
-    movel(node=node, dz=-kwargs['dz_up']+0.005)
+    movel(node=node, dz=-kwargs['dz_up']+0.01)
 
     #wipe here
     mul = 1 if robot_mode=='right' else -1

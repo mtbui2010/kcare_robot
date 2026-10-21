@@ -569,7 +569,7 @@ def _grasp_label(grasp) -> str:
     gp = (grasp or {}).get('grasppose')
     if not gp or len(gp) < 5:
         return ''
-    return f"w{gp[4]:.0f} {gp[3]:+.0f}deg"
+    return f"w{gp[4] * 100:.1f}cm {gp[3]:+.0f}deg"
 
 
 def _draw_grasp(im, line, label=''):
@@ -724,7 +724,7 @@ def _grasp_from_box(node, obj, rgb, depth, cam_params, grasp_configs, *,
     grasppose, depth_final = _line_to_grasppose(
         node, [gx0, gy0, gx1, gy1], cam_params=cam_params,
         depths={'obj_median': depth_value, 'bound': depth_bound},
-        keep_orientation=keep_orientation)
+        keep_orientation=keep_orientation, mask=obj_mask)
     box = [float(min(gx0, gx1)), float(min(gy0, gy1)),
            float(max(gx0, gx1)), float(max(gy0, gy1))]
 
@@ -738,7 +738,8 @@ def _grasp_from_box(node, obj, rgb, depth, cam_params, grasp_configs, *,
         'box':         box,
         'line':        [float(gx0), float(gy0), float(gx1), float(gy1)],   # jaw line (pixels)
         'score':       float(getattr(g, 'quality', 0.0)),
-        'depths':      {'obj_median': depth_value, 'bound': None, 'final': depth_final},
+        'depths':      {'obj_median': depth_value, 'bound': None if depth_bound is None else float(depth_bound),
+                        'final': depth_final},
     }, obj_mask
 
 
@@ -772,11 +773,40 @@ def _grasp_tip_depth(v0, v1) -> float:
     return d
 
 
+def _jaw_width_along_x(mask, cx, cy, z_mm, cam_params, rows=2):
+    """Width [mm] of the object's mask along the image x axis through (cx, cy) — where jaws closing at rz 0 meet
+    it: the run of mask pixels holding (or nearest to) cx, median over cy +- rows. None without a mask there."""
+    if mask is None:
+        return None
+    m = np.asarray(mask) > 0
+    h, w = m.shape[:2]
+    runs = []
+    for y in range(max(0, int(cy) - rows), min(h, int(cy) + rows + 1)):
+        xs = np.flatnonzero(m[y])
+        if not len(xs):
+            continue
+        splits = np.split(xs, np.flatnonzero(np.diff(xs) > 1) + 1)
+        run = min(splits, key=lambda r: 0 if r[0] <= cx <= r[-1] else min(abs(r[0] - cx), abs(r[-1] - cx)))
+        runs.append((run[0], run[-1] + 1))
+    if not runs:
+        return None
+    a, b = np.median([r[0] for r in runs]), np.median([r[1] for r in runs])
+    pa = Ixy2xyz(Ix=int(a), Iy=int(cy), Z=z_mm, cam_params=cam_params)
+    pb = Ixy2xyz(Ix=int(b), Iy=int(cy), Z=z_mm, cam_params=cam_params)
+    return float(np.linalg.norm(np.subtract(pa, pb)))
+
+
 def _line_to_grasppose(node, line, *, cam_params, depths: dict,
-                       keep_orientation: bool, rgb_out=None):
+                       keep_orientation: bool, rgb_out=None, mask=None):
     """Convert a pixel jaw-line (x0,y0,x1,y1) at `depths['obj_median']` into a
-    3D grasp pose ``[x, y, depth_final, rz, width]`` (x/y/depth in metres after
-    /1000 + the configured wrist offsets; rz in degrees; width in mm).
+    3D grasp pose ``[x, y, depth_final, rz, width]`` (x/y/depth/width in metres;
+    x/y with the configured wrist offsets; rz in degrees). (2026-10-21: width was
+    in mm while pick / pnp open the gripper to width + margin in metres — 27.8 mm
+    became 27.8 m, clipped to the fully open 0.1 m on every pick.)
+
+    When the line's angle is dropped (rz 0: keep_orientation off, not lying) the
+    width is the object's extent along the jaws' real closing direction (image x,
+    from `mask`), not the length of the slanted line.
 
     This is the exact lift the previous `estimate_grasp` used — only the source
     of the pixel line changed (grasp-gd contacts instead of mask2grasps)."""
@@ -798,12 +828,15 @@ def _line_to_grasppose(node, line, *, cam_params, depths: dict,
 
     width = np.linalg.norm([x0 - x1, y0 - y1, z0 - z1])  # mm
     rz = np.arctan2(y1 - y0, x1 - x0) * 180 / np.pi
-    if not keep_orientation:
-        rz = rz if to_pick_lying_obj else 0
+    if not keep_orientation and not to_pick_lying_obj:
+        rz = 0
+        w_x = _jaw_width_along_x(mask, (ix0 + ix1) / 2, (iy0 + iy1) / 2, depth_value, cam_params)
+        if w_x:
+            width = w_x
     rz = _normalize_orientation(rz)
 
     depth_final = depth_value / 1000. - ARM_CONFIGS['wrist_tool_length']  # m
-    return [float(x), float(y), float(depth_final), float(rz), float(width)], float(depth_final)
+    return [float(x), float(y), float(depth_final), float(rz), float(width) / 1000.], float(depth_final)
 
 
 # ── Object detection helpers ──────────────────────────────────────────────────

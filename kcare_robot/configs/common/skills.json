@@ -765,7 +765,7 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": "move::$inputs$\nlift::highest\nmovej::pre_pick\nforward::0.1",
+    "plan": "move::$inputs$\nlift::highest\nmovej::pre_pick&&forward::0.1\n",
     "aliases": [
       "\ub192\uc774 \uc774\ub3d9"
     ]

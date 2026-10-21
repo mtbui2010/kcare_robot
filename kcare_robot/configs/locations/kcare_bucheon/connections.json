@@ -382,6 +382,11 @@
           "url": "http://192.168.0.6:8000",
           "model": "Systran/faster-whisper-small",
           "enabled": true
+        },
+        {
+          "url": "https://whisper.aistations.org",
+          "model": "deepdml/faster-whisper-large-v3-turbo-ct2",
+          "enabled": true
         }
       ]
     }

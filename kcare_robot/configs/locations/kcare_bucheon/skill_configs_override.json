@@ -98,7 +98,7 @@
       },
       "height": 0.73,
       "loc": {
-        "x": 1.9,
+        "x": 1.85,
         "y": 3.3,
         "rz": -180
       },
@@ -714,13 +714,13 @@
     "l_arm_accel": 1200,
     "tool_radius": 0.05,
     "tool_length": 0.26,
-    "wrist_tool_length": 0.17,
+    "wrist_tool_length": 0.168,
     "approach_wrist_angle": 45,
     "place_liftup": 0.13,
     "approach_x": {
       "standing": [
         0.15,
-        0.4
+        0.5
       ],
       "lying": [
         0.15,

@@ -16,7 +16,7 @@ import math
 import numpy as np
 
 from robot_agent.skill_configs import ENV, ARM_CONFIGS, MOBILE_CONFIGS, NO_ACTION
-from robot_agent.utils import run_parallel_check
+from robot_agent.utils import run_parallel_check, run_parallel
 from kcare_robot.utils import (
     get_env_specs,
     get_lift_height,
@@ -98,13 +98,11 @@ def fine_move(**kwargs):
 
     dx = dy = dz = None
     for _ in range(num_trials):
-        ret = grip(node=node, inputs='open', wait=False)
-        if not ret['isdone']:
-            return ret
-
-        ret = find_grasp(node=node, inputs=obj_name, **kwargs)
-        if not ret['isdone']:
-            continue
+        ret = run_parallel(funcs= [
+            lambda: grip(node=node, inputs='open', wait=False),
+            lambda: find_grasp(node=node, inputs=obj_name, **kwargs)
+        ])[-1]
+        assert ret['isdone'], f'{ret}'
         ins = ret['ins'][obj_name]
 
         grasp = _h.grasp_pose_from_ins(ins, dpull)
@@ -130,7 +128,7 @@ def fine_move(**kwargs):
             return {'isdone':True}
 
         ret = run_parallel_check(funcs=[
-            lambda: grip(node=node, inputs=width + 0.02, wait=False),
+            lambda: grip(node=node, inputs=width + _h.GRASP_OPEN_MARGIN, wait=False),
             lambda: (movet(node=node, dx=dx, dy=dy, wait=True), movej(node=node, dr6=angle, wait=True))[-1]
         ])
         assert ret['isdone'], f'{ret}'
@@ -641,7 +639,7 @@ def pushing(**kwargs):
 
     Units: grasppose dx/dy/dz come from kcare_robot's recognition in metres
     (after the per-skill /1000 conversion in `estimate_grasp`), so they're
-    passed straight to `movet`. `angle` is in degrees, width in mm.
+    passed straight to `movet`. `angle` is in degrees, width in metres.
 
     Not registered in skills_config — call as a Python function.
     """

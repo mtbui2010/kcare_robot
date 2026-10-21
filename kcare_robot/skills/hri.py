@@ -94,6 +94,9 @@ _PHRASES = {
                    'en': 'Please choose one of: {options}'},
     'confirm':    {'ko': '{choice}, 알겠습니다',
                    'en': '{choice}, confirmed.'},
+    # ask, when the answer is not said back: the user still hears that it was taken (2026-10-21)
+    'ack':        {'ko': '네, 알겠습니다.',
+                   'en': 'Okay, got it.'},
 }
 
 
@@ -403,9 +406,10 @@ def ask(node, **kwargs):
             answer that matches no option they are read either way: a blind user
             cannot answer a choice they were not told.
         confirm: None (default) — with options the chosen one is said
-            ("검은색핸드백, 알겠습니다"), without options nothing is said back.
+            ("검은색핸드백, 알겠습니다"), without options only "네, 알겠습니다".
             True — also the user's words when there are no options ('"…"라고
-            들었어요'). False — nothing at all.
+            들었어요'). False — the answer is not said back, only "네, 알겠습니다"
+            (a blind user must still hear that it was taken).
         retries (int):  extra attempts after the first, for no answer or no
             match. Default 2.
         match_threshold (float): fuzzy-match floor, 0..1. Default 0.7.
@@ -463,8 +467,8 @@ def ask(node, **kwargs):
     screen = None                               # the on-screen buttons' id, once shown
 
     def chosen(choice: str, attempt: int, text: str = '', how: str = '') -> dict:
-        if confirm is not False:                     # the chosen option is said unless confirm=False
-            _say(_phrase('confirm', lang, choice=choice), lang, source)
+        # the chosen option is said; with confirm=False only that it was taken
+        _say(_phrase('confirm', lang, choice=choice) if confirm is not False else _phrase('ack', lang), lang, source)
         # no 'options' in the result: a plan passes every result on to the later steps, and the next
         # ask (2026-10-16: 무엇이 필요하세요?) then asked for these bag colours
         out = {'isdone': True, 'answer': values.get(choice, choice), 'answer_text': choice,
@@ -504,8 +508,8 @@ def ask(node, **kwargs):
             last_text = text
 
             if options is None:
-                if confirm:                                  # None / False: the raw words are not repeated
-                    _say(_phrase('heard_text', lang, text=text), lang, source)
+                # True: the words are said back; None / False: only that they were taken
+                _say(_phrase('heard_text', lang, text=text) if confirm else _phrase('ack', lang), lang, source)
                 return {'isdone': True, 'answer': text, 'answer_text': text, 'text': text, 'attempts': attempt}
 
             choice = match_option(text, options, threshold)
@@ -908,7 +912,7 @@ def _save_shots(shots) -> None:
 QA_AUDIO_KEEP = 300   # recordings kept under <log dir>/qa_audio/
 
 
-def _save_audio(listen: dict, text, lang: str) -> None:
+def _save_audio(listen: dict, text, lang: str, folder: str = 'qa_audio') -> None:
     """Keep what the mic recorded for one listen, with what Whisper made of it
     and the hint it was given — <log dir>/qa_audio/<time>.<ext> + index.jsonl —
     so misheard Korean can be replayed with other hints offline."""
@@ -917,7 +921,7 @@ def _save_audio(listen: dict, text, lang: str) -> None:
         return
     try:
         from robot_agent.state import current
-        root = current().log_dir / 'qa_audio'
+        root = current().log_dir / folder
         root.mkdir(parents=True, exist_ok=True)
         data, kind = rec
         stem = time.strftime('%Y%m%d-%H%M%S') + f'-{int(time.time() * 1000) % 1000:03d}'

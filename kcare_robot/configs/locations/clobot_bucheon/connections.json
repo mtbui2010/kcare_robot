@@ -273,18 +273,6 @@
     }
   },
   {
-    "type": "llm",
-    "name": "llama",
-    "config": {
-      "name": "llama",
-      "agent_name": "llama",
-      "url": "http://192.168.1.11:11434",
-      "is_active": true,
-      "model": "qwen3-vl:8b-instruct",
-      "num_ctx": 8192
-    }
-  },
-  {
     "type": "tcp",
     "name": "vlms",
     "config": {
@@ -322,54 +310,6 @@
     }
   },
   {
-    "type": "visionserve",
-    "name": "visionserve",
-    "config": {
-      "is_client": true,
-      "url": "http://192.168.0.6:11435",
-      "model": "rf-detr",
-      "agent_name": "visionserve"
-    }
-  },
-  {
-    "type": "visionserve",
-    "name": "rf-detr",
-    "config": {
-      "is_client": true,
-      "url": "http://10.252.205.103:11435",
-      "model": "rf-detr"
-    }
-  },
-  {
-    "type": "visionserve",
-    "name": "rf-detr",
-    "config": {
-      "is_client": true,
-      "url": "http://10.252.205.103:11435",
-      "model": "rf-detr"
-    }
-  },
-  {
-    "type": "visionserve",
-    "name": "detserve",
-    "config": {
-      "is_client": true,
-      "url": "http://10.252.205.103:11435",
-      "model": "rf-detr",
-      "agent_name": "detserve"
-    }
-  },
-  {
-    "type": "visionserve",
-    "name": "detect_arm",
-    "config": {
-      "is_client": true,
-      "url": "http://192.168.1.11:11435",
-      "model": "grasp-gd",
-      "agent_name": "detect_arm"
-    }
-  },
-  {
     "type": "ros_service",
     "name": "/create_tool_marker",
     "config": {
@@ -380,39 +320,6 @@
       "is_client": true,
       "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
       "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success}"
-    }
-  },
-  {
-    "type": "llm",
-    "name": "qwen3-vl:8b-instruct",
-    "config": {
-      "name": "llama",
-      "agent_name": "qwen3-vl:8b-instruct",
-      "url": "http://192.168.1.11:11434",
-      "model": "qwen3-vl:8b-instruct",
-      "is_active": false,
-      "num_ctx": 8192
-    }
-  },
-  {
-    "type": "visionserve",
-    "name": "rf-detr",
-    "config": {
-      "is_client": true,
-      "url": "http://10.252.205.103:11435",
-      "model": "rf-detr"
-    }
-  },
-  {
-    "type": "llm",
-    "name": "ollama",
-    "config": {
-      "name": "llama",
-      "agent_name": "ollama",
-      "url": "http://192.168.1.11:11434",
-      "model": "qwen3-vl:8b-instruct",
-      "is_active": true,
-      "num_ctx": 8192
     }
   },
   {
@@ -429,55 +336,107 @@
     }
   },
   {
-    "type": "llm",
-    "name": "qwen3-vl-8b-a6000",
+    "type": "visions",
+    "name": "visionserve",
     "config": {
-      "name": "llama",
-      "agent_name": "qwen3-vl-8b-a6000",
-      "url": "http://10.252.205.103:11434",
-      "model": "qwen3-vl:8b-instruct",
-      "is_active": false,
-      "num_ctx": 8192
+      "agent_name": "visionserve",
+      "servers": [
+        {
+          "url": "http://192.168.0.6:11435",
+          "enabled": true
+        },
+        {
+          "url": "http://10.252.205.103:11435",
+          "enabled": true
+        }
+      ]
     }
   },
   {
-    "type": "visionserve",
-    "name": "detect_head",
+    "type": "switchbot",
+    "name": "laundry room",
     "config": {
-      "is_client": true,
-      "url": "http://192.168.1.11:11435",
-      "model": "grounding-dino",
-      "agent_name": "detect_head"
+      "agent_name": "switchbot_laundry_room",
+      "mac": "EB:6B:01:06:62:34",
+      "loc": "laundry room",
+      "default": true,
+      "aliases": [
+        "세탁실",
+        "세탁방",
+        "빨래방"
+      ]
     }
   },
   {
-    "type": "visionserve",
-    "name": "rf-detr",
+    "type": "switchbot",
+    "name": "warehouse",
     "config": {
-      "is_client": true,
-      "url": "http://10.252.205.103:11435",
-      "model": "rf-detr"
+      "agent_name": "switchbot_warehouse",
+      "mac": "EC:0F:01:06:38:04",
+      "loc": "warehouse",
+      "default": false,
+      "aliases": []
     }
   },
   {
-    "type": "llm",
+    "type": "vlms",
     "name": "vlm",
     "config": {
-      "name": "llama",
       "agent_name": "vlm",
-      "url": "http://192.168.0.6:11434",
-      "model": "qwen3-vl:8b-instruct",
-      "num_ctx": 8192,
-      "is_active": true
+      "is_active": true,
+      "servers": [
+        {
+          "provider": "ollama",
+          "url": "http://192.168.0.6:11434",
+          "model": "qwen3-vl:8b-instruct",
+          "num_ctx": 8192,
+          "enabled": true
+        },
+        {
+          "provider": "ollama",
+          "url": "http://10.252.205.103:11434",
+          "model": "qwen3-vl:8b-instruct",
+          "num_ctx": 8192,
+          "enabled": true
+        }
+      ]
     }
   },
   {
-    "type": "stt",
+    "type": "voices",
     "name": "whisper",
     "config": {
       "agent_name": "whisper",
-      "url": "http://192.168.0.6:8000",
-      "model": "deepdml/faster-whisper-large-v3-turbo-ct2"
+      "servers": [
+        {
+          "url": "http://192.168.0.6:8000",
+          "model": "deepdml/faster-whisper-large-v3-turbo-ct2",
+          "enabled": true
+        },
+        {
+          "url": "http://192.168.0.6:8000",
+          "model": "Systran/faster-whisper-small",
+          "enabled": true
+        },
+        {
+          "url": "https://whisper.aistations.org",
+          "model": "deepdml/faster-whisper-large-v3-turbo-ct2",
+          "enabled": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ros_topic",
+    "name": "slam_map",
+    "config": {
+      "agent_name": "slam_map",
+      "conn_name": "/map",
+      "conn_type": "ros_topic",
+      "is_client": true,
+      "data_interface": "nav_msgs/msg/OccupancyGrid",
+      "is_camera": false,
+      "decode_func": "def decode_func(msg):\n    import numpy as np\n    i = msg.info\n    return {'grid': np.asarray(msg.data, dtype=np.int16).reshape(i.height, i.width),\n            'info': {'resolution': i.resolution, 'width': i.width, 'height': i.height,\n                     'origin': {'position': {'x': i.origin.position.x, 'y': i.origin.position.y},\n                                'orientation': {'z': i.origin.orientation.z, 'w': i.origin.orientation.w}}}}"
     }
   }
 ]
