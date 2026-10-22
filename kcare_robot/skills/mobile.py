@@ -89,6 +89,7 @@ def move(node, **kwargs):
     # keep_arm: drive only (no fold / lift / give), for a skill carrying something in a pose of its own
     # (align_shoes carries a pair of shoes; folding with them in hand would swing them into the robot)
     keep_arm = bool(kwargs.pop('keep_arm', False))
+    lift_height = kwargs.pop('lift_height', None)
 
     env = get_env_specs(env_name, ENV)
     import logging as _lg      # [spoken-debug] temporary
@@ -110,7 +111,9 @@ def move(node, **kwargs):
         dforward = MOBILE_CONFIGS['dforward'] + env.get('dforward', 0) 
         dshift = MOBILE_CONFIGS['dshift'] + env.get('dshift',  0) 
         robot_mode = kwargs.get('mode', robot_mode) 
-        lift_height = get_lift_height(env, robot_mode)
+
+        if lift_height is None:
+            lift_height = 'lowest' if robot_mode=="front"  else get_lift_height(env, robot_mode)
 
         turn_deg = get_turn_deg(robot_mode=robot_mode)
         dforward =  0 if robot_mode=='front' else dforward
@@ -173,7 +176,7 @@ def move(node, **kwargs):
     ret = run_parallel_check(funcs=[
         (lambda : {'isdone': True}) if keep_arm else
         (lambda : (time.sleep(3),lift(node=node, inputs='home', mode='front'), time.sleep(2),
-         lift(node=node, inputs='lowest' if robot_mode=='front' else lift_height, mode=robot_mode, wait=True))[-1]),
+         lift(node=node, inputs=lift_height, mode=robot_mode, wait=True))[-1]),
         (lambda : {'isdone': True}) if keep_arm else (lambda : movej(node=node, inputs='fold', mode='front')),
         # lambda : ( movej(node=node, inputs='fold', mode=prev_robot_mode),time.sleep(2), movej(node=node, inputs='fold', mode='front'))[-1],
         lambda : (moveb(node=node, **kwargs), forward(node=node, inputs=dforward, wait=True))[-1]

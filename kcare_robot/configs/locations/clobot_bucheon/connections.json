@@ -361,9 +361,9 @@
       "loc": "laundry room",
       "default": true,
       "aliases": [
-        "세탁실",
-        "세탁방",
-        "빨래방"
+        "\uc138\ud0c1\uc2e4",
+        "\uc138\ud0c1\ubc29",
+        "\ube68\ub798\ubc29"
       ]
     }
   },

@@ -637,6 +637,9 @@ _QA_PHRASES = {
                   'en': "I can't see the shelves well enough to say where."},
     'which': {'ko': '무엇을 찾으시는지 잘 못 들었어요. 다시 말씀해 주세요.',
               'en': "I didn't catch what you are looking for. Please say it again."},
+    # Shown above the place's object buttons (not said: nothing is asked again).
+    'pick':  {'ko': '어떤 물건을 찾으세요?',
+              'en': 'Which one are you looking for?'},
     'unseen': {'ko': '보이지 않아요.',
                'en': "I can't see it."},
     # Long silence in a conversation (idle_ask_sec / idle_end_sec).
@@ -1075,6 +1078,41 @@ visible say so. Never guess."""
 
 # Words that make a question a where-question, in the languages qa speaks.
 _WHERE = re.compile(r'어디|어느\s*쪽|어느\s*방향|위치|where')
+# "와인잔 있어?" / "와인잔 뒤에 있어?" — one thing and 있어: at the shelves, where it is.
+# One object and 뒤 / 앞 / 옆 … has nothing to be behind: on 2026-10-22 Whisper heard
+# "와인잔 어디에 있어?" as "와인잔 뒤에 있어?" (뒤에 0.69 sure) and the free answer
+# said "파란색 와인잔은 중앙에 있고, 뒤에는 흰색 타일 벽이 있습니다".
+_EXISTS = re.compile(r'^\s*(\S+(?:\s\S+)?)\s*(?:(?:뒤|앞|옆|위|밑|아래)에\s*)?(있어요|있어|있나요|있나|있니|있습니까)'
+                     r'\s*[?.!]*\s*$')
+
+
+def _as_where(text: str):
+    """"X 있어?" / "X 뒤에 있어?" (one thing, no other question word) → "X 어디에 있어?", else None."""
+    m = _EXISTS.match(text or '')
+    if not m or _QUESTION_WORD.search(text) or _WHERE.search(text):
+        return None
+    thing = re.sub(r'\s*(뒤|앞|옆|위|밑|아래)에$', '', m.group(1)).strip()   # "와인잔 뒤에" → 와인잔
+    return f'{thing} 어디에 있어?' if thing else None
+
+
+def _place_objects(qa_cfg, lang: str) -> list:
+    """The things asked about at a place — its qa block's `objects` (a list, or
+    {lang: list}): the buttons when a question is not understood, and the
+    Whisper hint's "와인잔 어디에 있어?" lines."""
+    objs = (qa_cfg or {}).get('objects')
+    if isinstance(objs, dict):
+        objs = objs.get(lang) or []
+    return [str(o).strip() for o in objs or [] if str(o).strip()]
+
+
+def _named_objects(text: str, objs: list) -> list:
+    """The place's objects a question names (spaces ignored: "와인 잔" = 와인잔)."""
+    t = re.sub(r'\s+', '', (text or '').lower())
+    return [o for o in objs if re.sub(r'\s+', '', o.lower()) in t]
+
+
+def _where_line(obj: str, lang: str) -> str:
+    return f'{obj} 어디에 있어?' if lang == 'ko' else f'Where is the {obj}?'
 
 _FRAME = {
     'robot': 'Left and right are as seen from the robot, i.e. as in the photos.',
@@ -1989,16 +2027,17 @@ OFFER_RETRIES = 2     # unclear answers to "꺼 드릴까요?" asked again befor
 
 
 def _offer_reply(text: str):
-    """An answer to "꺼 드릴까요?": 'yes' | 'no' | 'on' | 'off', or None when it
-    is not clearly one of them — mixed signals ("네 아니요", Whisper repeating
-    its hint) included. Never guessed: None is asked again."""
+    """An answer to "꺼 드릴까요?": 'yes' | 'no', or None when it is not clearly
+    one of them — mixed signals ("네 아니요"), Whisper repeating its hint, or only
+    a verb. 꺼 / 켜 differ by one sound: on 2026-10-22 "불 꺼줘" came back as
+    "불 켜져" (0.89 sure, with every hint, both Whisper models), so a verb never
+    decides — "네, 켜 주세요" to "꺼 드릴까요?" is a yes. None is asked again,
+    with 네 / 아니요 buttons on the dashboard."""
     t = text or ''
     yes, no = bool(_YES.search(t) or re.search(r'해\s?(줘|주세요|줄래)', t)), bool(_NO.search(t))
-    off = bool(re.search(r'꺼|끄|끌|\boff\b', t, re.IGNORECASE))
-    on = bool(re.search(r'켜|켤|켭|\bon\b', t, re.IGNORECASE))
-    if (no and (yes or on or off)) or (on and off):
+    if yes and no:
         return None
-    return 'off' if off else 'on' if on else 'yes' if yes else 'no' if no else None
+    return 'yes' if yes else 'no' if no else None
 
 
 def _light_hint(lang: str):
@@ -2013,7 +2052,31 @@ def _offer_hint(action: str, lang: str):
     """Whisper hint while waiting for the answer to "꺼 드릴까요?"."""
     if lang != 'ko':
         return None
-    return '네, 꺼 주세요. 아니요, 그대로 두세요.' if action == 'off' else '네, 켜 주세요. 아니요, 그대로 두세요.'
+    return '네. 아니요.'       # no verbs: "꺼 주세요" pulled the answer towards 켜 / 꺼 ("아, 불 켜져.")
+
+
+def _offer_buttons(action: str, lang: str):
+    """The two answers to "끌까요?" as dashboard buttons (a click arrives as the answer)."""
+    if lang == 'ko':
+        return ['네, 꺼 주세요' if action == 'off' else '네, 켜 주세요', '아니요']
+    return ['Yes, turn it off' if action == 'off' else 'Yes, turn it on', 'No']
+
+
+def _light_now(node, loc):
+    """Is the light on now — True / False from light_state heard NOW, else None
+    (not heard, several lights, error). A stale (remembered) state is not used."""
+    from .switchbot import light_state
+    try:
+        r = light_state(node=node, loc=loc or _default_light() or 'all')
+    except Exception as e:                          # no SwitchBot / BLE error
+        log_data({'msg': f'qa: light_state: {e}'})
+        return None
+    states = r.get('states') or {}
+    st = next(iter(states.values()), {}) if len(states) == 1 else {}
+    now = None if st.get('stale') or 'is_on' not in st else bool(st['is_on'])
+    log_data({'msg': f"qa: light_state {loc or 'default'} now: "
+                     + ('not heard' if now is None else 'on' if now else 'off')})
+    return now
 
 
 def _light_device(text: str):
@@ -2090,11 +2153,18 @@ def _light_phrase(key: str, action: str, lang: str, name: str = '') -> str:
                  'en': 'The lights are on.' if on else 'The lights are off.'},
         'fail': {'ko': '죄송해요, 불을 켜지 못했어요.' if on else '죄송해요, 불을 끄지 못했어요.',
                  'en': "Sorry, I couldn't turn the lights on." if on else "Sorry, I couldn't turn the lights off."},
-        'offer': {'ko': '켜 드릴까요?' if on else '꺼 드릴까요?',
-                  'en': 'Shall I turn it on?' if on else 'Shall I turn it off?'},
+        # + how to answer: only 네 / 아니요 is understood (_offer_reply)
+        'offer': {'ko': ('켜 드릴까요?' if on else '꺼 드릴까요?') + ' 네 또는 아니요로 말씀해 주세요.',
+                  'en': ('Shall I turn it on?' if on else 'Shall I turn it off?') + ' Please say yes or no.'},
         'leave': {'ko': '알겠어요. 그대로 둘게요.', 'en': "OK, I'll leave it."},
         'again': {'ko': f'잘 못 들었어요. {where}불을 {"켤" if on else "끌"}까요? 네 또는 아니요로 말씀해 주세요.',
                   'en': f"Sorry, I didn't catch that. Shall I turn the {where}light {action}? Please say yes or no."},
+        'ask':  {'ko': f'{where}불을 {"켤" if on else "끌"}까요? 네 또는 아니요로 말씀해 주세요.',
+                 'en': f"Shall I turn the {where}light {action}? Please say yes or no."},
+        'state': {'ko': f'{where}불은 {"켜져" if on else "꺼져"} 있어요.',
+                  'en': f"The {where}light is {action}."},
+        'not_now': {'ko': f'지금은 {where}불 상태를 확인하지 못했어요.',
+                    'en': f"I can't check the {where}light right now."},
         'gave_up': {'ko': '잘 못 들어서 그대로 둘게요.', 'en': "I couldn't hear you, so I'll leave it."},
         'check': {'ko': '확인해 볼게요.', 'en': 'Let me check.'},
         'unknown': {'ko': f'{where}불 상태를 확인하지 못했어요.',
@@ -2210,10 +2280,11 @@ def qa(node, **kwargs):
         cam: 'head' (default: a photo at each head tilt in `views`) or 'arm'
             (one photo from the arm camera, QA_CONFIGS['arm_camera']; the head
             does not move).
-        Light requests ("불 꺼줘", "turn on the light") are acknowledged and
-            done with turn_light (no place named → the default light).
-            "세탁실 불 켜져 있어?" is answered from light_state with an offer
-            ("꺼 드릴까요?"); "응" or "꺼줘" in the next turn does it.
+        Lights (no place named → the default light): "세탁실 불 켜져 있어?" and
+            "불 꺼줘" alike are answered with the state and an offer ("세탁실 불은
+            켜져 있어요. 꺼 드릴까요?") — a command checks light_state NOW first;
+            only the 네 in the next turn runs turn_light (아니요 leaves it,
+            anything else is asked again with 네 / 아니요 buttons).
         once: True — answer one question and end (no goodbye); silence is
             asked again up to `retries` times (default 2), as `ask` does.
             Default False: the conversation goes on until a stop word or Cancel.
@@ -2299,6 +2370,13 @@ def qa(node, **kwargs):
     place, qa_cfg = _place_config(node, cfg, loc)
     if qa_cfg and qa_cfg.get('views') and not explicit_views:
         cfg['views'] = list(qa_cfg['views'])
+    objects = _place_objects(qa_cfg, lang)  # the place's things: buttons + hint
+    if objects:
+        # Whitespace-joined full questions at the END of the hint (Whisper heeds the
+        # end most): "와인잔 어디에 있어?" came back as "뒤에 있어?" with the list alone.
+        listen['hint'] = ' '.join(x for x in [listen.get('hint') or '',
+                                              ' '.join(_where_line(o, lang) for o in objects)] if x)
+        base_hint = listen['hint']
     log_data({'msg': f"qa: at {place or 'unknown place'}"
                      + (' (place layout)' if qa_cfg else '')
                      + (f" — {cfg['arm_camera']}, one photo" if cam == 'arm'
@@ -2310,6 +2388,8 @@ def qa(node, **kwargs):
     history, shots, shot_at = [], [], 0.0
     inv, inv_at = None, None                # product inventory of the current photos
     light_ctx = None                        # the light just asked about, for "응" / "꺼줘"
+    light_screen = None                     # 네 / 아니요 buttons for a light question, while it is open
+    obj_screen, obj_wait = None, False      # the place's object buttons; waiting for a click on them
     ended = 'cancelled'
     silent = 0
     idle_ask = 0.0 if once else float(cfg.get('idle_ask_sec') or 0)
@@ -2335,6 +2415,12 @@ def qa(node, **kwargs):
             # After "꺼 드릴까요?" Whisper is told to expect 네 / 아니요 (_offer_hint).
             pending = (light_ctx or {}).get('offer')
             listen['hint'] = (_offer_hint(pending[0], lang) if pending else None) or base_hint
+            if light_screen and not pending:    # the light question is over: its buttons go
+                choose_close(light_screen)
+                light_screen = None
+            if obj_screen and not obj_wait:     # answered (or another question): the object buttons go
+                choose_close(obj_screen)
+                obj_screen = None
             had_prompt = bool(prompt)
             try:
                 text, _audio = _hear(prompt, lang, source, listen)
@@ -2343,6 +2429,12 @@ def qa(node, **kwargs):
                     break
                 raise
             _save_audio(listen, text, lang)
+            clicked = choose_result(light_screen) or choose_result(obj_screen)   # a click also ends the listen
+            if clicked:
+                log_data({'msg': f'qa: clicked {clicked!r}'})
+                text = clicked
+            if text:
+                obj_wait = False                # a click or new words: the buttons have done their job
             pending_answer = None
             if end_dialog_requested():          # pressed while listening: what was heard is dropped
                 ended = 'operator'
@@ -2382,10 +2474,43 @@ def qa(node, **kwargs):
                 # anything else: a question, answered as usual
 
             # Lights. "세탁실 불 켜져 있어?" → light_state, answered with an offer
-            # ("꺼 드릴까요?"); "불 꺼줘" — or right after, "응" / "꺼줘" — → say it
-            # will, then turn_light (_light_command).
+            # ("꺼 드릴까요?"); "불 꺼줘" → checked with light_state, then done
+            # (_light_command). Answers to an offer / a confirm question are read as
+            # 네 / 아니요 only — 꺼 and 켜 are too close to tell (_offer_reply).
             last_light, light_ctx = light_ctx, None
-            if _light_question(text):
+            light, accepted = None, False
+            offer = (last_light or {}).get('offer')
+            named = _light_device(text)[0]
+            if offer and not _QUESTION_WORD.search(text) and named in (None, offer[1]):
+                # The answer to "꺼 드릴까요?" — even with 불 in it ("불 켜져." was a
+                # misheard "불 꺼줘", 2026-10-22, and went to the state again). A new
+                # question ("와인잔 어디 있어?") or another light is handled as usual.
+                reply = _offer_reply(text)
+                if reply and light_screen:          # answered: the buttons go
+                    choose_close(light_screen)
+                    light_screen = None
+                if reply == 'no':
+                    answer = _light_phrase('leave', 'on', lang)
+                    history.append((text, answer))
+                    prompt = pending_answer = answer
+                    continue
+                if reply == 'yes':
+                    light, accepted = offer, True
+                else:
+                    tries = last_light['tries'] + 1
+                    if tries > OFFER_RETRIES:
+                        answer = _light_phrase('gave_up', 'on', lang)
+                    else:
+                        answer = _light_phrase('again', offer[0], lang, last_light['name'])
+                        light_ctx = {**last_light, 'tries': tries}
+                        if not light_screen:
+                            light_screen = choose_open(_offer_buttons(offer[0], lang), answer)
+                    log_data({'msg': f'qa: unclear answer to the light question ({tries}/{OFFER_RETRIES})'
+                                     + (' — 네 / 아니요 on the dashboard' if light_screen else '')})
+                    history.append((text, answer))
+                    prompt = pending_answer = answer
+                    continue
+            elif _light_question(text):
                 loc, said = _light_device(text)
                 _say(_light_phrase('check', 'on', lang), lang, source)
                 try:
@@ -2403,43 +2528,41 @@ def qa(node, **kwargs):
                     light_ctx = {'loc': loc, 'said': said, 'offer': offer, 'name': name, 'tries': 0}
                 prompt = pending_answer = answer                 # spoken by the next listen, then the mic opens
                 continue
-            light = None
-            offer = (last_light or {}).get('offer')
-            if offer and not _LIGHT_NOUN.search(text):
-                # The answer to "꺼 드릴까요?": yes / no / 꺼줘 do it; anything unclear
-                # ("택시, 고죠") is asked again, never guessed and never sent to the
-                # camera; a new question ("와인잔 어디 있어?") is answered as usual.
-                reply = _offer_reply(text)
-                if reply == 'no':
-                    answer = _light_phrase('leave', 'on', lang)
-                    history.append((text, answer))
-                    prompt = pending_answer = answer
-                    continue
-                if reply == 'yes':
-                    light = offer
-                elif reply in ('on', 'off'):
-                    light = (reply, offer[1] if reply == offer[0] else last_light['loc'])
-                elif not _QUESTION_WORD.search(text):
-                    tries = last_light['tries'] + 1
-                    if tries > OFFER_RETRIES:
-                        answer = _light_phrase('gave_up', 'on', lang)
-                    else:
-                        answer = _light_phrase('again', offer[0], lang, last_light['name'])
-                        light_ctx = {**last_light, 'tries': tries}
-                    log_data({'msg': f'qa: unclear answer to the light offer ({tries}/{OFFER_RETRIES})'})
-                    history.append((text, answer))
-                    prompt = pending_answer = answer
-                    continue
             if light is None:
                 light = _light_command(text, follow_up=last_light is not None and not offer)
             if light is not None:
                 action, loc = light
-                said = _light_device(text)[1] if loc else None
+                said = (last_light or {}).get('said') if accepted else _light_device(text)[1] if loc else None
                 if loc is None and last_light:              # "꺼줘" about the light just asked about
                     loc = offer[1] if offer and offer[0] == action else last_light['loc']
                     said = last_light['said'] if loc == last_light['loc'] else None
                 loc = loc or _default_light()
                 name = said or (_light_name(loc, lang) if loc and loc != 'all' else '')
+                if not accepted:
+                    # A command is never done on the first sentence (2026-10-22: the
+                    # light went off while the user was still talking, and 꺼 / 켜 are
+                    # often misheard): the light is checked NOW (light_state; a
+                    # remembered state is not used) and the state told with an offer —
+                    # "세탁실 불은 켜져 있어요. 꺼 드릴까요?" — whatever verb was heard;
+                    # not heard now → "지금은 … 확인하지 못했어요. … 끌까요?". The 네 to
+                    # it does it (the offer branch above).
+                    _say(_light_phrase('check', 'on', lang), lang, source)
+                    now = _light_now(node, loc) if loc != 'all' else None
+                    ask = action if now is None else ('off' if now else 'on')
+                    answer = (_light_phrase('not_now', 'on', lang, name) + ' ' + _light_phrase('ask', ask, lang, name)
+                              if now is None else
+                              _light_phrase('state', 'on' if now else 'off', lang, name) + ' '
+                              + _light_phrase('offer', ask, lang))
+                    log_data({'msg': f'qa: heard "{action}" for {loc}, light now '
+                                     f'{"unknown" if now is None else "on" if now else "off"} → offering "{ask}"'})
+                    light_ctx = {'loc': loc, 'said': said, 'offer': (ask, loc), 'name': name, 'tries': 0}
+                    history.append((text, answer))
+                    if once:                                # one turn only: the state is the answer
+                        _say(answer, lang, source)
+                        ended = 'answered'
+                        break
+                    prompt = pending_answer = answer
+                    continue
                 ack = _light_phrase('ack', action, lang, name)
                 _say(ack, lang, source)
                 try:
@@ -2456,6 +2579,33 @@ def qa(node, **kwargs):
                     ended = 'answered'
                     break
                 continue                                    # listen again (already spoken)
+
+            # At a place with `objects` (shelf2: 와인잔 / 머그컵 / 텀블러) a question is
+            # about one of them: naming one → "와인잔 어디에 있어?"; naming none / several
+            # and no other question word (뭐 / 몇 / 무슨 …) → the objects as buttons on
+            # the dashboard, nothing asked again — the click is the question. Without a
+            # dashboard: "무엇을 찾으시는지 잘 못 들었어요" as before.
+            short_reply = len(re.sub(r'\W', '', text)) <= 6 and bool(_YES.search(text) or _NO.search(text))
+            if (objects and not short_reply and not _is_drop_question(text)
+                    and not (use_products and _is_product_question(text))
+                    and not _QUESTION_WORD.search(_WHERE.sub(' ', text.lower()))):
+                hit = _named_objects(text, objects)
+                if len(hit) == 1:
+                    if text != _where_line(hit[0], lang):
+                        log_data({'msg': f'qa: {text!r} → {_where_line(hit[0], lang)!r}'})
+                    text = _where_line(hit[0], lang)
+                else:
+                    if obj_screen is None:
+                        obj_screen = choose_open(objects, _qa_phrase('pick', lang))
+                    if obj_screen:
+                        obj_wait = True
+                        log_data({'msg': f"qa: {text!r} names {'none' if not hit else ' and '.join(hit)} of "
+                                         f"{' / '.join(objects)} — buttons on the dashboard"})
+                        continue                # listen again quietly; a click or new words answer
+                    answer = _qa_phrase('which', lang)
+                    history.append((text, answer))
+                    prompt = pending_answer = answer
+                    continue
 
             # A new question: clear the previous answer's picture; the photos the
             # model is given for this answer are logged once it has answered.
@@ -2516,8 +2666,13 @@ def qa(node, **kwargs):
                     else:
                         answer, route = None, ''
                         where = bool(_WHERE.search(text.lower()))
-                        if where and getattr(shots, 'geo', None) and (not qa_cfg or qa_cfg.get('shelves')):
-                            answer = _ask_shelves(cfg, shots, text, recall, lang, qa_cfg)
+                        shelves = not qa_cfg or qa_cfg.get('shelves')
+                        asked = text
+                        if not where and shelves and lang == 'ko' and _as_where(text):
+                            asked, where = _as_where(text), True      # "와인잔 뒤에 있어?" → where
+                            log_data({'msg': f'qa: {text!r} asked as {asked!r}'})
+                        if where and getattr(shots, 'geo', None) and shelves:
+                            answer = _ask_shelves(cfg, shots, asked, recall, lang, qa_cfg)
                             route = 'shelves' if answer is not None else 'shelves found nothing → '
                         elif where:
                             route = ('no depth → ' if not getattr(shots, 'geo', None)
@@ -2548,6 +2703,8 @@ def qa(node, **kwargs):
         if ended not in ('cancelled', 'answered'):
             _say(_qa_phrase('idle_bye' if ended == 'idle' else 'bye', lang), lang, source)
     finally:
+        choose_close(light_screen)
+        choose_close(obj_screen)
         dialog_end()
         _emit({'qa_state': {'active': False}})
     out = {'isdone': ended != 'no answer', 'turns': len(history), 'ended': ended,

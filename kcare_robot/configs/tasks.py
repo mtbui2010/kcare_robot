@@ -42,8 +42,8 @@ HRI_CONFIGS = {   'source': 'dashboard',
     'dashboard_stt': 'whisper',
     'stt': '',
     'earcon': True,             # "your turn" / "got it" tones around each listen (robot speaker or browser)
-    'earcon_volume': 0.3,       # 0..1
-    'speech_rate': 1.3,         # how fast the dashboard speaks (1.0 = the browser's normal, 0.5..2.0); a call's rate= wins
+    'earcon_volume': 0.5,       # 0..1
+    'speech_rate': 1.5,         # how fast the dashboard speaks (1.0 = the browser's normal, 0.5..2.0); a call's rate= wins
     'stt_hint': {   'ko': '와인잔, 머그컵, 텀블러, 컵, 접시, 선반, 서랍, 옷장, 행거. 어디에 있어?',
                     'en': ''}}
 

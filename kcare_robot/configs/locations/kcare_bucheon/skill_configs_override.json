@@ -146,7 +146,7 @@
       "height": 0.91,
       "loc": {
         "x": 3,
-        "y": 4.05,
+        "y": 4.1,
         "rz": 90
       },
       "dforward": 0,
@@ -184,7 +184,7 @@
       "height": 1.1,
       "loc": {
         "x": 2.5,
-        "y": 4.05,
+        "y": 3.95,
         "rz": 90
       },
       "dforward": 0,
@@ -251,7 +251,19 @@
           "up"
         ],
         "shelves": true,
-        "scene": "an open wall cabinet above the kitchen sink"
+        "scene": "an open wall cabinet above the kitchen sink",
+        "objects": {
+          "ko": [
+            "\uc640\uc778\uc794",
+            "\uba38\uadf8\ucef5",
+            "\ud140\ube14\ub7ec"
+          ],
+          "en": [
+            "wine glass",
+            "mug",
+            "tumbler"
+          ]
+        }
       }
     },
     "dressroom": {

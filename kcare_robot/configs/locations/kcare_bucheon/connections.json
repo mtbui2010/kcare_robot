@@ -403,5 +403,18 @@
       "is_camera": false,
       "decode_func": "def decode_func(msg):\n    import numpy as np\n    i = msg.info\n    return {'grid': np.asarray(msg.data, dtype=np.int16).reshape(i.height, i.width),\n            'info': {'resolution': i.resolution, 'width': i.width, 'height': i.height,\n                     'origin': {'position': {'x': i.origin.position.x, 'y': i.origin.position.y},\n                                'orientation': {'z': i.origin.orientation.z, 'w': i.origin.orientation.w}}}}"
     }
+  },
+  {
+    "type": "ros_action",
+    "name": "vla_drawer_open",
+    "config": {
+      "conn_name": "/drawer/open",
+      "agent_name": "vla_drawer_open",
+      "conn_type": "ros_action",
+      "data_interface": "max_interfaces/action/OpenDrawer",
+      "is_client": true,
+      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
+      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'msg': res.message}"
+    }
   }
 ]
