@@ -765,7 +765,7 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": "move::inputs=$inputs$, lift_height=\"highest\"\nmovej::pre_pick\nforward::0.25\n",
+    "plan": "move::inputs=$inputs$, lift_height=\"highest\"\nmovej::pre_pick&&forward::0.25\n\n",
     "aliases": [
       "\ub192\uc774 \uc774\ub3d9"
     ]
@@ -780,7 +780,7 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": "\nmovej::pre_pick\nlift::0.75&&movej::dr6=-90, dr5=10\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\n\nforward::-0.7&&movej::dr5=-10\nturn::90\nforward::1.1\nannounce::\uc2dd\ud0c1 \uc704\uc5d0 \ub0c4\ube44 \ub193\uace0 \uc788\uc5b4\uc694.\n\nmovej::dr5=10\nmovet::dz=0.2\nmovel::dz=-0.20\ngrip::open\nforward::-0.5\nmovej::fold\nannounce::\uc2dd\ud0c1 \uc704\uc5d0 \ub0c4\ube44 \uc62c\ub824\ub480\uc2b5\ub2c8\ub2e4.",
+    "plan": "\nmovej::pre_pick\nlift::0.8&&movej::dr6=-90, dr5=10\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05, zrange=[0.15, 0.2], tune=[0,0,0.03]\n\nforward::-0.7&&movej::dr5=-10\nturn::90\nforward::1.05\nannounce::\uc2dd\ud0c1 \uc704\uc5d0 \ub0c4\ube44 \ub193\uace0 \uc788\uc5b4\uc694.\n\nmovej::dr5=10\nmovet::dz=0.2\nmovel::dz=-0.25\ngrip::open\nforward::-0.5\nmovej::fold\nannounce::\uc2dd\ud0c1 \uc704\uc5d0 \ub0c4\ube44 \uc62c\ub824\ub480\uc2b5\ub2c8\ub2e4.",
     "aliases": [
       "\ub0c4\ube44 \uc804\ub2ec"
     ]
@@ -795,7 +795,7 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": "lift::0.9&&forward::0.45\nturn::90&&moveh::front&&movej::give\nforward::-0.3&&movej::pre_pick\nlift::0.5&&movej::dr6=90, dr5=10\n\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05\nlift::0.9&&movej::dr5=-10\nturn::-90\nforward::0.45\n\nmovej::dr5=30\nmovet::dz=0.3\ngrip::open\nmovet::dz=-0.3&&forward::-0.5\nmovej::fold\n",
+    "plan": "lift::0.9&&forward::0.6\nturn::90&&moveh::front&&movej::give\nforward::-0.5&&movej::pre_pick\nlift::0.5&&movej::dr6=90, dr5=10\n\nfine_move::inputs=\"blue handle\", fixed_angle=0, back_to_init=True, lift_before_pull_back=0.05, tune=[0,0,0.03], zrange=[0.15, 0.2]\nlift::0.9&&movej::dr5=-10\nturn::-90\nforward::0.4\n\nmovej::dr5=30\nmovet::dz=0.3\ngrip::open\nmovet::dz=-0.3&&forward::-0.5\nmovej::fold\n",
     "aliases": []
   },
   {
@@ -821,7 +821,7 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": "movej::give&&forward::0.3\nlift::lowest&&movej::dr5=-20",
+    "plan": "movej::give&&forward::0.2\nlift::lowest&&movej::dr5=-20",
     "aliases": [
       "\ubc14\ub2e5 \ucc3e\uae30"
     ]

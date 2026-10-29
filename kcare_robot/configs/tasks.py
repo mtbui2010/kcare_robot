@@ -44,6 +44,7 @@ HRI_CONFIGS = {   'source': 'dashboard',
     'earcon': True,             # "your turn" / "got it" tones around each listen (robot speaker or browser)
     'earcon_volume': 0.5,       # 0..1
     'speech_rate': 1.5,         # how fast the dashboard speaks (1.0 = the browser's normal, 0.5..2.0); a call's rate= wins
+    'speech_rate_en': 1.0,      # the same for English lines (English voices are faster at one rate)
     'stt_hint': {   'ko': '와인잔, 머그컵, 텀블러, 컵, 접시, 선반, 서랍, 옷장, 행거. 어디에 있어?',
                     'en': ''}}
 
@@ -61,6 +62,21 @@ EMERGENCY_CONFIGS = {   'timeout_sec': 60,
     'simulate': True,
     'alarm_volume': 0.6,
     'alarm_cycles': 3}
+
+# vla_drawer_open (skills/vla.py): SmolVLA served by vla-serve (README: /remote_dir/kcare_vla_open_drawer_20261026).
+#   docker run --gpus all -p 11450:11450 -v /path/to/ckpt:/ckpt mtbui2010/vlaserve:latest serve --host 0.0.0.0 /ckpt/<run>/pretrained_model
+# execute False = dry run (reads, asks the policy, checks, sends nothing). Untested on the real robot (2026-10-26).
+VLA_CONFIGS = {   'drawer_open': {   'url': '',          # '' = the url of the connection below (Connections panel)
+                       'connection': 'vlaserve',
+                       'model': None,
+                       'execute': False,
+                       'fps': 30,          # training speed (15 = half: the first real run reached ~60 % deep)
+                       'seconds': 15,      # trained-motion seconds; the run lasts seconds * 30 / fps
+                       'speed_limit': 1.5,
+                       'max_jump': 0.6,    # 0.35 tripped at 30 fps: the real arm lags the commands
+                       'ready_tol_deg': 5,
+                       'head_tilt': -41,
+                       'prompt': 'open drawer'}}
 
 QA_CONFIGS = {   'url': 'https://ollama.aistations.org',
     'model': 'qwen3-vl:8b-instruct',          # 2026-10-09: 8b vs 32b on every LLM role (bench_llm): 8b as good, ~3x faster
@@ -231,32 +247,6 @@ FIND_CONFIGS = {   'detect_object': {   'model': 'rfdetr-gdino-sam-etri',
                            'control'],
     'having_handle_obj_names': []}
 
-CALIB_PARAMS = {   'link2base_robot': [[1, 0, 0, -105.5], [0, 1, 0, 0], [0, 0, 1, 930.99], [0, 0, 0, 1]],
-    'base2LMbase_robot': [[1, 0, 0, 191.5], [0, 1, 0, 0], [0, 0, 1, 115], [0, 0, 0, 1]],
-    'error_linear': [   [-0.07502618754327467, 2.4424700738230953],
-                        [-16.842424532247115, -446.11492970318335],
-                        [9.553416611923009, 183.18383747945558]],
-    'error_linear_front': [   [-0.07502618754327467, 2.4424700738230953],
-                              [-16.842424532247115, -446.11492970318335],
-                              [9.553416611923009, 183.18383747945558]],
-    'error_linear_left': [   [9.210932763507733, 184.6078786695192],
-                             [-14.437338038556312, -378.47661712845184],
-                             [0.28343902543810057, 2.4396699456603343]],
-    'error_linear_right': [   [-9.84392375612643, -200.58470322524005],
-                              [-14.726481118427895, -383.38040346872526],
-                              [-0.047364594742677804, 1.3281026351637906]],
-    'T_1': [32, -75.13, 60.9],
-    'T_2': [0, 0, 28],
-    'tune_xyz': [0, 50, 0],
-    'init_angle': True,
-    'fx': 746.1448364257812,
-    'ppx': 629.9429931640625,
-    'fy': 746.0178833007812,
-    'ppy': 356.381591796875,
-    'lm_max_value': 935}
-
-HOME_LOC = {'x': 0.2, 'y': 0, 'rz': 0}
-
 ENV = {   'table@living room': {   'default_mode': 'left',
                              'placepose': {'dx': 0, 'dy': -0.1},
                              'height': 0.72,
@@ -289,62 +279,3 @@ ENV = {   'table@living room': {   'default_mode': 'left',
                                'loc': {'x': 2.1, 'y': -0.25, 'rz': -90},
                                'dshift': -0.1,
                                'dforward': 0}}
-
-# Korean/English word maps used by correct_noun / loc2text.
-KR2EN = {   '콜라': 'coke',
-    '사이다': 'green drink',
-    '커피': 'coffee',
-    '거실': 'living room',
-    '테이블': 'table',
-    '침대 옆 서랍장': 'bed table',
-    '쇼파 옆 테이블': 'sopha table',
-    '안방': 'bedroom',
-    '수건': 'towel',
-    '닦는수건': 'cleaning towel',
-    '화장실': 'restroom',
-    '주방': 'kitchen',
-    '휴지': 'blue tissue',
-    '치약': 'toothpaste',
-    '식탁': 'dining table',
-    '컵': 'cup',
-    '쏟은 음료': 'spill',
-    '리모컨': 'controller',
-    '캔': 'can',
-    '선반': 'shelf',
-    '불': 'light',
-    '폰': 'phone',
-    '분리수거함': 'can trash',
-    '싱크볼': 'sink',
-    '서랍장': 'drawer',
-    '펜': 'pen',
-    '물병': 'water bottle',
-    '우유': 'green bag'}
-
-EN2KR = {   'coke': '콜라',
-    'green drink': '사이다',
-    'coffee': '커피',
-    'living room': '거실',
-    'table': '테이블',
-    'bed table': '침대 옆 서랍장',
-    'sopha table': '쇼파 옆 테이블',
-    'bedroom': '안방',
-    'towel': '수건',
-    'cleaning towel': '닦는수건',
-    'restroom': '화장실',
-    'kitchen': '주방',
-    'blue tissue': '휴지',
-    'toothpaste': '치약',
-    'dining table': '식탁',
-    'cup': '컵',
-    'spill': '쏟은 음료',
-    'controller': '리모컨',
-    'can': '캔',
-    'shelf': '선반',
-    'light': '불',
-    'phone': '폰',
-    'can trash': '분리수거함',
-    'sink': '싱크볼',
-    'drawer': '서랍장',
-    'pen': '펜',
-    'water bottle': '물병',
-    'green bag': '우유'}

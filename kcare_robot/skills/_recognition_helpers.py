@@ -23,7 +23,6 @@ from robot_agent.skill_configs import (
 )
 from robot_agent.state import current
 from robot_agent.skills import log_data
-from kcare_robot.skills.calibrattion import Head2BaseCalibration
 from kcare_robot.skills.head import head_state as get_head_state
 from kcare_robot.skills.pointcloud import get3d, get3d_arm
 from kcare_robot.skills.arm import get_wrist_angle, arm_pose
@@ -498,6 +497,21 @@ def _object_det_select_configs(overrides: dict | None = None, *, cfg_key: str = 
     if overrides:
         for k in ('text_threshold', 'box_threshold'):
             det[k] = overrides.get(k, det.get(k))
+        # A skill's own selection settings win (2026-10-26: open_drawer's target_distance=0.4 used to be
+        # dropped here, silently replaced by the profile's 0.3).
+        for k in ('near_point', 'target_distance', 'distance_sigma'):
+            if overrides.get(k) is not None:
+                select[k] = overrides[k]
+        # weights: how the criteria mix ({'conf'|'quality', 'distance', 'near', 'area'}). Without them the
+        # selector uses ONE criterion — the distance (with distance_sigma 0.01: whichever box is nearest
+        # target_distance, however unsure). True = the profile's `weight`; a dict = these. Opt-in: pick / find
+        # keep their old choice until tried (open_drawer passes True).
+        w = overrides.get('weights')
+        if w is True or (isinstance(w, str) and w.strip().lower() in ('true', 'config', 'profile')):
+            w = configs.get('weights') or configs.get('weight')
+        if isinstance(w, dict) and w:
+            # the profile says "quality"; visionserve's score key is "conf"
+            select['weights'] = {('conf' if k == 'quality' else k): float(v) for k, v in w.items()}
     return det, select
 
 
@@ -1006,13 +1020,7 @@ def make_side_box(fg_mask, box=None, pose_3d=None, depth=None, calib_func=None,
     return x0_, y0_, x1_, y1_
 
 
-# ── Head→base calibration ─────────────────────────────────────────────────────
-_calib_singleton: Optional[Head2BaseCalibration] = None
-def _get_calib() -> Head2BaseCalibration:
-    global _calib_singleton
-    if _calib_singleton is None:
-        _calib_singleton = Head2BaseCalibration()
-    return _calib_singleton
+# ── Head pixel → base (through the get3d service) ─────────────────────────────
 
 
 def _head_calib_func_factory(robot_mode, head_state):

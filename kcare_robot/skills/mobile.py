@@ -3,7 +3,7 @@ from kcare_robot.utils import env_key, get_env_specs, get_lift_height, loc2text,
 from kcare_robot.skills.arm import movej
 from kcare_robot.skills.head import moveh, get_robot_mode
 from kcare_robot.skills.lift import lift
-from robot_agent.skill_configs import ENV, LIFT_CONFIGS, MOBILE_CONFIGS, HOME_LOC
+from robot_agent.skill_configs import ENV, LIFT_CONFIGS, MOBILE_CONFIGS
 from robot_agent.connect.helpers import update_dict
 import numpy as np, threading, time
 from robot_agent.utils import quaternion2deg, deg2quaternion

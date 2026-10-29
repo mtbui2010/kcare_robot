@@ -41,7 +41,7 @@ from typing import Optional
 #
 # ENV keys are validated against the *active site's* ENV at runtime (move reads
 # robot_agent.skill_configs.ENV). The literals below are seeded from the vocab
-# in skill_config_defaults.py (KR2EN/EN2KR).
+# in skill_config_defaults.py.
 # TODO(integrator): fill/trim these from the deployed site's ENV config so
 # to_loc() agrees with what `move::<loc>` can actually navigate to. An unknown
 # location should surface as a replan-able failure (see ACTION_MAPPER_SPEC §4).

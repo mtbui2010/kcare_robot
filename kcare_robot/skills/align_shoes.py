@@ -9,10 +9,12 @@
    down). The toe is the other end.
 2. push the shoe farther from the destination toward the other one, at most `max_pushes` (2) pushes in all: a point
    push off its centre first if the headings differ by more than `align_deg`, then a straight push to `gap`.
-3. pinch: one finger in each opening next to the touching side walls, close (the two walls between the fingers), lift.
-4. lift it a little, back to HOME_JOINTS (the jaw there lies across the robot, so the shoes come round pointing
+3. pinch: one finger in each opening next to the touching side walls, close (the two walls between the fingers), lift
+   it a little and check with grasp_succeed (wrist depth near the fingers); a miss: open, look again, one more try.
+4. back to HOME_JOINTS (the jaw there lies across the robot, so the shoes come round pointing
    straight ahead), drive to the destination if there is one, and put it down straight below (movet along the tool).
 """
+import functools
 import math
 import time
 
@@ -20,13 +22,13 @@ import numpy as np
 
 from robot_agent.skills import log_data
 from robot_agent.skill_configs import ENV
-from robot_agent.utils import exception_handler
+from robot_agent.utils import exception_handler, run_parallel_check
 from kcare_robot.skills.arm import movej, movel, movet, arm_pose
 from kcare_robot.skills.grip import grip
 from kcare_robot.skills.lift import lift
 from kcare_robot.skills.mobile import forward, move, mobile_pose
 from kcare_robot.skills.pointcloud import get3d_arm
-from kcare_robot.skills.recognition import detect
+from kcare_robot.skills.recognition import detect, grasp_succeed
 from kcare_robot.utils import get_env_specs
 
 # wrist camera straight down, tool at (0.61, 0, 0.42) with the lift lowest: 5 cm back from [0, 0, 0, 20, 0, 20, -180]
@@ -56,9 +58,12 @@ SHOES = dict(
     view_min_x=0.48,        # the gripper, in the wrist camera's view, hides the floor nearer than ~0.46 m (tool x 0.61):
                             # a shoe reaching it has its heel, and the opening, out of view (2026-10-21: measured
                             # 0.51 with the tool at x 0.66, 0.425 at x 0.56)
-    min_hold_w=0.010,       # fingers closed past this = nothing between them (missed pinch): look again, one more try
-                            # (2026-10-21, real robot: misses closed to 0.3-0.8 cm, good pinches 1.3-2.7 cm; 1.5 dropped two good ones)
-    lift_dz=0.12, place_above=0.005)   # lifted 12 cm before the move home; put down 5 mm above where it was picked
+    # lifted 12 cm, then grasp_succeed (2026-10-27; was the finger spread after closing twice + 0.8 s, min_hold_w 1 cm):
+    # checked at the floor, the floor and the shoes are within its margin (6 cm past the tips) even after a miss
+    # its ROI without the bottom 10 rows (FIND_CONFIGS grasp_check_roi [415, 365, 476, 390]): the CLOSED empty
+    # fingers fill them, 27-31 % "near" on the 2026-10-21 photos vs its 30 % threshold; above them 0 %
+    grasp_roi=[415, 365, 476, 380],
+    lift_dz=0.12, place_above=0.005)   # put down 5 mm above where it was picked
 
 
 def _jaw_axis(node):
@@ -127,6 +132,19 @@ def _go_above(node, xyz, drz=0.0):
     assert j, f'align_shoes: {np.round(xyz, 3).tolist()} turned {drz:+.0f} deg is out of reach'
     ret = movej(node=node, inputs=j, speed=0.5, acc=0.3, wait=True); assert ret['isdone'], f'above {np.round(xyz, 3).tolist()}: {ret}'
     return drz
+
+
+def _together(*funcs):
+    """run_parallel_check, but an exception in one of the threads fails it too (run_parallel loses it: a failed
+    _go_above went on with the push down from wherever the arm was) -> the results, in order."""
+    def safe(f):
+        try:
+            return f()
+        except Exception as e:
+            return {'isdone': False, 'msg': f'{type(e).__name__}: {e}'}
+    ret = run_parallel_check(funcs=[functools.partial(safe, f) for f in funcs])
+    assert ret['isdone'], f"align_shoes: {[r for r in ret['rets'] if isinstance(r, dict) and not r.get('isdone', True)]}"
+    return ret['rets']
 
 
 def _turn_to_angle(node, ang):
@@ -279,8 +297,11 @@ def _push(node, a, b, dist, d, cfg, at=0.0):
     bad = _reachable(node, path, drz=0.0 if at else _turn_angle(node, across))
     assert bad is None, (f'align_shoes: the push {("start", "start", "end")[bad]} {np.round(path[bad], 3).tolist()} is out of the '
                          f'arm\'s reach (shoes at x {a["c"][0]:.2f} / {b["c"][0]:.2f} m): put them closer to the robot')
-    ret = grip(node=node, inputs='close' if at else 'open', wait=True); assert ret['isdone'], f'{ret}'
-    _go_above(node, (start[0], start[1], cfg['push_z'] + 0.12), drz=0.0 if at else _turn_angle(node, across))
+    # ret = grip(node=node, inputs='close' if at else 'open', wait=True); assert ret['isdone'], f'{ret}'
+    # _go_above(node, (start[0], start[1], cfg['push_z'] + 0.12), drz=0.0 if at else _turn_angle(node, across))
+    
+    _together(lambda: grip(node=node, inputs='close' if at else 'open', wait=True),
+              lambda: _go_above(node, (start[0], start[1], cfg['push_z'] + 0.12), drz=0.0 if at else _turn_angle(node, across)))
     for kw in (dict(z=cfg['push_z']), dict(x=float(end[0]), y=float(end[1]), z=cfg['push_z'], acc=0.2), dict(dz=0.12)):
         ret = movel(node=node, **kw); assert ret['isdone'], f'push {kw}: {ret}'
     ret = movej(node=node, inputs=HOME_JOINTS, speed=0.5, acc=0.3, wait=True); assert ret['isdone'], f'{ret}'
@@ -384,32 +405,37 @@ def align_shoes(node, **params) -> dict:
         pushes += 1
         a, b = _relook(node, name, cfg, d0)
 
-    for attempt in range(2):                            # the finger spread after closing is the real test
+    for attempt in range(2):                            # lifted, the wrist depth near the fingers is the test
         centre, d, open_w, z = _pinch(a, b, cfg)
         path = [(centre[0], centre[1], z + 0.12), (centre[0], centre[1], z)]
         bad = _reachable(node, path, drz=_turn_angle(node, d))
         assert bad is None, f'align_shoes: the pinch point {np.round(path[bad], 3).tolist()} is out of the arm\'s reach: put the shoes closer'
-        ret = grip(node=node, inputs=open_w, wait=True); assert ret['isdone'], f'{ret}'
-        ang = _go_above(node, (centre[0], centre[1], z + 0.12), drz=_turn_angle(node, d))
+        # ret = grip(node=node, inputs=open_w, wait=True); assert ret['isdone'], f'{ret}'
+        # ang = _go_above(node, (centre[0], centre[1], z + 0.12), drz=_turn_angle(node, d))
+        
+        ang = _together(lambda: grip(node=node, inputs=open_w, wait=True),
+                        lambda: _go_above(node, (centre[0], centre[1], z + 0.12), drz=_turn_angle(node, d)))[-1]
+
         log_data({'msg': f'[align_shoes] pinch {attempt + 1}: at {np.round(centre, 3).tolist()} z {z:.3f}, open {open_w:.3f}, wrist {ang:+.0f} deg'})
         ret = movel(node=node, z=z, acc=0.2); assert ret['isdone'], f'pinch down to z {z:.3f}: {ret}'
         ret = grip(node=node, inputs='close', wait=True); assert ret['isdone'], f'{ret}'
-        time.sleep(0.8)                                 # the close returns before the fingers settle: close again, read
-        ret = grip(node=node, inputs='close', wait=True); assert ret['isdone'], f'{ret}'
-        w = ret.get('position')
-        if w is None or float(w) >= cfg['min_hold_w']:
+        ret = movel(node=node, dz=cfg['lift_dz'], acc=0.2); assert ret['isdone'], f'lift the pair: {ret}'
+        held = grasp_succeed(node=node, crop_roi=cfg['grasp_roi'])
+        log_data({'msg': f"[align_shoes] grasp check: {'held' if held.get('isdone') else 'missed'}"
+                         f" (near {held.get('frac_near', 0):.0%})"})
+        if held.get('isdone'):
             break
-        log_data({'msg': f'[align_shoes] missed (fingers closed to {float(w):.3f} m): look again'})
-        ret = grip(node=node, inputs='open', wait=True); assert ret['isdone'], f'{ret}'
-        ret = movel(node=node, dz=0.12); assert ret['isdone'], f'{ret}'
-        ret = movej(node=node, inputs=HOME_JOINTS, speed=0.5, acc=0.3, wait=True); assert ret['isdone'], f'{ret}'
+        log_data({'msg': '[align_shoes] missed: look again'})
+        # ret = grip(node=node, inputs='open', wait=True); assert ret['isdone'], f'{ret}'
+        # ret = movej(node=node, inputs=HOME_JOINTS, speed=0.5, acc=0.3, wait=True); assert ret['isdone'], f'{ret}'
+        _together(lambda: grip(node=node, inputs='open', wait=True),
+                  lambda: movej(node=node, inputs=HOME_JOINTS, speed=0.5, acc=0.3, wait=True))
         a, b = _relook(node, name, cfg, d0)
         assert _pinch(a, b, cfg), 'align_shoes: opening not seen after the missed pinch'
     else:
         return {'isdone': False, 'msg': 'align_shoes: missed the pinch twice'}
 
-    # lift, back to HOME_JOINTS (a joint move: the pair turns with the wrist, so the shoes come round straight ahead)
-    ret = movel(node=node, dz=cfg['lift_dz'], acc=0.2); assert ret['isdone'], f'lift the pair: {ret}'
+    # back to HOME_JOINTS (a joint move: the pair turns with the wrist, so the shoes come round straight ahead)
     ret = movej(node=node, inputs=HOME_JOINTS, speed=0.5, acc=0.3, wait=True); assert ret['isdone'], f'home with the pair: {ret}'
     if dest:
         ret = move(node=node, inputs=dest, keep_arm=True, wait=True); assert ret['isdone'], f'move {dest}: {ret}'

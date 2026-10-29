@@ -15,7 +15,6 @@ from robot_agent.utils import run_parallel_check
 from kcare_robot.utils import get_closest_loc, get_env_specs
 from kcare_robot.skills.head import get_robot_mode
 
-from kcare_robot.skills.calibrattion import Head2BaseCalibration
 from kcare_robot.skills.arm import movet, movel, movej, arm_exception_handler
 from kcare_robot.skills.grip import grip
 from kcare_robot.skills.mobile import move
@@ -29,9 +28,6 @@ from kcare_robot.skills import _place_helpers as _h
 from kcare_robot.skills._place_helpers import loc2text  # noqa: F401
 from robot_agent.skills import log_data
 
-
-# Calibration must exist at import time — preserved from the original module.
-calib = Head2BaseCalibration()
 
 
 def approach_place(node, **kwargs) -> dict:

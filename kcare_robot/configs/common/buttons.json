@@ -82,7 +82,7 @@
   {
     "id": "19bb17a0c3f6",
     "label": "go wait",
-    "plan": "move::wait"
+    "plan": "moveh::front&&movej::inputs=\"fold\", robot_mode=\"front\"\nmove::wait"
   },
   {
     "id": "df121d60b9ee",

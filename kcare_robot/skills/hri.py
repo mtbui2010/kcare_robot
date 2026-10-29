@@ -95,7 +95,7 @@ _PHRASES = {
     'confirm':    {'ko': '{choice}, 알겠습니다',
                    'en': '{choice}, confirmed.'},
     # ask, when the answer is not said back: the user still hears that it was taken (2026-10-21)
-    'ack':        {'ko': '네, 알겠습니다.',
+    'ack':        {'ko': '알겠습니다.',
                    'en': 'Okay, got it.'},
 }
 
@@ -115,7 +115,7 @@ def _truthy(v) -> bool:
 def _hri_cfg() -> dict:
     """HRI_CONFIGS (Global Configs) with defaults filled in."""
     cfg = {'source': 'robot', 'dashboard_stt': 'whisper', 'stt': '', 'stt_hint': {}, 'earcon': True, 'earcon_volume': 0.3,
-           'speech_rate': 1.3}
+           'speech_rate': 1.3, 'speech_rate_en': None}
     try:
         cfg.update(dict(HRI_CONFIGS.items()))
     except Exception:
@@ -126,12 +126,22 @@ def _hri_cfg() -> dict:
 SPEECH_RATE_RANGE = (0.5, 2.0)
 
 
-def _set_rate(kwargs: dict, hri: dict | None = None) -> float:
-    """How fast the dashboard says this call's lines: the call's `rate=`, else HRI_CONFIGS.speech_rate,
-    within SPEECH_RATE_RANGE; handed to say_to_user / listen_dashboard (robot_agent.utils.set_speech_rate)."""
+def _rate_for(lang, hri: dict | None = None):
+    """HRI_CONFIGS' rate for *lang*: speech_rate_en for English (English voices sound rushed at the
+    Korean rate — 1.5 on kcare_bucheon, 2026-10-26), else speech_rate."""
+    hri = hri or _hri_cfg()
+    if str(lang or '').lower().startswith('en') and hri.get('speech_rate_en'):
+        return hri['speech_rate_en']
+    return hri.get('speech_rate')
+
+
+def _set_rate(kwargs: dict, hri: dict | None = None, lang: str | None = None) -> float:
+    """How fast the dashboard says this call's lines: the call's `rate=`, else HRI_CONFIGS' rate for the
+    call's `lang` (`_rate_for`), within SPEECH_RATE_RANGE; handed to say_to_user / listen_dashboard
+    (robot_agent.utils.set_speech_rate)."""
     hri = hri or _hri_cfg()
     try:
-        rate = float(kwargs.pop('rate', None) or hri.get('speech_rate') or 1.0)
+        rate = float(kwargs.pop('rate', None) or _rate_for(lang or kwargs.get('lang', 'ko'), hri) or 1.0)
     except (TypeError, ValueError):
         rate = 1.0
     rate = min(max(rate, SPEECH_RATE_RANGE[0]), SPEECH_RATE_RANGE[1])
@@ -406,9 +416,9 @@ def ask(node, **kwargs):
             answer that matches no option they are read either way: a blind user
             cannot answer a choice they were not told.
         confirm: None (default) — with options the chosen one is said
-            ("검은색핸드백, 알겠습니다"), without options only "네, 알겠습니다".
+            ("검은색핸드백, 알겠습니다"), without options only "알겠습니다".
             True — also the user's words when there are no options ('"…"라고
-            들었어요'). False — the answer is not said back, only "네, 알겠습니다"
+            들었어요'). False — the answer is not said back, only "알겠습니다"
             (a blind user must still hear that it was taken).
         retries (int):  extra attempts after the first, for no answer or no
             match. Default 2.
@@ -565,7 +575,7 @@ def announce(node, **kwargs):
     if source not in SOURCES:
         raise ValueError(f'source must be one of {SOURCES}, got {source!r}')
     wait = _truthy(kwargs.pop('wait', True))
-    _set_rate(kwargs)
+    _set_rate(kwargs, lang=lang)
     log_data({'msg': f'robot: {text}'})
     say_to_user(text, lang=lang, source=source, wait=wait)
     return {'isdone': True, 'said': text, 'lang': lang, 'waited': wait}
@@ -1285,10 +1295,11 @@ def _ask_place(cfg: dict, shots: list, question: str, history: list, lang: str, 
 # Nothing is configured per place, so it works wherever the robot stands.
 # At shelf2 (scene 1): boards at 1.61 / 1.85 / 2.12 / 2.35 m, divider found,
 # camera at 1.47 m. Used for where-questions at a place without a `qa` block
-# or with `'shelves': True`; nothing found → the place layout / free answer.
+# or with `'shelves': True`. No level found → "선반 왼쪽에 있어요." (2026-10-27; was
+# the free answer). The unit's box comes with the inventory, checked (_unit_candidates).
 
 _SHELF_DEFAULTS = {
-    'shelf_unit': 'the shelves / cabinet / rack that holds the things asked about (the whole unit, all its shelves)',
+    'shelf_unit': 'the shelves / cabinet / rack the objects stand on (the whole unit, all its shelves)',
     'shelf_min_width': 0.35,    # share of the unit's width a board spans (two mug rims side by side do not)
     'shelf_min_height': 0.6,    # share of the shelves' height a divider spans (a cup's side does not)
     'shelf_merge': 0.08,        # m: surfaces closer than this are one board (its top and underside)
@@ -1307,9 +1318,8 @@ number of the photo (1..{n}), bbox_2d = [x1, y1, x2, y2] in that photo in \
 0-1000 coordinates, and asked = true only when it is the kind of thing the \
 person asks about — a tumbler is not a mug, a mug is not a cup or a glass. \
 asked_kind = the kind of thing they ask about, in the same words as `what` \
-(e.g. "mug"). units = for each photo showing it, photo and bbox_2d of {unit}. \
-answer = "".
-- kind "other": any other question. items = [], units = [], asked_kind = "", answer = one \
+(e.g. "mug"). answer = "".
+- kind "other": any other question. items = [], asked_kind = "", answer = one \
 short sentence in {language} (at most about 15 words), from what is visible; \
 if it is not visible say so. Never guess."""
 
@@ -1481,6 +1491,15 @@ bottle, box, bowl, plate, bag ... wherever it is — but not the furniture, \
 shelves, doors or walls. One entry per thing: what (a few English words), \
 photo (1..{n}) and bbox_2d [x1, y1, x2, y2] in that photo, 0-1000. JSON only."""
 
+# The shelf unit's box, asked on its own (2026-10-27). Asked with the question, "머그컵 어디에 있어?" got the
+# mug's own box as the unit 5 times in 12 (the photo changed by a JPEG re-save or 2 px; no board fits in a
+# mug → free answer); asked with the inventory, nearly the whole photo (the dish rack below became a level).
+# Alone, 36 / 36 the cabinet, within 3 %.
+_UNIT_PROMPT = """\
+Box the shelf unit that the {kind} stands on: the whole cabinet / shelving \
+with all its shelves, from its top board to its bottom board — not the {kind} \
+itself, not a dish rack, door or wall. JSON only: bbox_2d [x1, y1, x2, y2], 0-1000."""
+
 
 def _inventory_boxes(cfg: dict, use: list) -> dict:
     """{photo number: [0-1000 boxes]} of every object in the photos: asked
@@ -1504,6 +1523,66 @@ def _inventory_boxes(cfg: dict, use: list) -> dict:
         if isinstance(it, dict) and isinstance(it.get('bbox_2d'), list) and len(it['bbox_2d']) == 4:
             out.setdefault(int(it.get('photo') or 1), []).append(it['bbox_2d'])
     return out
+
+
+def _unit_boxes(cfg: dict, use: list, kind: str) -> dict:
+    """{photo number: [0-1000 box]} of the shelf unit, one short call per photo (_UNIT_PROMPT)."""
+    box = {'type': 'array', 'items': {'type': 'integer'}, 'minItems': 4, 'maxItems': 4}
+    schema = {'type': 'object', 'required': ['bbox_2d'], 'properties': {'bbox_2d': box}}
+    out = {}
+    for i, (_, im) in enumerate(use, 1):
+        body = {'model': cfg['model'], 'stream': False, 'think': False, 'format': schema,
+                'keep_alive': cfg['keep_alive'], 'options': {'temperature': 0.0, 'num_predict': 100},
+                'messages': [{'role': 'user', 'content': _UNIT_PROMPT.format(kind=kind or 'things'),
+                              'images': [_b64jpeg(im, int(cfg['max_side']))]}]}
+        try:
+            b = json.loads(_post_chat(cfg, body).json().get('message', {}).get('content', '') or '{}').get('bbox_2d')
+        except ValueError:
+            continue
+        if isinstance(b, list) and len(b) == 4:
+            out[i] = [b]
+    return out
+
+
+def _box_iou(a, b) -> float:
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0])); iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _unit_candidates(units: list, objects: list) -> tuple:
+    """([(kind, box)] to look for boards in; [boxes refused]). A unit box (_unit_boxes) is used when it can
+    be one: not (nearly) an object's own box, and holding at least 2 of the objects (1 when only one is
+    seen). Nothing else is tried: the box around all the objects, or the whole photo, took in the dish
+    rack under shelf2 and counted it as a level (2026-10-27) — a wrong level is worse than "선반 왼쪽에 있어요"."""
+    def holds(u):
+        return sum(1 for o in objects if u[0] <= (o[0] + o[2]) / 2 <= u[2] and u[1] <= (o[1] + o[3]) / 2 <= u[3])
+    need = min(2, len(objects))
+    good, bad = [], []
+    for u in units:
+        ok = u[2] > u[0] and u[3] > u[1] and all(_box_iou(u, o) < 0.5 for o in objects) and holds(u) >= need
+        (good if ok else bad).append(u)
+    return [('model', u) for u in good], bad
+
+
+def _side_of(b, span) -> str:
+    """'left' / 'middle' / 'right': where box `b` is across `span` (both 0-1000)."""
+    f = ((b[0] + b[2]) / 2 - span[0]) / max(span[2] - span[0], 1)
+    return 'left' if f < 0.4 else 'right' if f > 0.6 else 'middle'
+
+
+def _side_answer(sides: list, lang: str) -> str:
+    """"선반 왼쪽에 있어요." — the object is seen, its level is not known."""
+    if lang == 'ko':
+        w = [{'left': '왼쪽', 'middle': '가운데', 'right': '오른쪽'}[s] for s in sides]
+        out = w[0]
+        for x in w[1:]:
+            out += ('과 ' if _batchim(out) else '와 ') + x
+        return f'선반 {out}에 있어요.'
+    w = [{'left': 'on the left', 'middle': 'in the middle', 'right': 'on the right'}[s] for s in sides]
+    return 'It is ' + ' and '.join(w) + ' of the shelf.'
+
 
 
 def _shelf_words(col: int, ncols: int, level: int, nlevels: int, lang: str, count: str = '') -> str:
@@ -1536,8 +1615,9 @@ def _shelf_answer(spots: list, lang: str) -> str:
 
 
 def _ask_shelves(cfg: dict, shots, question: str, history: list, lang: str, qa_cfg) -> str | None:
-    """Where-question answered from the shelf structure (see above); None when
-    no shelf unit / structure was found, so the caller answers another way."""
+    """Where-question answered from the shelf structure (see above): the level, else the side of the shelf,
+    else "보이지 않아요" — always a fixed sentence. None only when the model takes it for another kind of
+    question (or no photo has depth), so the caller answers another way."""
     scfg = {**_SHELF_DEFAULTS, **{k: v for k, v in (qa_cfg or {}).items() if k in _SHELF_DEFAULTS},
             **{k: cfg[k] for k in _SHELF_DEFAULTS if k in cfg}}
     geo = getattr(shots, 'geo', {}) or {}
@@ -1547,16 +1627,13 @@ def _ask_shelves(cfg: dict, shots, question: str, history: list, lang: str, qa_c
     n = len(use)
     unit = str(scfg['shelf_unit'])
     box = {'type': 'array', 'items': {'type': 'integer'}, 'minItems': 4, 'maxItems': 4}
-    schema = {'type': 'object', 'required': ['kind', 'asked_kind', 'items', 'units', 'answer'], 'properties': {
+    schema = {'type': 'object', 'required': ['kind', 'asked_kind', 'items', 'answer'], 'properties': {
         'kind': {'type': 'string', 'enum': ['where', 'other']},
         'asked_kind': {'type': 'string'},
         'items': {'type': 'array', 'maxItems': 16, 'items': {
             'type': 'object', 'required': ['what', 'photo', 'bbox_2d', 'asked'], 'properties': {
                 'what': {'type': 'string'}, 'photo': {'type': 'integer'}, 'bbox_2d': box,
                 'asked': {'type': 'boolean'}}}},
-        'units': {'type': 'array', 'maxItems': 6, 'items': {
-            'type': 'object', 'required': ['photo', 'bbox_2d'], 'properties': {
-                'photo': {'type': 'integer'}, 'bbox_2d': box}}},
         'answer': {'type': 'string'}}}
     system = _SHELF_PROMPT.format(n=n, views=_view_labels(use), unit=unit,
                                   language=_LANG_NAME.get(lang, 'the language of the question'))
@@ -1592,25 +1669,33 @@ def _ask_shelves(cfg: dict, shots, question: str, history: list, lang: str, qa_c
     asked = _asked_items(items, out.get('asked_kind'))
     spots, notes, found_any = [], [], False
     step = int(scfg['shelf_step'])
-    inv = getattr(shots, 'objects', None)               # every object: once per set of photos
+    inv = getattr(shots, 'objects', None)               # every object, and the unit: once per set of photos
+    inv_units = getattr(shots, 'units', None)
     if inv is None:
         inv = _inventory_boxes(cfg, use)
-        try:
-            shots.objects = inv
-        except AttributeError:
-            pass
         notes.append(f'inventory: {sum(len(v) for v in inv.values())} objects')
+    if inv_units is None:
+        inv_units = _unit_boxes(cfg, use, str(out.get('asked_kind') or ''))
+    try:
+        shots.objects, shots.units = inv, inv_units
+    except AttributeError:
+        pass
+    placed, spans = set(), {}                            # asked items given a level; photo → its unit box
     for i, (view, im) in enumerate(use, 1):
-        units = [u['bbox_2d'] for u in out.get('units') or []
-                 if isinstance(u, dict) and u.get('photo') == i and isinstance(u.get('bbox_2d'), list)
-                 and len(u['bbox_2d']) == 4]
         mine = [it for it in asked if int(it.get('photo') or 1) == i]
-        if not units or not mine:
+        objs = [it['bbox_2d'] for it in items if int(it.get('photo') or 1) == i] + list(inv.get(i, []))
+        cands, bad = _unit_candidates(inv_units.get(i, []), objs)
+        if cands:                                        # left / right of the unit, else of what is seen
+            spans[i] = cands[0][1]
+        elif objs:
+            spans[i] = [min(o[0] for o in objs), 0, max(o[2] for o in objs), 1000]
+        if not mine:
             continue
+        for ub in bad:
+            notes.append(f'photo {i}: unit box {ub} refused (an object\'s box / holds < 2 objects)')
         P, uu, vv = _grid_xyz(geo[view], step)
-        objects_px = [px(it['bbox_2d'], im) for it in items if int(it.get('photo') or 1) == i] \
-            + [px(b, im) for b in inv.get(i, [])]
-        for ub in units:
+        objects_px = [px(b, im) for b in objs]
+        for _, ub in cands:
             # The unit's own top / bottom boards lie on its box's edges, and the
             # model's box moves by 1-2 %: 738 instead of 750 lost the bottom
             # board. 5 % more each side (a board just outside merges with it).
@@ -1649,18 +1734,28 @@ def _ask_shelves(cfg: dict, shots, question: str, history: list, lang: str, qa_c
                 col = 1 + sum(1 for dy in divs if dy > y)
                 words = _shelf_words(col, len(divs) + 1, level, nlev, lang, count)
                 notes.append(f"{it.get('what')}: z {z:.2f} y {y:.2f} → {words}")
+                placed.add(id(it))
                 if words not in spots:
                     spots.append(words)
     log_data({'msg': 'qa: shelves — ' + '; '.join(notes) + ' | ' + json.dumps(
         {'asked_kind': out.get('asked_kind'),
          'items': [{k: it.get(k) for k in ('what', 'asked', 'photo', 'bbox_2d')} for it in items],
-         'units': out.get('units')}, ensure_ascii=False)})
-    if not found_any:
-        return None
+         'units': inv_units}, ensure_ascii=False)})
+    # Always a fixed sentence from here (2026-10-27: "shelves found nothing" used to go to the free answer,
+    # "머그컵은 흰색 선반 위에 있습니다."): a level when found, else the side of the shelf it is on.
     if spots:
         return _shelf_answer(spots, lang)
-    if asked:                                          # seen, but not placed on a shelf
-        return _qa_phrase('no_shelf', lang)
+    sides = []
+    for it in asked:
+        i = int(it.get('photo') or 1)
+        if id(it) not in placed and i in spans:
+            sd = _side_of(it['bbox_2d'], spans[i])
+            if sd not in sides:
+                sides.append(sd)
+    if sides:                                          # seen, its level not known
+        log_data({'msg': f"qa: shelves — no level for {out.get('asked_kind')!r}"
+                         f"{'' if found_any else ' (no shelf boards)'} → side of the shelf: {sides}"})
+        return _side_answer(sides, lang)
     return _qa_phrase('unseen', lang)
 
 # ── Products (신라면, 짜파게티 …): names from the product recogniser ───────────
@@ -1994,12 +2089,12 @@ def _drop_answer(node, cfg: dict, text: str, lang: str) -> str:
 # ── "불 꺼줘" / "세탁실 불 켜져 있어?" — lights, with turn_light / light_state ───
 #
 #   (H) 나 외출할거니까 불켜진거 있으면 꺼놔
-#   (R) 네. 세탁실 불 끄겠습니다.  → turn_light::inputs='off', loc='laundry room'
+#   (R) 세탁실 불 끄겠습니다.  → turn_light::inputs='off', loc='laundry room'
 #
 #   (H) 세탁실 불 켜져 있어?
 #   (R) 세탁실 불은 켜져 있어요. 꺼 드릴까요?      → light_state::loc='laundry room'
 #   (H) 응  /  꺼줘
-#   (R) 네. 세탁실 불 끄겠습니다.                 → turn_light::inputs='off', loc='laundry room'
+#   (R) 세탁실 불 끄겠습니다.                 → turn_light::inputs='off', loc='laundry room'
 #
 # The robot says the acknowledgement, then acts, and says so if it failed.
 # Which light: a place named in the request (a switchbot connection's loc, id
@@ -2024,6 +2119,9 @@ _QUESTION_WORD = re.compile(r'어디|뭐|무엇|무슨|몇|어떤|어때|누구|
 # A short "no more" to "더 궁금하신 게 있으세요?" (_NO, or 없어 / 없습니다 alone).
 _NONE_LEFT = re.compile(r'^\s*(없어|없어요|없습니다|없음|없다)\s*[.!]?\s*$')
 OFFER_RETRIES = 2     # unclear answers to "꺼 드릴까요?" asked again before leaving the light
+# qa::context='light' (scenario 10) / 'where' (scenario 1): what the talk is about — see qa
+_QA_CONTEXTS = {'light': 'light', 'lights': 'light', '불': 'light', '조명': 'light',
+                'where': 'where', '위치': 'where', '어디': 'where'}
 
 
 def _offer_reply(text: str):
@@ -2040,9 +2138,9 @@ def _offer_reply(text: str):
     return 'yes' if yes else 'no' if no else None
 
 
-def _light_hint(lang: str):
-    """Whisper hint words for light questions / commands (ko only)."""
-    name = _light_name(_default_light() or '', lang) if lang == 'ko' else ''
+def _light_hint(lang: str, loc=None):
+    """Whisper hint words for light questions / commands (ko only); `loc` None → the default light."""
+    name = _light_name(loc or _default_light() or '', lang) if lang == 'ko' else ''
     if lang != 'ko' or not name or not re.search(r'[가-힣]', name):
         return None
     return f'{name} 불 켜져 있어?, 불 꺼 줘, 불 켜 줘'
@@ -2147,7 +2245,7 @@ def _light_phrase(key: str, action: str, lang: str, name: str = '') -> str:
     on = action == 'on'
     where = f'{name} ' if name else ''
     return {
-        'ack':  {'ko': f'네. {where}불 켜겠습니다.' if on else f'네. {where}불 끄겠습니다.',
+        'ack':  {'ko': f'{where}불 켜겠습니다.' if on else f'{where}불 끄겠습니다.',
                  'en': f"OK, I'll turn the {where}lights on." if on else f"OK, I'll turn the {where}lights off."},
         'done': {'ko': '불을 켰어요.' if on else '불을 껐어요.',
                  'en': 'The lights are on.' if on else 'The lights are off.'},
@@ -2298,6 +2396,18 @@ def qa(node, **kwargs):
             simulated). Then qa ends and stops the plan (``stop``); with a
             camera a "fine" carries on into the usual conversation instead.
         cam=None: no camera at all — only with such a context.
+        context='light' (2026-10-29, scenario 10): the talk is about a light only. The first sentence,
+            whatever was heard (Whisper lost 불 or 켜져 and the question went to the camera), asks for the
+            state — light_state, then "세탁실 불은 켜져 있어요. 꺼 드릴까요?"; the second acts — 네 or a
+            request ("꺼 주세요", "불 켜져." misheard) does the offered switch, 아니요 leaves it, garble gets
+            the 네 / 아니요 buttons. No camera, no head motion; the Whisper hint is the light phrases only.
+            qa ends once the light is done with (switched / left / not checkable): ended 'light'.
+            `light`: which light (a switchbot loc, id or alias); default the connection marked default.
+        context='where' (2026-10-29, scenario 1): one where-question about the place's things. Every
+            sentence (but a stop word) is that question: naming one of the qa block's `objects` →
+            "<object> 어디에 있어?"; naming none / several, or garbled → the objects as buttons, nothing
+            asked again. No light / product / dropped-object routing; the Whisper hint is the objects'
+            where-lines only. The answer is said and qa ends: ended 'where'.
 
     Returns ``{'isdone', 'turns', 'ended', 'history'}`` (+ ``answer`` with
     once) — `ended` is 'stop word', 'cancelled', 'answered', 'idle' (long
@@ -2312,15 +2422,25 @@ def qa(node, **kwargs):
     loc = kwargs.pop('loc', None)
     context = kwargs.pop('context', None)
     emergency = isinstance(context, dict) and bool(context.get('emergency'))
+    topic = _QA_CONTEXTS.get(context.strip().lower()) if isinstance(context, str) and context.strip() else None
+    if isinstance(context, str) and context.strip() and topic is None:
+        raise ValueError(f"qa: unknown context {context!r} (known: 'light', 'where', or check_fall's {{answer}})")
+    light_mode, where_mode = topic == 'light', topic == 'where'
+    light_arg = kwargs.pop('light', None)
+    light_loc = None
+    if light_mode and light_arg:
+        light_loc = _light_device(str(light_arg))[0]
+        if light_loc is None:
+            raise ValueError(f'qa: no switchbot light named {light_arg!r}')
     cam_arg = kwargs.pop('cam', 'head')
     cam = None if cam_arg is None or str(cam_arg).strip().lower() in ('', 'none', 'null') \
         else str(cam_arg).strip().lower()
     once = _truthy(kwargs.pop('once', False))
     retries = max(0, int(kwargs.pop('retries', RETRIES)))
-    use_products = _truthy(kwargs.pop('products', True))
+    use_products = _truthy(kwargs.pop('products', True)) and not where_mode
     if cam not in ('head', 'arm', None):
         raise ValueError(f"cam must be 'head', 'arm' or None, got {cam!r}")
-    if cam is None and not emergency:
+    if cam is None and not emergency and not light_mode:
         raise ValueError('qa: cam=None (no camera) needs the context of check_fall / check_restroom '
                          '(qa::context={answer}, cam=None)')
     if emergency:                           # the detector's mic / language, unless this call names one
@@ -2352,14 +2472,16 @@ def qa(node, **kwargs):
     listen['text_fallback_sec'] = QA_TEXT_WAIT_SEC
     # Whisper hint: also the things people drop and the products the robot
     # knows (Whisper heard "손가락" for 숟가락 without them).
-    extra = [w for w in _drop_vocab(cfg) if re.match(r'[가-힣]', w)] if lang == 'ko' else []
+    extra = [w for w in _drop_vocab(cfg) if re.match(r'[가-힣]', w)] if lang == 'ko' and not topic else []
     try:
         from . import _products
-        extra += list((_products._catalog().get('products') or {}).keys())
+        extra += [] if topic else list((_products._catalog().get('products') or {}).keys())
     except Exception:
         pass
-    lights = _light_hint(lang)              # "시대에 불" for 세탁실 불 without it
-    if lights:
+    lights = None if where_mode else _light_hint(lang, light_loc)   # "시대에 불" for 세탁실 불 without it
+    if light_mode and lights:               # the light phrases only, as whole sentences at the end
+        listen['hint'] = ' '.join(x for x in [listen.get('hint') or '', lights.replace('?, ', '? ').replace(', ', '. ') + '.'] if x)
+    elif lights:
         extra.append(lights)
     if extra:
         listen['hint'] = ', '.join(x for x in [listen.get('hint') or '', ', '.join(dict.fromkeys(extra))] if x)
@@ -2367,7 +2489,7 @@ def qa(node, **kwargs):
     listen['keep_audio'] = True             # each recording → <log dir>/qa_audio/ (_save_audio)
     if listen.get('mode') == 'text':
         listen['text_wait_sec'] = QA_TEXT_WAIT_SEC
-    place, qa_cfg = _place_config(node, cfg, loc)
+    place, qa_cfg = (None, None) if light_mode else _place_config(node, cfg, loc)
     if qa_cfg and qa_cfg.get('views') and not explicit_views:
         cfg['views'] = list(qa_cfg['views'])
     objects = _place_objects(qa_cfg, lang)  # the place's things: buttons + hint
@@ -2377,13 +2499,21 @@ def qa(node, **kwargs):
         listen['hint'] = ' '.join(x for x in [listen.get('hint') or '',
                                               ' '.join(_where_line(o, lang) for o in objects)] if x)
         base_hint = listen['hint']
-    log_data({'msg': f"qa: at {place or 'unknown place'}"
-                     + (' (place layout)' if qa_cfg else '')
-                     + (f" — {cfg['arm_camera']}, one photo" if cam == 'arm'
-                        else f" — {cfg['camera']} at {', '.join(cfg['views'])}")})
-    log_data({'msg': f"qa: VLM {_vlm_label(cfg)} (url {cfg.get('url')}, num_ctx {cfg.get('num_ctx')}, "
-                     f"from {cfg.get('_source', 'QA_CONFIGS')}); memory {_truthy(cfg['memory'])}, "
-                     f"reuse_photos {_truthy(cfg['reuse_photos'])}"})
+    if where_mode and not objects:
+        log_data({'msg': f"qa: where context at {place or 'unknown place'} with no `objects` in its qa block: "
+                         f"the sentence is asked as heard (no object buttons)"})
+    if light_mode:
+        log_data({'msg': f"qa: light context — {light_loc or _default_light() or 'no light'}: the first sentence "
+                         f"asks the state, the second acts; no camera"})
+    else:
+        log_data({'msg': f"qa: at {place or 'unknown place'}"
+                         + (' (place layout)' if qa_cfg else '')
+                         + (f" — {cfg['arm_camera']}, one photo" if cam == 'arm'
+                            else f" — {cfg['camera']} at {', '.join(cfg['views'])}")})
+        log_data({'msg': f"qa: VLM {_vlm_label(cfg)} (url {cfg.get('url')}, num_ctx {cfg.get('num_ctx')}, "
+                         f"from {cfg.get('_source', 'QA_CONFIGS')}); memory {_truthy(cfg['memory'])}, "
+                         f"reuse_photos {_truthy(cfg['reuse_photos'])}"
+                         + ("; where context: one where-question, then qa ends" if where_mode else '')})
 
     history, shots, shot_at = [], [], 0.0
     inv, inv_at = None, None                # product inventory of the current photos
@@ -2481,17 +2611,27 @@ def qa(node, **kwargs):
             light, accepted = None, False
             offer = (last_light or {}).get('offer')
             named = _light_device(text)[0]
-            if offer and not _QUESTION_WORD.search(text) and named in (None, offer[1]):
+            if offer and (light_mode or not _QUESTION_WORD.search(text)) and named in (None, offer[1]):
                 # The answer to "꺼 드릴까요?" — even with 불 in it ("불 켜져." was a
                 # misheard "불 꺼줘", 2026-10-22, and went to the state again). A new
                 # question ("와인잔 어디 있어?") or another light is handled as usual.
                 reply = _offer_reply(text)
+                if (reply is None and light_mode and not _NO.search(text)
+                        and (_LIGHT_OFF.search(text) or _LIGHT_ON.search(text) or _LIGHT_DO.search(text))):
+                    # context='light': the second sentence acts — a request is a yes to the offer
+                    # whatever verb was heard (꺼 / 켜 are one sound apart; the offer comes from the state)
+                    log_data({'msg': f'qa: {text!r} taken as yes to "{offer[0]}" (light context)'})
+                    reply = 'yes'
                 if reply and light_screen:          # answered: the buttons go
                     choose_close(light_screen)
                     light_screen = None
                 if reply == 'no':
                     answer = _light_phrase('leave', 'on', lang)
                     history.append((text, answer))
+                    if light_mode:                  # the light is done with: qa ends
+                        _say(answer, lang, source)
+                        ended = 'light'
+                        break
                     prompt = pending_answer = answer
                     continue
                 if reply == 'yes':
@@ -2501,17 +2641,31 @@ def qa(node, **kwargs):
                     if tries > OFFER_RETRIES:
                         answer = _light_phrase('gave_up', 'on', lang)
                     else:
-                        answer = _light_phrase('again', offer[0], lang, last_light['name'])
                         light_ctx = {**last_light, 'tries': tries}
                         if not light_screen:
-                            light_screen = choose_open(_offer_buttons(offer[0], lang), answer)
-                    log_data({'msg': f'qa: unclear answer to the light question ({tries}/{OFFER_RETRIES})'
-                                     + (' — 네 / 아니요 on the dashboard' if light_screen else '')})
+                            light_screen = choose_open(_offer_buttons(offer[0], lang),
+                                                       _light_phrase('ask', offer[0], lang, last_light['name']))
+                        if light_screen:
+                            # 2026-10-27: the buttons only, nothing said ("잘 못 들었어요 … 네 또는 아니요로
+                            # 말씀해 주세요" was asked again as well); a click or a clear 네 / 아니요 answers
+                            log_data({'msg': f'qa: unclear answer to the light question ({tries}/{OFFER_RETRIES})'
+                                             ' — 네 / 아니요 on the dashboard, not asked again'})
+                            continue                # listen again quietly
+                        answer = _light_phrase('again', offer[0], lang, last_light['name'])
+                    log_data({'msg': f'qa: unclear answer to the light question ({tries}/{OFFER_RETRIES})'})
                     history.append((text, answer))
+                    if light_mode and tries > OFFER_RETRIES:     # gave up: qa ends
+                        _say(answer, lang, source)
+                        ended = 'light'
+                        break
                     prompt = pending_answer = answer
                     continue
-            elif _light_question(text):
+            elif not where_mode and (light_mode or _light_question(text)):
+                # context='light': whatever the first sentence was heard as, it asks the state
                 loc, said = _light_device(text)
+                loc = loc or light_loc
+                if light_mode and not said:                 # "세탁실 불 상태를 확인하지 못했어요", not "불 상태 …"
+                    said = _light_name(loc or _default_light() or '', lang) or None
                 _say(_light_phrase('check', 'on', lang), lang, source)
                 try:
                     answer, offer = _light_state_answer(node, loc, said, lang)
@@ -2526,9 +2680,13 @@ def qa(node, **kwargs):
                 if offer:
                     name = said or (_light_name(offer[1], lang) if offer[1] != 'all' else '')
                     light_ctx = {'loc': loc, 'said': said, 'offer': offer, 'name': name, 'tries': 0}
+                elif light_mode:                                # nothing to offer (state unknown): qa ends
+                    _say(answer, lang, source)
+                    ended = 'light'
+                    break
                 prompt = pending_answer = answer                 # spoken by the next listen, then the mic opens
                 continue
-            if light is None:
+            if light is None and not where_mode:      # where context: nothing is a light request
                 light = _light_command(text, follow_up=last_light is not None and not offer)
             if light is not None:
                 action, loc = light
@@ -2575,8 +2733,8 @@ def qa(node, **kwargs):
                     answer = _light_phrase('fail', action, lang)
                     _say(answer, lang, source)
                 history.append((text, answer))
-                if once:
-                    ended = 'answered'
+                if once or light_mode:
+                    ended = 'answered' if once else 'light'
                     break
                 continue                                    # listen again (already spoken)
 
@@ -2586,9 +2744,11 @@ def qa(node, **kwargs):
             # the dashboard, nothing asked again — the click is the question. Without a
             # dashboard: "무엇을 찾으시는지 잘 못 들었어요" as before.
             short_reply = len(re.sub(r'\W', '', text)) <= 6 and bool(_YES.search(text) or _NO.search(text))
-            if (objects and not short_reply and not _is_drop_question(text)
+            # context='where': every sentence is that question, whatever else was heard in it.
+            if objects and (where_mode or (
+                    not short_reply and not _is_drop_question(text)
                     and not (use_products and _is_product_question(text))
-                    and not _QUESTION_WORD.search(_WHERE.sub(' ', text.lower()))):
+                    and not _QUESTION_WORD.search(_WHERE.sub(' ', text.lower())))):
                 hit = _named_objects(text, objects)
                 if len(hit) == 1:
                     if text != _where_line(hit[0], lang):
@@ -2614,7 +2774,7 @@ def qa(node, **kwargs):
             # model (see _drop_answer).
             # Any "…떨어졌어?" goes here, even when the object word was not
             # understood (it asks again) — never to the left / right place answer.
-            drop = _is_drop_question(text)
+            drop = _is_drop_question(text) and not where_mode
             fresh = (shots and _truthy(cfg['reuse_photos'])
                      and time.time() - shot_at <= float(cfg['refresh_sec']))
             if not drop and not fresh:          # new photos unless reuse_photos says otherwise
@@ -2671,9 +2831,10 @@ def qa(node, **kwargs):
                         if not where and shelves and lang == 'ko' and _as_where(text):
                             asked, where = _as_where(text), True      # "와인잔 뒤에 있어?" → where
                             log_data({'msg': f'qa: {text!r} asked as {asked!r}'})
+                        where = where or where_mode                   # where context: a where-question anyway
                         if where and getattr(shots, 'geo', None) and shelves:
                             answer = _ask_shelves(cfg, shots, asked, recall, lang, qa_cfg)
-                            route = 'shelves' if answer is not None else 'shelves found nothing → '
+                            route = 'shelves' if answer is not None else 'shelves: not a where-question → '
                         elif where:
                             route = ('no depth → ' if not getattr(shots, 'geo', None)
                                      else 'place block without shelves → ')
@@ -2694,13 +2855,13 @@ def qa(node, **kwargs):
             if cancel_requested():
                 break
             history.append((text, answer))
-            if once:                            # one question: say the answer and end
+            if once or where_mode:              # one question: say the answer and end
                 _say(answer, lang, source)
-                ended = 'answered'
+                ended = 'answered' if once else 'where'
                 break
             prompt = pending_answer = answer                     # spoken by the next listen, then the mic opens
 
-        if ended not in ('cancelled', 'answered'):
+        if ended not in ('cancelled', 'answered', 'light', 'where'):    # light / where: the plan goes on
             _say(_qa_phrase('idle_bye' if ended == 'idle' else 'bye', lang), lang, source)
     finally:
         choose_close(light_screen)

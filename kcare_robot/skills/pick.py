@@ -74,6 +74,8 @@ def fine_move(**kwargs):
     back_to_init = kwargs.pop('back_to_init', False)
     lift_before_pull_back = kwargs.pop('lift_before_pull_back', None)
     pointing = kwargs.pop('pointing', False)
+    tune = kwargs.pop('tune', None)
+    zrange = kwargs.pop('zrange', None)
     # Step 1: coarse detect + dx nudge. Failure here is non-fatal — we just
     # fall through to the per-trial loop without nudging.
     # try:
@@ -95,6 +97,13 @@ def fine_move(**kwargs):
 
     # except Exception:
     #     pass
+    if zrange is not None:
+        ret = find_grasp(node=node, inputs=obj_name, **kwargs); assert ret['isdone'], f'{ret}'
+        z = ret['ins'][obj_name]['grasppose'][2]; zmin, zmax = zrange
+        mforward = round(z - np.clip(z,zmin, zmax), 2)
+        if abs(mforward)>0:
+            ret = forward(node=node, inputs=mforward, wait=True); assert ret['isdone'], f'{ret}'
+        
 
     dx = dy = dz = None
     for _ in range(num_trials):
@@ -110,6 +119,8 @@ def fine_move(**kwargs):
             continue
         dx, dy, dz, angle, width, eff_dpull = grasp
         angle = angle if fixed_angle is None else fixed_angle
+        if tune is not None:
+            dx, dy, dz = dx + tune[0], dy + tune[1], dz + tune[2]
 
         init_joints = None
         if back_to_init:
@@ -164,8 +175,7 @@ def fine_move(**kwargs):
 
         if isdone:
             return {'isdone': True}
-
-
+        
     return {'isdone': False, 'dd': [dx, dy, dz]}
 
 
@@ -189,8 +199,8 @@ def open_drawer(**kwargs):
         env = get_env_specs(inp, ENV)
         handle_name = env.get('handle', None)
         if handle_name is None:
-            print(f'No handle at {inp}')
-            return {'isdone': False}
+            return {'isdone': False, 'msg': f'"{inp}" has no handle in ENV: add "handle" (what the detector looks for, '
+                                            f'e.g. "gray handle") and "handle_height" [m] to it (Locations (ENV) → + param)'}
         if not stay_here:
             ret = move(node=node, inputs=inp, wait=True)
             if not ret['isdone']:
@@ -220,7 +230,11 @@ def open_drawer(**kwargs):
     # assert ret['isdone'], f'{ret}'
     
 
-    err, mforward = _h.compute_drawer_mforward(node, handle_name, robot_mode)
+    # One handle for both looks: the first picks it (detector score + distance + image centre, the profile's
+    # `weight`) and drives the base so it is not too close / too far; the grasp look then takes the box nearest
+    # that point (near_xyz) — it used to choose its own (the one nearest 0.3 m), and pulled another drawer.
+    err, mforward, handle_xyz = _h.locate_drawer_handle(node, handle_name, robot_mode, weights=True,
+                                                        handle_height=env.get('handle_height') if inp is not None else None)
     if err is not None:
         return err
     ret = _h.drive_forward_if_needed(node, mforward)
@@ -234,7 +248,8 @@ def open_drawer(**kwargs):
     # Mirror carerobotapp: pull slowly and bias the grasp depth shallow so the
     # handle isn't crushed. `deep_ratio=0.4` favours obj_median over bound.
     ret = fine_move(node=node, inputs=handle_name, keep_orientation=True,
-                    dpull=__DPULL, deep_ratio=0.4, pull_speed=0.5, target_distance=0.4, **kwargs)
+                    dpull=__DPULL, deep_ratio=0.4, pull_speed=0.5, target_distance=0.4, weights=True,
+                    near_xyz=handle_xyz, **kwargs)
     if not ret['isdone']:
         return ret
 
@@ -297,8 +312,8 @@ def close_drawer(**kwargs):
         env = get_env_specs(inp, ENV)
         handle_name = env.get('handle', None)
         if handle_name is None:
-            print(f'No handle at {inp}')
-            return {'isdone': False}
+            return {'isdone': False, 'msg': f'"{inp}" has no handle in ENV: add "handle" (what the detector looks for, '
+                                            f'e.g. "gray handle") and "handle_height" [m] to it (Locations (ENV) → + param)'}
         if not stay_here:
             ret = move(node=node, inputs=inp, wait=True)
             if not ret['isdone']:
@@ -331,7 +346,8 @@ def close_drawer(**kwargs):
         ret = movej(node=node, inputs='approach_drawer', wait=True)
         assert ret['isdone'], f'{ret}'
 
-        err, mforward = _h.compute_drawer_mforward(node, handle_name, robot_mode)
+        err, mforward = _h.compute_drawer_mforward(node, handle_name, robot_mode,
+                                                   handle_height=env.get('handle_height') if inp is not None else None)
         if err is not None:
             return err
         ret = _h.drive_forward_if_needed(node, mforward)

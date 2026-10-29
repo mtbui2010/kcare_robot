@@ -5,6 +5,7 @@ import numpy as np
 
 from robot_agent.skill_configs import ARM_CONFIGS
 from robot_agent.utils import run_parallel_check
+from robot_agent.skills import log_data
 
 from kcare_robot.skills.arm import movet, movel, movelf, movej, arm_pose
 from kcare_robot.skills.lift import lift, dlift
@@ -62,19 +63,55 @@ def split_loc(loc_name):
 # Drawer handle helpers (shared by open/close)
 # ---------------------------------------------------------------------------
 
-def compute_drawer_mforward(node, handle_name, robot_mode):
-    """Locate the handle, then return how far the base should drive forward to
-    centre it within `DRAWER_RANGE`. Returns `(err_or_None, mforward)`."""
-    ret = detect(node=node, inputs=handle_name, camera='arm')
-    if not ret['isdone']:
-        return ret, 0
-    return None, 0
+# open_drawer never drives more than this to bring the handle into its x band (m)
+DRAWER_MAX_FORWARD = 0.3
 
-    # x0 = ret['ins'][handle_name]['pose_3d'][0]
-    # xmin = DRAWER_RANGE[0] if robot_mode == 'right' else -DRAWER_RANGE[1]
-    # xmax = DRAWER_RANGE[1] if robot_mode == 'right' else -DRAWER_RANGE[0]
-    # mforward = np.clip(x0, xmin, xmax) - x0
-    # return None, (0 if abs(mforward) < 0.1 else mforward)
+
+def drawer_x_band():
+    """Where along the heading (base-frame x, m) the handle must be for the arm to pull it: ARM_CONFIGS
+    `drawer_x`, else pick's measured `approach_x.lying` ([0.15, 0.7]) — the same on both sides. DRAWER_RANGE
+    ([0.1, 0.4], mirrored to [-0.4, -0.1] on the left) came from carerobotapp, whose handle point was in the
+    wrist CAMERA frame (mm, [150, 200]); here pose_3d is base frame, and on kcare_bucheon the handle at
+    x 0.57 m was refused as 0.67 m off (2026-10-26)."""
+    band = ARM_CONFIGS.get('drawer_x') or (ARM_CONFIGS.get('approach_x') or {}).get('lying') or [0.15, 0.7]
+    return float(band[0]), float(band[1])
+
+
+def locate_drawer_handle(node, handle_name, robot_mode, handle_height=None, **select):
+    """Locate the handle with the wrist camera and work out how far the base should drive forward (+) /
+    backward (-) so the handle's x (base frame, along the heading) lands in `drawer_x_band()` — not too
+    close, not too far. Returns `(err_or_None, mforward, xyz)`: `xyz` is the chosen
+    handle's base-frame point AFTER that drive, for the grasp look to take the same handle (`near_xyz`).
+    `handle_height` (ENV, m): of several handles take the one whose height (base-frame z) is nearest it — a
+    cabinet's drawers share the handle name, so this is what tells `drawer` (0.415) from a drawer above it;
+    a ⚠ when the nearest is > 8 cm off (set handle_height to the z the log shows). Without it: `select`
+    (weights, target_distance …)."""
+    if handle_height is not None:
+        select = dict(select, near_xyz=[None, None, float(handle_height)], near_xyz_warn=0.08,
+                      near_xyz_what='ENV handle_height')
+    ret = detect(node=node, inputs=handle_name, camera='arm', **select)
+    if not ret['isdone']:
+        return ret, 0, None
+    xyz = [float(v) for v in ret['ins'][handle_name]['pose_3d'][:3]]
+    x0 = xyz[0]
+    xmin, xmax = drawer_x_band()
+    # forward (+) moves the handle back along x: drive by how far it is past the band (pick's base_shift sign;
+    # the old commented-out line had it reversed — clip - x0 drove away from the band)
+    mforward = float(x0 - np.clip(x0, xmin, xmax))
+    mforward = 0.0 if abs(mforward) < 0.1 else mforward
+    if abs(mforward) > DRAWER_MAX_FORWARD:
+        return ({'isdone': False, 'msg': f'drawer: the {handle_name} is at x {x0:.2f} m, {abs(mforward):.2f} m outside '
+                 f'[{xmin}, {xmax}] — more than {DRAWER_MAX_FORWARD} m to drive; check the ENV loc'}, 0, xyz)
+    log_data({'msg': f'drawer: {handle_name} at [{", ".join(f"{v:.2f}" for v in xyz)}] (base), keep x in '
+                     f'[{xmin}, {xmax}] → base {"stays" if not mforward else f"{mforward:+.2f} m"}'})
+    xyz[0] -= mforward          # the base moves, the handle does not
+    return None, mforward, xyz
+
+
+def compute_drawer_mforward(node, handle_name, robot_mode, handle_height=None):
+    """`locate_drawer_handle` without the handle point: `(err_or_None, mforward)`."""
+    err, mforward, _ = locate_drawer_handle(node, handle_name, robot_mode, handle_height=handle_height)
+    return err, mforward
 
 
 def drive_forward_if_needed(node, mforward):
@@ -96,7 +133,9 @@ def retract_from_drawer(node, lift_height, mforward,  robot_mode=None):
     ret =  run_parallel_check(funcs=funcs)
     assert ret['isdone'], f'{ret}'
 
-    ret = forward(node=node, inputs=-mforward, wait=True) if abs(mforward) > 0.5 else {'isdone': True}
+    # back by what open_drawer drove (was "> 0.5": a 0.1-0.4 m drive was never undone — harmless while
+    # mforward was always 0)
+    ret = forward(node=node, inputs=-mforward, wait=True) if abs(mforward) > 0.05 else {'isdone': True}
     assert ret['isdone'], f'{ret}'
 
     return lift(node=node, inputs=lift_height, wait=True)

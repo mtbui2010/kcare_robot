@@ -23,12 +23,13 @@ until `timeout_sec` (60 s; 15 s in demo) is used up, re-asking with the seconds 
     anything else before it ("아니면 괜찮아": Whisper's "안 괜찮아") is unclear;
   - asks for help (도와줘 / 아파 / 119 / 넘어졌 …), or denies
     being fine (안 괜찮아), or says both                            → call 119 at once;
-  - unclear words                                                 → ask again (the clock keeps running);
-  - nothing / Whisper's silence phrases (감사합니다 …)              → ask again;
+  - unclear words, nothing / Whisper's silence phrases (감사합니다 …) → the buttons; listen on, nothing said
+                                                                    (asked again aloud only without a dashboard);
   - time used up without a clear "fine"                           → call 119.
 
-The first answer not understood puts [괜찮아요] [도와주세요] on the dashboard (as ask's screen_choice); the robot
-keeps asking aloud and counting down, and a click answers like the words. Every answer is kept in
+The first window without a clear answer puts [괜찮아요] [도와주세요] on the dashboard (as ask's screen_choice); from then on
+the robot says nothing more and only listens until the time is used up (2026-10-27: it asked "잘 못 들었어요 …" again
+every window), and a click answers like the words, at once. Without a dashboard (no buttons) it asks again aloud. Every answer is kept in
 <log dir>/emergency_audio/ (recording + what Whisper made of it).
 
 Only a clear "fine" stops the call: a false alarm costs less than a missed fall. The time left is counted
@@ -218,7 +219,7 @@ def _detect(node, kind: str, kwargs: dict) -> dict:
     lang = str(kwargs.pop('lang', 'ko') or 'ko').lower()
     cfg = _cfg(kwargs)
     source = _source(kwargs, cfg)
-    _set_rate(kwargs)
+    _set_rate(kwargs, lang=lang)
     flag = 'fall' if kind == 'check_fall' else 'restroom_too_long'
     key = 'fall' if kind == 'check_fall' else 'restroom'
     # "Checking…", spoken to the end (the dashboard reports it), then the detector "looks" for detect_sec and
@@ -228,7 +229,7 @@ def _detect(node, kind: str, kwargs: dict) -> dict:
     if kind == 'check_fall' and node is not None:          # look at the floor, where a person would be
         try:
             from .head import moveh
-            ret = moveh(node=node, inputs='down')
+            ret = moveh(node=node, inputs='straight')
             if not ret.get('isdone'):
                 log_data({'msg': f'check_fall: head down failed ({ret.get("msg")})'})
         except Exception as e:
@@ -321,15 +322,17 @@ def dialog(node, context: dict, lang: str, source: str, listen: dict, **over) ->
                 outcome = rk
                 break
             if screen is None:
-                # not understood: the two answers as buttons on the dashboard (none without one); the robot keeps
-                # asking aloud and counting down meanwhile — a click or a clear answer, whichever comes first
+                # not understood: the two answers as buttons on the dashboard (none without one) — a click or a
+                # clear answer, whichever comes first
                 screen = choose_open(buttons, context.get('question') or _phrase('question', lang))
                 if screen:
-                    log_data({'msg': f'{kind}: not understood — {" / ".join(buttons)} on the dashboard'})
+                    log_data({'msg': f'{kind}: not understood — {" / ".join(buttons)} on the dashboard, '
+                                     'listening on without asking again'})
             left = timeout - (k + 1) * reprompt
             if left <= 0:
                 break
-            prompt = _phrase('unclear' if rk == 'unclear' else 'again', lang, t=_secs(left, lang))
+            # with the buttons up the robot only listens (nothing said); without a dashboard it asks again aloud
+            prompt = None if screen else _phrase('unclear' if rk == 'unclear' else 'again', lang, t=_secs(left, lang))
         if outcome is None and (clicked := choose_result(screen)):      # clicked as the time ran out
             outcome = 'fine' if clicked == buttons[0] else 'help'
             turns.append({'robot': None, 'user': clicked, 'kind': outcome, 'how': 'screen'})
@@ -369,7 +372,7 @@ def call_119(node=None, **kwargs):
     reason = str(kwargs.pop('inputs', None) or 'requested')
     lang = str(kwargs.pop('lang', 'ko') or 'ko').lower()
     source = _source(kwargs, cfg)
-    _set_rate(kwargs)
+    _set_rate(kwargs, lang=lang)
     if not _truthy(cfg['simulate']):
         raise NotImplementedError('call_119: only the simulation exists (EMERGENCY_CONFIGS.simulate must be true)')
     when = time.strftime('%Y-%m-%d %H:%M:%S')

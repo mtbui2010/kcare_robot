@@ -13,7 +13,7 @@ import numpy as np
 
 from robot_agent.env_names import aliases_of, resolve_env_name
 from robot_agent.env_names import normalize as normalize_env_name
-from robot_agent.skill_configs import EN2KR, ENV, KR2EN, LIFT_CONFIGS, MOBILE_CONFIGS
+from robot_agent.skill_configs import ENV, LIFT_CONFIGS, MOBILE_CONFIGS
 from robot_agent.skills import spoken
 from robot_agent.utils import text2voice
 
@@ -116,13 +116,10 @@ def get_dtool_next_state(node, dtool):
 # ---------------------------------------------------------------------------
 
 def correct_noun(noun, lang='ko', translate=False):
-    """Word-mapped translation of *noun* (KR2EN / EN2KR), falling back to the
-    LLM only when *translate* is set."""
+    """*noun* as written (the KR2EN / EN2KR word maps are gone, 2026-10-26: a
+    Korean name comes from the plan, `식탁->table`); the LLM translates it only
+    when *translate* is set."""
     noun = noun.strip().lower()
-    word_dict = EN2KR if lang == 'ko' else KR2EN
-    if noun in word_dict:
-        return word_dict[noun]
-
     if not translate:
         return noun
 
@@ -143,7 +140,7 @@ def correct_loc(loc, lang='korean'):
 
 
 def loc2text(loc, lang='ko'):
-    """``'kitchen@table'`` → spoken form (reversed order, word-mapped)."""
+    """``'table@kitchen'`` → spoken form (reversed order: ``kitchen table``)."""
     if not isinstance(loc, str):
         return None
     return ' '.join([correct_noun(el, lang=lang) for el in loc.split('@')[::-1]])
@@ -157,17 +154,22 @@ def loc2text(loc, lang='ko'):
 caption_out = None
 
 
-def announce_picking(caption_in, lang='ko'):
-    global caption_out
+caption_lang = 'en'
+
+
+def announce_picking(caption_in, lang=None):
+    global caption_out, caption_lang
     caption_out = correct_noun(caption_in, lang=lang)
+    lang = caption_lang = lang or 'ko'      # names as written: pick::cup → "cup 잡을게요" (no word map)
     if lang == 'ko':
         text2voice(f'{caption_out} 잡을게요', run_thread=False, lang=lang)
     else:
         text2voice(f'grasping {caption_out}', run_thread=False, lang=lang)
 
 
-def announce_picked(lang='ko'):
+def announce_picked(lang=None):
     global caption_out
+    lang = lang or caption_lang
     if lang == 'ko':
         text2voice(f'{caption_out} 잡았어요', run_thread=False, lang=lang)
     else:
@@ -175,9 +177,10 @@ def announce_picked(lang='ko'):
 
 
 loc_text_out = None
+loc_text_lang = 'en'
 
 
-def announce_placing(inp=None, to_wipe=False, lang='ko'):
+def announce_placing(inp=None, to_wipe=False, lang=None):
     if not isinstance(inp, str):
         return
 
@@ -193,22 +196,25 @@ def announce_placing(inp=None, to_wipe=False, lang='ko'):
     if inp is None and label is None:
         return
 
-    global loc_text_out
+    global loc_text_out, loc_text_lang
 
     if to_wipe:
+        lang = loc_text_lang = lang or 'ko'
         text2voice('음료수를 쏟은 것을 닦을게요' if lang == 'ko' else "I'll wipe up the spilled drink", lang=lang)
     else:
         loc_text_out = loc2text(inp, lang=lang) if label is None else label
+        lang = loc_text_lang = lang or 'ko'
         if loc_text_out is not None:
             text2voice(f'{loc_text_out}에 내려 놓을게요' if lang == 'ko' else f'I will put down at {loc_text_out}',
                        run_thread=False, lang=lang)
 
 
-def announce_placed(inp, to_wipe=False, lang='ko'):
+def announce_placed(inp, to_wipe=False, lang=None):
     if not isinstance(inp, str):
         return
 
     global loc_text_out
+    lang = lang or loc_text_lang
     if to_wipe:
         text2voice('음료수를 쏟은 것을 닦았어요' if lang == 'ko' else 'spilled drink was wiped up.', lang=lang)
     else:

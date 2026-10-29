@@ -33,7 +33,7 @@ from kcare_robot.utils import get_env_specs
 from robot_agent.skills import log_data
 from kcare_robot.skills.head import moveh, get_robot_mode
 from kcare_robot.skills.mobile import move
-from kcare_robot.skills.pointcloud import get3d
+from kcare_robot.skills.pointcloud import get3d, get3d_arm
 from kcare_robot.skills.arm import movej, movet, movel
 
 from kcare_robot.skills import _products
@@ -85,6 +85,26 @@ def _support_masks(node, masks, target_z, max_px, min_px, tol, flat, samples=40)
     return out
 
 
+def _support_height(z, target, search=0.15, min_pts=15):
+    """The support surface's height as the head camera measures it: the most common height (1 cm bins, ±1 bin
+    smoothed) among the grid points within `search` of the ENV `target`, nearer heights preferred (Gaussian,
+    sigma search / 2), refined to the median of the points within 2 cm of it. (2026-10-28: at kcare_bucheon's
+    counter — tape 0.915 m, ENV 0.91 — the head's get3d read the top at 1.01 m and the floor at 0.08 m, so
+    the ±band around the ENV height held only the cabinet front and the sink: "no free spot".) Returns
+    (height, points used); the target itself when too few points are near it."""
+    z = np.asarray(z, float)
+    z = z[~np.isnan(z) & (np.abs(z - target) <= search)]
+    if len(z) < min_pts:
+        return float(target), int(len(z))
+    edges = np.arange(target - search, target + search + 0.01, 0.01)
+    hist = np.histogram(z, bins=edges)[0].astype(float)
+    hist = np.convolve(hist, np.ones(3), mode='same')
+    mid = 0.5 * (edges[:-1] + edges[1:])
+    peak = mid[int(np.argmax(hist * np.exp(-0.5 * ((mid - target) / (search / 2)) ** 2)))]
+    near = z[np.abs(z - peak) <= 0.02]
+    return (float(np.median(near)) if len(near) else float(peak)), int(len(near))
+
+
 def _detect_nearest(node, pose, **kwargs) -> dict:
     ret = moveh(node=node, ry=-40)
     assert ret['isdone'], f'{ret}'
@@ -114,6 +134,19 @@ def _detect_nearest(node, pose, **kwargs) -> dict:
     surf_min     = configs.get('surface_min_area', 0.02)
     surf_tol     = configs.get('surface_tol', 0.03)
     surf_flat    = configs.get('surface_flat', 0.04)
+
+    # 3D of a full-frame grid first: the support's height is measured on it (`_support_height`), and the
+    # height tests below use that instead of the ENV height — the ENV height only says where to look.
+    gyg, gxg = np.mgrid[0:h:stride, 0:w:stride]
+    gh, gw = gyg.shape
+    gxf, gyf = gxg.ravel(), gyg.ravel()
+    ret = get3d(node=node, points=[[int(x), int(y)] for x, y in zip(gxf, gyf)])
+    assert ret['isdone'], f'{ret}'
+    P_all = np.asarray(ret['pose'], dtype=float).reshape(-1, 3)
+    support_z, n_sup = _support_height(P_all[:, 2], float(pose[2]), configs.get('place_height_search', 0.15))
+    log_data({'msg': f'find_place: the surface measured at {support_z:.3f} m ({n_sup} points; ENV height '
+                     f'{float(pose[2]):.3f}, {support_z - float(pose[2]):+.3f})'})
+    pose = [pose[0], pose[1], support_z] + list(pose[3:])
 
     # Two cheap, complementary filters so a place point never lands on an object:
     #   1) detect objects (open-vocab "object.") and exclude their footprint —
@@ -153,21 +186,12 @@ def _detect_nearest(node, pose, **kwargs) -> dict:
 
     margin_cells = configs.get('place_margin_cells', 2)   # erode the placeable mask by N grid cells (≈ N*stride px) → clearance from objects AND table edges
 
-    # Sample a full-frame grid; keep cells that miss every object box.
-    gyg, gxg = np.mgrid[0:h:stride, 0:w:stride]
-    gh, gw = gyg.shape
-    gxf, gyf = gxg.ravel(), gyg.ravel()
+    # Keep the grid cells that miss every object; mark those on the support plane.
     free = ~objects[gyf, gxf]
     if not free.any():
         return pose
-    points = [[int(x), int(y)] for x, y in zip(gxf[free], gyf[free])]
-
-    ret = get3d(node=node, points=points)
-    assert ret['isdone'], f'{ret}'
-
-    # Map per-free-point 3D back onto the full grid; mark cells on the support plane.
     P_full = np.full((gxf.size, 3), np.nan)
-    P_full[free] = np.asarray(ret['pose'])
+    P_full[free] = P_all[free]
     valid = ~np.isnan(P_full).any(axis=-1)
     on_plane = valid & (np.abs(P_full[:, 2] - pose[2]) < band)
 
@@ -484,6 +508,14 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     # default `detect_object` profile.
     cfg_key = 'detect_grasp' if with_grasp else 'detect_object'
     det_configs, select_configs = _object_det_select_configs(kwargs, cfg_key=cfg_key)
+    kwargs.pop('weights', None)
+    # near_xyz [x, y, z] (base frame, m): take the box whose 3D point is nearest this one instead of the
+    # selector's choice — open_drawer passes the handle its first look chose, so the grasp look pulls the SAME
+    # handle (it used to pick its own: the one nearest 0.3 m, 2026-10-26). Farther than near_xyz_warn (0.1 m)
+    # → a ⚠ in the log: probably not the same handle.
+    near_xyz = kwargs.pop('near_xyz', None)
+    near_xyz_warn = float(kwargs.pop('near_xyz_warn', 0.1))
+    near_xyz_what = str(kwargs.pop('near_xyz_what', "the first look's"))
     if 'box_threshold' in kwargs:
         det_configs['box_threshold'] = kwargs['box_threshold']
     grasp_configs = _grasp_configs() if with_grasp else None
@@ -579,9 +611,13 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
         entries, remaining = [], res
         max_inst = limits[name]
         while max_inst is None or len(entries) < max_inst:
-            target, k = select_target_object(
-                remaining, cls=name, image_size=(w, h), depth_result=depth,
-                intrinsics=cam_params, return_index=True, **select_configs)
+            target, k = (_nearest_to_xyz(node, remaining, name, depth, near_xyz, near_xyz_warn, use_head,
+                                         what=near_xyz_what)
+                         if near_xyz is not None and not entries else (None, -1))
+            if target is None:
+                target, k = select_target_object(
+                    remaining, cls=name, image_size=(w, h), depth_result=depth,
+                    intrinsics=cam_params, return_index=True, **select_configs)
             if target is None:
                 break
             entry = _object_entry(node, name, target, remaining, rgb, depth, cam_params, w, h,
@@ -611,6 +647,45 @@ def _detect_objects(node, obj_names, **kwargs) -> dict:
     return ret
 
 
+
+
+def _nearest_to_xyz(node, res, name, depth, xyz, warn_m, use_head, what='the first look'):
+    """(detection, index) of `name` whose 3D point (box centre at its median depth, base frame) is nearest
+    `xyz` — an axis given as None is not compared (`[None, None, 0.415]`: the handle at that height); (None, -1)
+    when no box has depth / the 3D lookup fails (the selector then chooses)."""
+    items = res.detections if res.detections else res.masks
+    cand, pts = [], []
+    for i, it in enumerate(items):
+        if getattr(it, 'cls', name) != name:
+            continue
+        box = _bbox_to_xyxy(it.bbox)
+        d = _box_depths(depth, box)['obj_median']
+        if d is None:
+            continue
+        cand.append(i)
+        pts.append([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2, d])
+    if not cand:
+        return None, -1
+    try:
+        P = np.asarray((get3d if use_head else get3d_arm)(node=node, points=pts)['pose'], dtype=float)
+    except Exception as e:
+        log_data({'msg': f'find {name}: no 3D points for the boxes ({e}) — the selector chooses'})
+        return None, -1
+    axes = [a for a in range(3) if a < len(xyz) and xyz[a] is not None]
+    want = np.asarray([float(xyz[a]) for a in axes])
+    dist = np.linalg.norm(P[:, axes] - want[None, :], axis=1)
+    dist[~np.isfinite(dist)] = np.inf
+    j = int(np.argmin(dist))
+    if not np.isfinite(dist[j]):
+        return None, -1
+    fmt = lambda v: '?' if v is None else f'{v:.2f}'
+    seen = '; '.join(f'[{", ".join(f"{v:.2f}" for v in p)}]' for p in P)
+    msg = (f'find {name}: {len(cand)} boxes at {seen} (base) — took the one {dist[j]:.2f} m from {what} '
+           f'[{", ".join(fmt(v) for v in xyz[:3])}]')
+    if dist[j] > warn_m:
+        msg = f'⚠ {msg} — farther than {warn_m:.2f} m: probably NOT the right {name}'
+    log_data({'msg': msg})
+    return items[cand[j]], cand[j]
 
 
 def _other_names(others, obj_names) -> list:

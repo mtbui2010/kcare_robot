@@ -405,16 +405,14 @@
     }
   },
   {
-    "type": "ros_action",
-    "name": "vla_drawer_open",
+    "type": "http",
+    "name": "vlaserve",
     "config": {
-      "conn_name": "/drawer/open",
-      "agent_name": "vla_drawer_open",
-      "conn_type": "ros_action",
-      "data_interface": "max_interfaces/action/OpenDrawer",
       "is_client": true,
-      "encode_func": "def encode_func(data, req):\n    from robot_agent.connect.helpers import set_atrrs\n    set_atrrs(req, data)\n    return req",
-      "decode_func": "def decode_func(res):\n    # res: ROS service/action response message\n    # Return a dict with at least {'isdone': bool}\n    return {'isdone': res.success, 'msg': res.message}"
+      "url": "http://192.168.0.6:11450",
+      "agent_name": "vlaserve",
+      "method": "GET",
+      "timeout": 30
     }
   }
 ]
