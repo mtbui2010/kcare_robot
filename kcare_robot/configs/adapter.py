@@ -34,6 +34,7 @@ _KO_PHRASES = {
     'done_fail':    '작업에 실패했습니다',
     'plan_ready':   '계획을 생성했습니다',
     'unsupported':  '지원하지 않는 동작입니다',
+    'llm_down':     '지금 언어 모델에 연결할 수 없어서 작업을 중단합니다',
     'generic':      '진행 중입니다',
 }
 
