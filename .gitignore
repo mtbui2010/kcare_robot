@@ -1,0 +1,11 @@
+# Python bytecode / build artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Backup copies: use git history instead of *.bak / *.orig files
+*.bak
+*.orig
+*.rej
+*.before_cleanup_*
+*.pre-[0-9]*
