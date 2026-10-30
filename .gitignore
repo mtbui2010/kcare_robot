@@ -9,3 +9,16 @@ __pycache__/
 *.rej
 *.before_cleanup_*
 *.pre-[0-9]*
+
+# Runtime output (rule: configs/ holds configuration only). robot_agent
+# writes these under configs/common/: task_runs/<host>/ and grace_memory.<host>.jsonl
+# (core/planning/loop.py), object_memory.<host>.json (assist_loop.py),
+# world_state.<host>.json (state.py), logs/<host>/ (state.py, when no log_dir).
+# The 69 legacy runs and world_state.json already tracked stay in git on
+# purpose; see docs/notes/runtime_data.md.
+kcare_robot/configs/common/task_runs/
+kcare_robot/configs/common/grace_memory.*.jsonl
+kcare_robot/configs/common/object_memory.*.json
+kcare_robot/configs/common/world_state.*.json
+kcare_robot/configs/common/logs/
+kcare_robot/data/logs/
