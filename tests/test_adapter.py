@@ -124,3 +124,25 @@ def test_failed_or_unknown_skill_changes_nothing():
     nm.apply_skill_effect(w, 'pick', {'inputs': 'cup'}, {'isdone': False})
     nm.apply_skill_effect(w, 'reply', {'inputs': 'hi'}, {'isdone': True})
     assert (w.found, w.holding) == ('cup', None)
+
+
+@pytest.mark.parametrize('in_hand, after', [(False, None), (True, 'cup'), (RuntimeError('no wrist cam'), 'cup')])
+def test_reconcile_reads_the_gripper(adapter, monkeypatch, in_hand, after):
+    """A believed-held object the gripper check does not see is dropped from the belief; a check that
+    holds it, or fails, leaves the belief."""
+    import robot_agent.state as state_mod
+    from robot_agent.core.planning import loop as LP
+    from robot_agent.core.planning.base import WorldState
+
+    def execute(skill, params, node=None, log_fn=None):
+        assert skill == 'grasp_succeed'
+        if isinstance(in_hand, Exception):
+            raise in_hand
+        return {'isdone': in_hand}
+    st = SimpleNamespace(sr=SimpleNamespace(execute=execute), dm=SimpleNamespace(_ros_node=object()))
+    monkeypatch.setattr(state_mod, 'current', lambda: st)
+    monkeypatch.setattr(LP, 'reconcile_world', lambda node, world, threshold=0.8: world)   # no pose here
+    monkeypatch.setattr(nm, 'reconcile_world', None, raising=False)
+    w = WorldState(holding='cup', holding_since=1.0)
+    adapter.reconcile(w)
+    assert w.holding == after

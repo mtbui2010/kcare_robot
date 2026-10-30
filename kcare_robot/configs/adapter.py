@@ -81,10 +81,43 @@ class KaairAdapter(NamemapAdapter):
         phrases.update(self.i18n.phrases)          # grace_namemap.PHRASES, if it ever has any, wins
         self.i18n.phrases = phrases
 
+    def reconcile(self, world, node=None):
+        """The belief brought in line with KAAIR at a run's start / on resume: where the base is (the
+        namemap / the core's pose + ENV match, as before), then the gripper: a believed-held object the
+        wrist depth check (``grasp_succeed``) does not see is dropped from the belief. A check that
+        cannot run (no runtime, no camera) leaves the belief as it was."""
+        super().reconcile(world, node)
+        if getattr(world, 'holding', None) and _gripper_holds(node) is False:
+            world.holding = None
+            for k in ('holding_since', 'holding_pose'):
+                if hasattr(world, k):
+                    setattr(world, k, None)
+        return world
+
     @staticmethod
     def is_openable(key: str, entry: dict | None = None) -> bool:
         """An ENV place opens when it says so, or when its key names a drawer."""
         return bool((entry or {}).get('openable')) or 'drawer' in str(key).lower()
+
+
+# the skill that tells whether something is in the gripper (the sensor that verifies a Pick in manifest.yaml)
+HOLDING_SENSOR = 'grasp_succeed'
+
+
+def _gripper_holds(node=None):
+    """True / False from the gripper check through the running agent's skill registry; None when it
+    cannot be read (no runtime, no ROS node, the check failed)."""
+    try:
+        from robot_agent.state import current
+        state = current()
+        if node is None:
+            node = getattr(state.dm, '_ros_node', None)
+        sr = getattr(state, 'sr', None)
+        if sr is None or node is None:
+            return None
+        return bool((sr.execute(HOLDING_SENSOR, {}, node) or {}).get('isdone'))
+    except Exception:
+        return None
 
 
 def make_adapter() -> KaairAdapter:

@@ -66,7 +66,8 @@ skills:
     effects: ["arrived(?inputs)"]
     verify: [{kind: symbolic}, {kind: sensor, skill: mobile_pose}]
     interruptible: true
-    errors: [unreachable, blocked, timeout, hw_fault, cancelled, software]
+    # estop: the base stops when the emergency button is pressed (any motion skill)
+    errors: [unreachable, blocked, timeout, hw_fault, estop, cancelled, software]
     version: "1.0"
 
   - name: find
@@ -104,7 +105,8 @@ skills:
     effects: ["holding(?inputs)", "not found(?inputs)", "not hand_empty()"]
     verify: [{kind: symbolic}, {kind: sensor, skill: grasp_succeed}]
     interruptible: false        # the arm is in the grasp: finish or release safely
-    errors: [absent, unreachable, grasp_failed, perception_unavailable, hw_fault, cancelled, software]
+    # timeout: the pick action server does not answer in time (the skill raises); estop: the arm stops
+    errors: [absent, unreachable, grasp_failed, perception_unavailable, hw_fault, timeout, estop, cancelled, software]
     version: "1.0"
 
   - name: place
@@ -126,7 +128,7 @@ skills:
     # sensor (the same skill) to detect a drop on the way (FailureCode dropped)
     verify: [{kind: symbolic}, {kind: sensor, skill: grasp_succeed, expect: false}]
     interruptible: false        # holding an object
-    errors: [dropped, grasp_failed, unreachable, blocked, perception_unavailable, hw_fault, cancelled, software]
+    errors: [dropped, grasp_failed, unreachable, blocked, perception_unavailable, hw_fault, estop, cancelled, software]
     version: "1.0"
 
   - name: open_drawer
@@ -144,7 +146,8 @@ skills:
     interruptible: false        # pulling the drawer
     # the result also carries pose_after_open / lift_after_open /
     # forward_after_open, which the matching close_drawer takes back
-    errors: [absent, unreachable, grasp_failed, perception_unavailable, hw_fault, cancelled, software, unknown]
+    # blocked: the drawer is stuck / jammed and does not slide
+    errors: [absent, unreachable, grasp_failed, blocked, perception_unavailable, hw_fault, estop, cancelled, software, unknown]
     version: "1.0"
 
   - name: close_drawer
@@ -163,7 +166,8 @@ skills:
     effects: ["not opened(?inputs)"]
     verify: [{kind: symbolic}, {kind: vlm, prompt: "Is the drawer closed?"}]
     interruptible: false        # pushing the drawer
-    errors: [absent, unreachable, perception_unavailable, hw_fault, cancelled, software, unknown]
+    # blocked: something in the way of the drawer / it is stuck
+    errors: [absent, unreachable, blocked, perception_unavailable, hw_fault, estop, cancelled, software, unknown]
     version: "1.0"
 
   - name: grasp_succeed
