@@ -17,6 +17,7 @@ __pycache__/
 # The 69 legacy runs and world_state.json already tracked stay in git on
 # purpose; see docs/notes/runtime_data.md.
 kcare_robot/configs/common/task_runs/
+kcare_robot/configs/common/run_records/
 kcare_robot/configs/common/grace_memory.*.jsonl
 kcare_robot/configs/common/object_memory.*.json
 kcare_robot/configs/common/world_state.*.json
