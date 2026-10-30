@@ -47,6 +47,13 @@ geometry:
 defaults:
   mobile_height: 435          # MOBILE_HEIGHT (no reader today)
   home_place: living room     # ME: where `place::me` goes
+# Planner data (robot_agent.contract.Manifest.planner; paths relative to this file).
+# seed_memory: curated, verified example plans in KAAIR place names (drawer@kitchen ...)
+# that SAGE retrieves before the robot has a live memory of its own (SAGE_v2 G4).
+# Every plan passes the action model under the capabilities above
+# (tests/test_seed_memory.py). Edit it there, not in configs/.
+planner:
+  seed_memory: ../planner/seed_memory.jsonl
 skills:
   - name: move
     action: MoveTo
