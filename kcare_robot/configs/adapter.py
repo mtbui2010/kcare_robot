@@ -63,6 +63,9 @@ PHRASES.update({
     'verify_failed.Pick': {'en': 'pick reported success but the gripper is empty'},
     'verify_failed.Place': {'en': 'place reported success but the object is still in the gripper'},
     'verify_failed.PutIn': {'en': 'place reported success but the object is still in the gripper'},
+    # an unclear answer to a yes / no question ("yet" for "yes", noise) is asked again with this
+    'yes_or_no': {'en': "Sorry, I didn't catch that. Please answer yes or no.",
+                  'ko': '잘 못 들었어요. 네 또는 아니요로 대답해 주세요.'},
 })
 
 # skills that speak for themselves (hri reply / ask, the emergency skills) or have nothing to tell
