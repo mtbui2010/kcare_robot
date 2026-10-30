@@ -1,223 +1,70 @@
-# kcare_robot — Claude notes
+# kcare_robot — rules
 
-Concrete skill + config implementation for the KCare mobile manipulator.
-Hosted on top of [`robot_agent`](../robot_agent) as a pluggable package.
+Concrete skill + config implementation for the KCare (KAAIR) mobile
+manipulator, hosted on top of [`robot_agent`](../robot_agent) as a pluggable
+package. **This repo runs on the real robot**: keep changes backwards
+compatible, and check them with `make test` (offline) before `make doctor` /
+`make smoke-live` on the robot.
 
-## Three execution modes — single shared bootstrap
+This file holds rules only. How things work, file map, locations, world state,
+devices, debugging: [docs/notes/architecture.md](docs/notes/architecture.md).
+Experiment logs and measurements go in `docs/notes/<topic>_<yyyymmdd>.md`.
 
-| Mode | Entry | Shell |
-|---|---|---|
-| UI / HTTP | `make run` → `uvicorn kcare_robot.main:app` | FastAPI (`create_app`) |
-| CLI | `kcare_robot find::apple` | `kcare_robot/__main__.py` → `robot_agent.cli.main(robot_pkg='kcare_robot')` |
-| Python API | `from kcare_robot.skills.recognition import find` | `@skill_entry` wrapper auto-triggers `bootstrap()` on first call |
+## Repo rules
 
-All three call `robot_agent.runtime.bootstrap('kcare_robot', ...)`. It is
-idempotent (guarded by `_BOOTED` + `threading.Lock`) and creates a single
-ROS node per process. One process = one mode. **Do not mix.**
+1. **Use only robot_agent's public API.** No `_name` imports or attributes
+   across the package boundary. Allowed: `robot_agent.state.current`,
+   `robot_agent.skills` (`log_data`, `spoken`, `auto_wrap_skills`, dataset
+   helpers), the public names in `robot_agent.utils`,
+   `robot_agent.skill_configs`, `robot_agent.env_names`,
+   `robot_agent.core.run_control` (`cancel_requested`, `dialog_*`),
+   `robot_agent.connect.serde`, `robot_agent.core.shared_json.read_fresh`,
+   `robot_agent.create_app`, `robot_agent.contract`. Known violations still to
+   remove (do not add more): `robot_agent.utils._llm`,
+   `skill_configs._ConfigProxy`, `core.planning.loop._read_robot_xy`,
+   `dm._get_ros_node` / `dm._ros_node` in `configs/grace_namemap.py`.
+2. **Every skill the planner uses has a SkillSpec in
+   [configs/manifest.yaml](kcare_robot/configs/manifest.yaml)** (name,
+   action, params, pre / effects, verify, interruptible, errors) and returns a
+   `SkillResult` (until migrated: `{'isdone': bool, 'msg': str, ...}`, which
+   `SkillResult.from_legacy` reads). Changing a skill's params, effects or
+   failure modes means updating its entry; `tests/test_manifest.py` checks it
+   against `grace_namemap` and `skills_config`.
+3. **`configs/` holds configuration only.** Task runs, world state, memories
+   and logs go to `kcare_robot/data/` or the NAS and are gitignored (see
+   [docs/notes/runtime_data.md](docs/notes/runtime_data.md)).
+4. **No `.bak` / `.orig` / dated copies in the repo**; git history is the
+   backup. No tracked `__pycache__` / `*.pyc`.
+5. **CLAUDE.md holds rules only.** Experiment logs and notes go to
+   `docs/notes/`.
 
-## Key file map
+## Code rules
 
-```
-kcare_robot/kcare_robot/
-├── main.py                 # uvicorn entry: create_app('kcare_robot', config_dir=…/configs)
-├── __main__.py             # CLI entry: from robot_agent.cli import main; cli()
-├── skills/__init__.py      # calls auto_wrap_skills(SKILL_CONFIGS, pkg='kcare_robot')
-├── skills/*.py             # concrete skills (find, pick, place, …)
-├── configs/                          # ALL configs live here
-│   ├── skills_config.py              # SKILL_CONFIGS dict — the registry contract
-│   ├── tasks.py                      # ARM_CONFIGS / ENV / LIFT_CONFIGS overrides
-│   ├── guide*.py, word_mapping.py    # prompt/guide content (shared, code)
-│   ├── common/                       # shared across all sites
-│   │   ├── skills.json               # skill registry
-│   │   └── buttons.json              # shortcut buttons
-│   ├── locations/<site>/             # per-deployment-site config
-│   │   ├── connections.json          # device endpoints (IPs / ROS topics)
-│   │   ├── skill_configs_override.json   # global config overrides (HOME_LOC, LLM_SERVERS, …)
-│   │   └── .env                      # API keys (gitignored)
-│   ├── locations/default/            # fallback site (always present)
-│   └── active_location               # name of the active site (gitignored)
-└── data/logs/<host>/                 # rotating logs, per machine (not config)
-```
-
-## Locations (per-site config profiles)
-
-The same robot deployed at different sites needs different **connections** and
-**global configs**. Each site is a folder under `configs/locations/<name>`; the
-active one is `configs/common/active_location` (defaults to `default`).
-
-The dashboard switches sites live via the `robot_agent` API (no restart):
-
-| Endpoint | Action |
-|---|---|
-| `GET    /config/locations` | list sites + active |
-| `POST   /config/locations` | create (`{name, copy_from?}`) |
-| `POST   /config/locations/<name>/activate` | hot-switch (reconnect devices) |
-| `PUT    /config/locations/<name>` | rename (`{new_name}`) |
-| `DELETE /config/locations/<name>` | delete (not `default`/active) |
-
-Switching tears down the current device connections (keeping the shared ROS
-node) and reconnects from the new site's `connections.json` + global configs.
-
-## Skill contract
-
-```python
-def my_skill(node, **params) -> dict:
-    # node = robot_agent.connect.ros.node.CustomNode (spinning).
-    # params = kwargs from caller (HTTP body / CLI key=val / Python kwargs).
-    return {'isdone': bool, ...}
-```
-
-Skills MUST return a dict with `isdone`. `@exception_handler` (in
-`robot_agent.utils`) wraps exceptions into `{'isdone': False, 'msg': ...}`
-when applied — most skills already use it.
-
-## Persistent world state
-
-A symbolic `WorldState`
-(`arrived/found/holding/opened/on/holding_since/found_pose/holding_pose`)
-lives on `robot_agent`'s per-process `AgentState.world`, so it **persists across
-plan runs** and (selectively) across a **restart** via `common_dir/world_state.<host>.json` (per machine).
-A just-run skill updates it through the `configs/grace_namemap.py` hook
-`apply_skill_effect(world, skill, params, result, node)` (find→`found`/`found_pose`,
-pick→`holding`/`holding_pose`, place→clear, open/close_drawer→`opened`); `arrived`
-is sensor-reconciled from localization (`reconcile_world` / the optional `robot_xy`
-hook). Only `arrived` is sensor-derived — the rest are **beliefs** (no gripper
-sensor). It is shown and editable in the dashboard "Robot State" panel via
-`GET`/`PUT /agent/world`.
-
-`found_pose` (base-frame geometry of `found`, flagged stale once the robot moves)
-and `holding_pose` (the grasp actually used to pick — `{grasppose:[dx,dy,dz,angle,width],
-ts, robot_pose}`) are display/record only; `pick` returns its executed grasppose so
-`apply_skill_effect` can stash it.
-
-### Reading world state inside a skill
-
-A skill has `node`; reach the live state through the process singleton:
-
-```python
-from robot_agent.state import current
-
-def my_skill(node, **params) -> dict:
-    world = current().world
-    obj   = world.holding                       # name of held object, or None
-    grasp = (world.holding_pose or {}).get('grasppose')   # [dx,dy,dz,angle,width]
-    fp    = world.found_pose                     # {loc_3d, pose_3d, grasppose?, ...} or None
-    # geometric memory is base-frame at detection — re-detect if the base moved:
-    if fp and world.found_pose_is_stale(_robot_xy(node)):
-        fp = None
-    ...
-```
-
-It is a **belief** snapshot, not a live sensor read — treat `found_pose`/`holding_pose`
-as hints (re-detect before grasping if the base has moved), and never assume
-`holding` reflects a real gripper measurement.
-
-## Inter-skill calls
-
-Skills can call other skills, but always pass `node=` through:
-
-```python
-def pick(node, **kwargs):
-    ret = grip(node=node, inputs='open')       # always pass node down
-    ret = approach_pick(node=node, **kwargs)
-```
-
-This is what keeps the Python-API mode safe: the wrapper only auto-injects
-node when the caller has not supplied one. Skill-to-skill calls always
-supply, so they never re-enter bootstrap.
-
-## find: telling look-alikes apart (2026-10-15)
-
-grounding-dino scores "a bag" and hardly the colour: at the dressroom, `find::black bag` boxed the beige bag
-(0.45 vs the black bag at 0.39–0.42, 2 of 3 live frames); with only the blue bag in view, every colour scored
-0.83–0.90 on it. Two options, both off by default (`recognition.py`):
-
-- `others='beige bag, blue bag'` — the other names go into the same detector request; each box goes to the name
-  it matches best, and a box overlapping (IoU ≥ 0.5) a higher-scoring box of another name is dropped. No extra
-  time. ask's options can be passed as they are (`검은색=black bag, …`; the asked name is skipped). Live: 9 / 9
-  right on the arm camera (black bag 0.68–0.79). Weak spot: an absent object can still land on another thing of
-  that colour (beige bag → the beige robe, 0.50). `find_grasp` (pick's wrist close-up) uses it softly
-  (`others_strict=False`): a claimed box is kept when no other box of the asked name is left — up close the
-  black bag scored "blue bag" 0.43–0.45 vs "black bag" 0.35–0.39 on the same box and pick failed in fine_move.
-- `verify=True` (`verify_above`, default 0.75; 1 = every box, at most 3) — the QA VLM (`hri._qa_config`, the
-  `vlm` connection) answers yes / no on each box's crop. ~0.8 s per box. Live: 9 / 9 right; on the head frame
-  with only the blue bag, black / beige → not found. Was broken until 2026-10-15 (imported the deleted `qa.py`).
-
-Scenario 8: `find::inputs={answer}, others="검은색=black bag, 베이지색=beige bag, 파란색=blue bag", verify=True`.
-Captures and scripts: `kaair_real_capture/find_bag_20261015/`.
-
-## find_place: the surface height is measured (2026-10-28)
-
-`_detect_nearest` (recognition.py) kept only grid points within `place_height_band` (±0.04 m) of the ENV
-`height`. At kcare_bucheon's counter (tape 0.915 m, ENV 0.91) the head's get3d read the top at 0.99–1.03 m and
-the floor at 0.08 m — the head camera's height / tilt in the TF is off by ~8 cm, more at the back — so only the
-cabinet front and the sink were "on the plane": "no free spot on counter". Now one get3d over the whole grid comes
-first and `_support_height` takes the most common height within `place_height_search` (0.15 m) of the ENV height
-(nearer preferred) as the surface; the band, the support-mask test and the spot choice use it, and the log says
-`find_place: the surface measured at 0.993 m (… ENV height 0.915, +0.078)`. The ENV height only says where to look
-(and still sets the lift in `move`). The returned spot is the measured 3D point, as before. Read-only check (head
-not moved): `kaair_real_capture/find_place_counter_20261028/diag.py <place> [height]`. The camera offset itself
-is not fixed.
-
-## When editing skills
-
-- Add a `(module_path, func_name)` entry to
-  [skills_config.py](kcare_robot/configs/skills_config.py); the entry is
-  what `auto_wrap_skills` iterates, so unlisted private helpers stay
-  unwrapped (no auto-bootstrap risk).
-- For UI: hit `POST /skills/reload` or restart `make run`.
-- For CLI / Python: re-import the module (or restart the process).
-
-## Devices
-
-Cameras, arm, gripper, mobile base, and the `vlms` TCP detector are
-registered in `configs/locations/<active-site>/connections.json` and reloaded
-by `DeviceManager.load_saved()` during `bootstrap()` (and again on every
-location switch via `DeviceManager.reload_from()`). CLI mode blocks until all
-devices are (re)connected so the first skill call has them ready; UI mode loads
-in a background thread for fast uvicorn startup.
-
-### Cancelling a command
-
-`POST /agent/cancel` (dashboard Stop / Cancel) cancels every action goal in
-flight — `arm_moveJ/T/L`, `lift_move`, `head_move`, `navigate_to_pose` all
-accept the cancel and stop the motion — and blocks any further send until the
-next run starts. The three mobile **services** (`mobile/shift_pose`,
-`mobile/rotate`, `mobile/absolute_rotate`) cannot be cancelled: the skill stops
-waiting, but the base finishes the movement the bridge already started. Stopping
-it needs a stop service on the robot, registered here via
-`node.add_cancel_hook(...)`. An action that must be stopped some other way can
-define `cancel_func(node, agent)` in its `connections.json` entry (editable in
-the dashboard's DevicePanel). See robotapp/CLAUDE.md § Cancel / Stop.
-
-## Debug entry points
-
-```bash
-make doctor                           # ROS env + skill-import smoke
-make doctor ARGS=--verbose
-make cli ARGS="--list"                # list skills without UI
-make sys-libs                         # repair HRI voice deps (portaudio, ffmpeg)
-ROBOT_AGENT_DEBUG_RESPONSE=1 make run # full traceback in skill error dicts
-ROBOT_AGENT_LOG_LEVEL=DEBUG make run
-```
-
-Logs: `kcare_robot/data/logs/<host>/kcare_robot.log` (rotating; `<host>` = `$ROBOT_AGENT_HOST` or the hostname).
-
-**`reply` / `ask` failing with `NameError: name 'sd' is not defined`** (at
-`robot_agent/utils.py` `record_phrase`) means `sounddevice` did not import:
-`portaudio` is a native library, not part of the pip wheel, and
-[utils.py](../robot_agent/robot_agent/utils.py) imports it inside a bare
-`try/except` that only prints — so the failure surfaces later, somewhere else.
-`make sys-libs` installs it (conda env → conda, system python → apt), and
-`make install` now runs it and warns if the HRI voice imports still do not
-resolve. Same story for `ffmpeg`, which `pydub` needs to decode the gTTS mp3;
-pydub imports fine without it and only breaks at first use.
-
-## Related
-
-- [robot_agent](../robot_agent) — runtime core (`bootstrap`, `cli`,
-  `SkillRegistry`, `DeviceManager`).
-- [robot_template](../robot_template) — cookiecutter for new robots; emits
-  the same layout (skills/__init__.py auto-wrap, __main__.py CLI shim).
-- [robotapp](../robotapp) — Next.js web dashboard that talks to the UI
-  mode over HTTP.
+- **One process = one mode.** UI (`make run`), CLI (`kcare_robot find::apple`)
+  and Python API (`from kcare_robot.skills.recognition import find`) all call
+  `robot_agent.runtime.bootstrap('kcare_robot', ...)`, which creates one ROS
+  node per process. Do not mix modes in a process.
+- **Skill contract:** `def my_skill(node, **params) -> dict` returning a dict
+  with `isdone`; wrap entry points with `@exception_handler`
+  (`robot_agent.utils`) so an exception becomes `{'isdone': False, 'msg': ...}`.
+- **Inter-skill calls always pass `node=` through** (`grip(node=node, ...)`);
+  the auto-wrapper only injects a node, and bootstraps, when none is given.
+- **New skill:** add its `(module_path, func_name)` to
+  [skills_config.py](kcare_robot/configs/skills_config.py) (what
+  `auto_wrap_skills` iterates; unlisted private helpers stay unwrapped), and,
+  if the planner uses it, to `configs/manifest.yaml`. Then
+  `POST /skills/reload` or restart.
+- **World state is a belief**, not a sensor read: `holding` / `found_pose` /
+  `holding_pose` are hints (re-detect if the base moved; use `grasp_succeed`
+  to know what is in the gripper). Skills reach it through
+  `robot_agent.state.current().world`; a skill's effect on it lives in
+  `grace_namemap.apply_skill_effect`, kept consistent with the manifest's
+  effects.
+- **Configs:** per-site values go in
+  `configs/locations/<site>/skill_configs_override.json`; secrets in that
+  site's `.env` (gitignored), never in a tracked file.
+- **Tests** (`make test`) are pure Python: no ROS, no network, no running
+  agent. `make smoke-live` is the only target that talks to `:$(PORT)`.
+- **Install:** `make install` installs robot_agent and embodiplan
+  (`EMBODIPLAN_DIR`, default `../embodiplan`, pinned `>=0.2,<0.3`) and stops
+  on any failure; do not reintroduce `|| true` on install steps.
