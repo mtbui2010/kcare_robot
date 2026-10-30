@@ -1,0 +1,228 @@
+# KAAIR (kcare_robot) manifest: what this robot can do, for the planner core.
+#
+# Read by robot_agent.contract.Manifest.from_yaml. Nothing in kcare_robot reads it
+# yet: the running robot still goes through configs/grace_namemap.py, and the
+# values below mirror what that module and robot_agent hard-code today, so
+# moving the core onto this file changes no behaviour. Keep them in sync:
+#   skill names / actions   grace_namemap.SKILL_MAP (+ the skills
+#                           assist_loop calls by name: grasp_succeed,
+#                           mobile_pose, ask; vlm_hook: llm)
+#   pre / effects           assist_loop precondition check + _check and
+#                           grace_namemap.apply_skill_effect
+#   geometry                assist_loop cfg defaults (ROBOT_AGENT_ARRIVE_TOL,
+#                           ROBOT_AGENT_REACH_LATERAL, ROBOT_AGENT_REACH_FAR)
+#                           and robot_agent/skill_configs.py
+#   errors                  the failures each skill's code can produce,
+#                           as robot_agent.contract.FailureCode values
+#
+# Predicates (shared world model, robot_agent WorldState): arrived(L),
+# found(O), holding(O), hand_empty(), opened(C); "not P" negates. ?name refers to
+# the skill param of that name; kcare skills take their main argument as
+# `inputs` (the '::' arg), so that is the variable most specs use.
+robot: kaair
+version: "1.0"
+language: ko
+capabilities:
+  base: true
+  arms: 1
+  hands: [right]
+  lift: true
+  head: true
+  drawer: true
+  voice: true                 # reply / ask / announce (TTS + STT)
+  # robot_agent/skill_configs.py STANDING_OBJ_NAMES / LYING_OBJ_NAMES:
+  # detection names whose grasp approach is upright / lying
+  standing_objects: [cup, can, bottle]
+  lying_objects: [phone, fork, spoon, bread, banana, control]
+geometry:
+  arrive_tol_m: 0.3           # MoveTo: farther than this from the ENV loc = not arrived
+  reach_m: 0.78               # Pick: a target more than this to the side is not retried (0/23 beyond 0.74 m)
+  reach_far_m: 1.0            # Find: beyond this (base frame) a detection is "over there"
+  max_reach_y_m: 0.8          # pick / place reach_problem(): ARM_CONFIGS.max_reach_y default (site-overridable)
+# Other KAAIR constants robot_agent/skill_configs.py hard-codes (not metres, so
+# not geometry). Kept with the robot so the core can drop them.
+defaults:
+  mobile_height: 435          # MOBILE_HEIGHT (no reader today)
+  home_place: living room     # ME: where `place::me` goes
+skills:
+  - name: move
+    action: MoveTo
+    params:
+      type: object
+      properties:
+        inputs: {type: string, description: "ENV location key, e.g. 'table@living room', 'home'"}
+        mode: {type: string, enum: [front, left, right], description: "approach side (default: the ENV entry's default_mode)"}
+        keep_arm: {type: boolean, default: false, description: "drive only: no fold / lift / give"}
+        lift_height: {description: "lift target on arrival (default from the ENV entry)"}
+      required: [inputs]
+    pre: []
+    hold: []
+    # arrived is not written by apply_skill_effect: the core re-reads the base
+    # pose (mobile_pose) and compares it with the ENV loc (arrive_tol_m)
+    effects: ["arrived(?inputs)", "not found(*)"]
+    verify: [{kind: symbolic}, {kind: sensor, skill: mobile_pose}]
+    interruptible: true
+    errors: [unreachable, blocked, timeout, hw_fault, cancelled, software]
+    version: "1.0"
+
+  - name: find
+    action: Find
+    params:
+      type: object
+      properties:
+        inputs: {type: string, description: "'obj[,obj...][@location][|trials]' (open-vocabulary detector names)"}
+        min_conf: {type: number, default: 0.55, description: "detections below this are not seen (core default ROBOT_AGENT_FIND_MIN_CONF; the skill's own default is 0)"}
+        verify: {type: boolean, default: false, description: "VLM check of low-scoring boxes"}
+        others: {type: string, description: "look-alikes in view, comma separated"}
+        views: {type: array, items: {type: string}, default: [down]}
+        once: {type: boolean, default: true, description: "false: also search every ENV location"}
+      required: [inputs]
+    pre: []
+    hold: []
+    effects: ["found(?inputs)"]
+    verify: [{kind: symbolic}]
+    interruptible: true
+    errors: [absent, perception_unavailable, hw_fault, timeout, cancelled, software]
+    version: "1.0"
+
+  - name: pick
+    action: Pick
+    params:
+      type: object
+      properties:
+        inputs: {type: string, description: "'obj[@location][|trials]'; the core passes world.found"}
+        type: {type: string, description: "grace_namemap.build_params sends 'fine_move'"}
+        islying: {type: boolean, description: "override the detected lying / standing pose"}
+        num_trials: {type: integer, default: 2}
+      required: [inputs]
+    pre: ["found(?inputs)", "hand_empty()"]
+    hold: []
+    effects: ["holding(?inputs)", "not found(?inputs)", "not hand_empty()"]
+    verify: [{kind: symbolic}, {kind: sensor, skill: grasp_succeed}]
+    interruptible: false        # the arm is in the grasp: finish or release safely
+    errors: [absent, unreachable, grasp_failed, perception_unavailable, hw_fault, cancelled, software]
+    version: "1.0"
+
+  - name: place
+    action: Place
+    # grace_namemap.SKILL_MAP maps PutIn onto this skill too (into an opened container)
+    alias_actions: [PutIn]
+    params:
+      type: object
+      properties:
+        inputs: {type: string, description: "'[target>>]destination'; 'me' = home_place"}
+        big_object: {type: boolean, default: false}
+        lower_before_open: {type: boolean, description: "default: the held object's islying"}
+      required: [inputs]
+    pre: ["arrived(?inputs)", "not hand_empty()"]
+    hold: []
+    effects: ["hand_empty()", "not holding(*)"]
+    # sensor check passes when grasp_succeed is FALSE (gripper empty after the
+    # release, place._verify_placed); before the release the core uses the same
+    # skill to detect a drop on the way (FailureCode dropped)
+    verify: [{kind: symbolic}, {kind: sensor, skill: grasp_succeed}]
+    interruptible: false        # holding an object
+    errors: [dropped, grasp_failed, unreachable, blocked, perception_unavailable, hw_fault, cancelled, software]
+    version: "1.0"
+
+  - name: open_drawer
+    action: Open
+    params:
+      type: object
+      properties:
+        inputs: {type: string, description: "ENV location key of a drawer (needs 'handle' + 'handle_height' in ENV)"}
+        stay_here: {type: boolean, default: false, description: "skip the move to the drawer"}
+      required: [inputs]
+    pre: ["arrived(?inputs)", "hand_empty()"]
+    hold: []
+    effects: ["opened(?inputs)"]
+    verify: [{kind: symbolic}, {kind: vlm, prompt: "Is the drawer open?"}]
+    interruptible: false        # pulling the drawer
+    # the result also carries pose_after_open / lift_after_open /
+    # forward_after_open, which the matching close_drawer takes back
+    errors: [absent, unreachable, grasp_failed, perception_unavailable, hw_fault, cancelled, software, unknown]
+    version: "1.0"
+
+  - name: close_drawer
+    action: Close
+    params:
+      type: object
+      properties:
+        inputs: {type: string, description: "ENV location key of a drawer"}
+        stay_here: {type: boolean, default: true}
+        pose_after_open: {type: array, description: "from the open_drawer result"}
+        lift_after_open: {type: number, description: "from the open_drawer result"}
+        forward_after_open: {type: number, description: "from the open_drawer result"}
+      required: [inputs]
+    pre: ["arrived(?inputs)", "hand_empty()", "opened(?inputs)"]
+    hold: []
+    effects: ["not opened(?inputs)"]
+    verify: [{kind: symbolic}, {kind: vlm, prompt: "Is the drawer closed?"}]
+    interruptible: false        # pushing the drawer
+    errors: [absent, unreachable, perception_unavailable, hw_fault, cancelled, software, unknown]
+    version: "1.0"
+
+  - name: grasp_succeed
+    action: Verify
+    params:
+      type: object
+      properties:
+        crop_roi: {type: array, items: {type: integer}, description: "wrist-cam ROI [x0, y0, x1, y1]"}
+        grasp_check_margin: {type: number, description: "m beyond the tool tip (FIND_CONFIGS)"}
+        grasp_check_min_frac: {type: number, description: "ROI fraction that must read near (FIND_CONFIGS)"}
+      required: []
+    pre: []
+    hold: []
+    effects: []                 # read-only: isdone = something is in the gripper
+    verify: []
+    interruptible: true
+    errors: [perception_unavailable, software]
+    version: "1.0"
+
+  - name: mobile_pose
+    action: Observe
+    params: {type: object, properties: {}, required: []}
+    pre: []
+    hold: []
+    effects: []                 # read-only: returns pose [x, y, rz_deg]
+    verify: []
+    interruptible: true
+    errors: [hw_fault, software]
+    version: "1.0"
+
+  - name: ask
+    action: Ask
+    params:
+      type: object
+      properties:
+        inputs: {type: string, description: "the question (said in `lang`)"}
+        options: {type: array, items: {type: string}, description: "allowed answers, 'spoken->value'"}
+        retries: {type: integer, default: 2}
+        lang: {type: string, default: ko}
+        read_options: {type: boolean, default: false}
+        confirm: {type: boolean}
+        screen_choice: {type: boolean, default: true}
+        screen_wait_sec: {type: number, default: 30}
+      required: [inputs]
+    pre: []
+    hold: []
+    effects: []
+    verify: []
+    interruptible: true
+    errors: [timeout, cancelled, hw_fault, software]
+    version: "1.0"
+
+  - name: llm
+    action: Query
+    params:
+      type: object
+      properties:
+        inputs: {type: string, description: "prompt for the 'llm' connection (text only)"}
+      required: [inputs]
+    pre: []
+    hold: []
+    effects: []
+    verify: []
+    interruptible: true
+    errors: [hw_fault, timeout, software]
+    version: "1.0"
