@@ -76,6 +76,7 @@ def fine_move(**kwargs):
     pointing = kwargs.pop('pointing', False)
     tune = kwargs.pop('tune', None)
     zrange = kwargs.pop('zrange', None)
+    dz_max = kwargs.pop('dz_max', None)
     # Step 1: coarse detect + dx nudge. Failure here is non-fatal — we just
     # fall through to the per-trial loop without nudging.
     # try:
@@ -121,6 +122,8 @@ def fine_move(**kwargs):
         angle = angle if fixed_angle is None else fixed_angle
         if tune is not None:
             dx, dy, dz = dx + tune[0], dy + tune[1], dz + tune[2]
+        if dz_max is not None:
+            dz = max(dz, dz_max)
 
         init_joints = None
         if back_to_init:

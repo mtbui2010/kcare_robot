@@ -7,8 +7,11 @@
    depth is sharper than higher up. Per shoe, from the 3D points of its box: centre, long axis and the OPENING: a dip
    in the height along the shoe, with the collar rim and the heel back higher on both sides (the toe end only slopes
    down). The toe is the other end.
-2. push the shoe farther from the destination toward the other one, at most `max_pushes` (2) pushes in all: a point
-   push off its centre first if the headings differ by more than `align_deg`, then a straight push to `gap`.
+2. push the shoe farther from the destination toward the other one, `min_pushes` (2) to `max_pushes` (2) pushes in all:
+   a point push off its centre first if the headings differ by more than `align_deg`, then a straight push to `gap`.
+   Two pushes even when the first one looks done (2026-10-30: after one push the pair often read as touching, and
+   the pinch then failed); a push of a pair still apart goes `last_push_extra` / `first_push_extra` past the spot,
+   one of a pair already within `near_gap` only `near_press` (1 cm) past it.
 3. pinch: one finger in each opening next to the touching side walls, close (the two walls between the fingers), lift
    it a little and check with grasp_succeed (wrist depth near the fingers); a miss: open, look again, one more try.
 4. back to HOME_JOINTS (the jaw there lies across the robot, so the shoes come round pointing
@@ -39,12 +42,16 @@ HOME_JOINTS = [0, -8.3, 0, 10.32, 0, 18.61, -180]
 SHOES = dict(
     lift='lowest',          # look and work here (2026-10-21: at 0.8 the depth was blurred, at 0.57 the push start had no IK)
     max_pushes=2, gap=0.015, gap_ok=0.025,       # pushed until ~1.5 cm apart; up to 2.5 cm is pinched as it is
+    min_pushes=2,           # 2026-10-30: one push and the pinch often failed — the pair is always pushed twice
     # one turn push corrects up to ~26 deg (max_turn_push / turn_offset): a pair up to max_turn_deg apart gets one,
     # then is pinched still up to pinch_deg apart (the fingers' spread between the openings is what decides the pinch)
     # 2026-10-21: the straight push turned the pushed shoe back ~7 deg against the slanted one (25 -> 32 deg)
     max_push=0.30, max_turn_deg=90, align_deg=5.0, pinch_deg=35.0,
     last_push_extra=0.05,   # the last push goes 5 cm farther (it stopped 1.4 cm short: the walls must touch for the pinch)
     first_push_extra=0.05,  # so does the first (2026-10-21: the turn push turned the shoe only 4-10 deg)
+    # a pair already within near_gap gets no extra: pushed to its spot + near_press (2026-10-30: +5 cm there pushed
+    # the other shoe askew)
+    near_gap=0.03, near_press=0.01,
     push_z=0.025, turn_offset=0.08, max_turn_push=0.04,
     # the push starts where every finger tip is >= finger_clear from every shoe point (2026-10-21, real robot: 1.0-2.7 cm
     # came down on the shoe, 5.6-6.7 cm was a little far)
@@ -384,7 +391,9 @@ def align_shoes(node, **params) -> dict:
         can_turn = pushes < cfg['max_pushes'] - 1
         if gap <= cfg['gap_ok'] and fit and fit[2] <= cfg['max_open'] and \
                 abs(math.degrees(phi)) <= (cfg['align_deg'] if can_turn else cfg['pinch_deg']):
-            break
+            if pushes >= min(cfg['min_pushes'], cfg['max_pushes']):
+                break
+            log_data({'msg': f"[align_shoes] looks ready after {pushes} push(es): pushed again (min_pushes {cfg['min_pushes']})"})
         if pushes >= cfg['max_pushes']:
             return {'isdone': False, 'msg': f'align_shoes: after {pushes} pushes: {state}'}
         if abs(math.degrees(phi)) > cfg['align_deg'] and can_turn:
@@ -394,9 +403,14 @@ def align_shoes(node, **params) -> dict:
                   + (cfg['first_push_extra'] if pushes == 0 else 0.0), d, cfg, at=u)
         else:
             # to its place beside b: across and along at once; the extra only across (pressing the walls together)
-            extra = cfg['last_push_extra'] if pushes == cfg['max_pushes'] - 1 else cfg['first_push_extra'] if pushes == 0 else 0.0
-            m = move_ + n * extra
-            if np.linalg.norm(move_) < 0.01:            # in place already: a push would only slide both
+            if gap <= cfg['near_gap']:
+                # already close (2026-10-30: the +5 cm extra on a close pair pushed the other shoe askew): to the spot,
+                # never back away from b, and only near_press past it
+                m = b['axis'] * along + n * (max(float(move_ @ n), 0.0) + cfg['near_press'])
+            else:
+                extra = cfg['last_push_extra'] if pushes == cfg['max_pushes'] - 1 else cfg['first_push_extra'] if pushes == 0 else 0.0
+                m = move_ + n * extra
+            if np.linalg.norm(move_) < 0.01 and pushes >= cfg['min_pushes']:   # in place already: a push would only slide both
                 why = (f'the openings are {fit[2]:.3f} m apart (fingers open {cfg["max_open"]})' if fit and fit[2] > cfg['max_open'] else
                        'an opening is not seen' if not fit else
                        f'they point {math.degrees(phi):+.0f} deg apart (pinched up to {cfg["pinch_deg"]:.0f})')

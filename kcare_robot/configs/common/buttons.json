@@ -82,12 +82,12 @@
   {
     "id": "19bb17a0c3f6",
     "label": "go wait",
-    "plan": "moveh::front&&movej::inputs=\"fold\", robot_mode=\"front\"\nmove::wait"
+    "plan": "moveh::front&&movej::inputs=\"fold\", mode=\"front\"\nmove::wait"
   },
   {
     "id": "df121d60b9ee",
     "label": "go home",
-    "plan": "move::home"
+    "plan": "moveh::front&&movej::inputs=\"fold\", mode=\"front\"\nmove::home"
   },
   {
     "id": "e785764493cd",

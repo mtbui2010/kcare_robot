@@ -821,7 +821,7 @@
     "timeout": 30.0,
     "method": "POST",
     "headers": {},
-    "plan": "movej::give&&forward::0.2\nlift::lowest&&movej::dr5=-20",
+    "plan": "movej::give&&forward::0.35\nlift::lowest&&movej::dr5=-20",
     "aliases": [
       "\ubc14\ub2e5 \ucc3e\uae30"
     ]
