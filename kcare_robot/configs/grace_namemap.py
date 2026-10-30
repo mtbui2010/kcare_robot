@@ -297,6 +297,21 @@ def _container_key(params, fallback):
         return fallback
 
 
+# kcare skill -> the abstract action whose symbolic effect it has. 'move' is not
+# here: 'arrived' is left to the sensor reconcile (localization).
+_ACTION_OF = {"find": "Find", "find_grasp": "Find", "find_once": "Find",
+              "pick": "Pick", "grasp": "Pick",
+              "place": "Place", "put": "Place", "putin": "Place", "put_in": "Place", "give": "Place",
+              "open_drawer": "Open", "open": "Open", "close_drawer": "Close", "close": "Close"}
+
+
+def _model_apply(step: dict, world) -> None:
+    """The symbolic effect, from the one action model (robot_agent's facade of
+    embodiplan.action_model), applied in place."""
+    from robot_agent.core.planning import action_model
+    action_model.apply(step, world, inplace=True)
+
+
 def apply_skill_effect(world, skill, params=None, result=None, node=None) -> None:
     """Mirror a RAW (direct / open-loop) kcare skill onto the persistent
     WorldState — the inverse of :func:`build_params`, keyed on kcare SKILL names
@@ -307,6 +322,10 @@ def apply_skill_effect(world, skill, params=None, result=None, node=None) -> Non
     step: ``world`` is the shared persistent state, ``params`` the raw '::' arg
     string, ``result`` the skill's return dict. Only mutates on success.
     ``arrived`` is intentionally left to the sensor reconcile (localization).
+    The symbolic effect is the shared action model's (``embodiplan.action_model``
+    via ``robot_agent.core.planning.action_model``); kcare adds the geometric
+    memory: ``found_pose`` on a find, ``holding_since`` / ``holding_pose`` on a
+    pick / place.
     """
     if world is None or not skill:
         return
@@ -314,20 +333,24 @@ def apply_skill_effect(world, skill, params=None, result=None, node=None) -> Non
         return  # skill failed → leave the prior belief untouched
 
     obj = _arg_object(params, result)
-    s = str(skill).strip().lower()
+    action = _ACTION_OF.get(str(skill).strip().lower())
+    if action is None:
+        return  # move -> 'arrived' handled by sensor reconcile; others: no symbolic effect
 
-    if s in ("find", "find_grasp", "find_once"):
-        if obj:
-            world.found = obj
-            fp = _found_pose_data(result, obj, node)
-            if fp:
-                world.found_pose = fp
-    elif s in ("pick", "grasp"):
+    if action == "Find":
+        if not obj:
+            return
+        _model_apply({"action": "Find", "object": obj}, world)
+        fp = _found_pose_data(result, obj, node)
+        if fp:
+            world.found_pose = fp
+    elif action == "Pick":
         prior_fp = getattr(world, "found_pose", None)
-        world.holding = getattr(world, "found", None) or obj
-        world.found = None
+        held = getattr(world, "found", None) or obj        # the grasp takes what find found
+        _model_apply({"action": "Pick", "object": held or ""}, world)
+        if not held:
+            world.holding = None
         world.found_pose = None          # consumed by the grasp
-        import time
         world.holding_since = time.time()
         # Record the grasp actually used (pick returns it), else fall back to the
         # grasppose stashed at find time.
@@ -344,17 +367,15 @@ def apply_skill_effect(world, skill, params=None, result=None, node=None) -> Non
             world.holding_pose = hp
         else:
             world.holding_pose = None
-    elif s in ("place", "put", "putin", "put_in", "give"):
-        world.holding = None
+    elif action == "Place":
+        _model_apply({"action": "Place", "object": obj or ""}, world)
         world.holding_since = None
         world.holding_pose = None        # released
-    elif s in ("open_drawer", "open"):
-        obj = _container_key(params, obj)
-        if obj:
-            world.opened.add(obj)
-    elif s in ("close_drawer", "close"):
-        world.opened.discard(_container_key(params, obj))
-    # move -> 'arrived' handled by sensor reconcile; others: no symbolic effect
+    else:                                # Open / Close: the container's canonical ENV key
+        key = _container_key(params, obj)
+        if action == "Open" and not key:
+            return
+        _model_apply({"action": action, "object": key or ""}, world)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

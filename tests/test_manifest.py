@@ -146,8 +146,17 @@ def test_skills_json_registers_them(skills):
 # robot_agent's contract loader, when the contract checkout is available. Run in
 # a subprocess with a bare `robot_agent` package (no robot_agent/__init__.py, which
 # pulls in FastAPI), so it never shadows anything in this process.
-CONTRACT_ROOT = Path(os.environ.get('KCARE_CONTRACT_ROOT',
-                                    '/home/trung/trung_workdir/arch_wt/robot_agent-contract'))
+def _contract_root() -> Path:
+    """KCARE_CONTRACT_ROOT, else the robot_agent checkout on sys.path, else ../robot_agent."""
+    if os.environ.get('KCARE_CONTRACT_ROOT'):
+        return Path(os.environ['KCARE_CONTRACT_ROOT'])
+    for p in sys.path:
+        if p and (Path(p) / 'robot_agent' / 'contract').is_dir():
+            return Path(p)
+    return ROOT.parent / 'robot_agent'
+
+
+CONTRACT_ROOT = _contract_root()
 _LOAD = r'''
 import sys, types
 pkg = types.ModuleType('robot_agent'); pkg.__path__ = [sys.argv[1] + '/robot_agent']

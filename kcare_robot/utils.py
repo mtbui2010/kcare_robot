@@ -57,7 +57,7 @@ def get_closest_loc(node, ENV, threshold=0.6):
     # The mobile_pose agent hands back {'pose': [x, y, rz]} here (also seen: a
     # ROS Pose, or a flat {'x', 'y'}); reading ret['x'] raised KeyError 'x'.
     from robot_agent.core.planning.loop import _read_robot_xy
-    xy = _read_robot_xy(node)
+    xy = _read_robot_xy(node, 'mobile_pose')
     if xy is None:
         return None
     x, y = xy
