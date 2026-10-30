@@ -19,7 +19,7 @@ endif
 PYPLANNER_DIR   := $(EMBODIPLAN_DIR)
 # Planner versions this package is tested against (embodiplan's public API is
 # versioned; 0.3 may change it). Checked after the editable install.
-EMBODIPLAN_MIN  := 0.2
+EMBODIPLAN_MIN  := 0.2.1
 EMBODIPLAN_MAX  := 0.3
 
 # `visionserve` comes from PyPI (a normal dependency in pyproject.toml), NOT
