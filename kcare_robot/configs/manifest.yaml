@@ -1,17 +1,19 @@
 # KAAIR (kcare_robot) manifest: what this robot can do, for the planner core.
 #
-# Read by robot_agent.contract.Manifest.from_yaml. Nothing in kcare_robot reads it
-# yet: the running robot still goes through configs/grace_namemap.py, and the
-# values below mirror what that module and robot_agent hard-code today, so
-# moving the core onto this file changes no behaviour. Keep them in sync:
-#   skill names / actions   grace_namemap.SKILL_MAP (+ the skills
-#                           assist_loop calls by name: grasp_succeed,
-#                           mobile_pose, ask; vlm_hook: llm)
-#   pre / effects           assist_loop precondition check + _check and
+# Read by configs/adapter.py (KaairAdapter), which robot_agent's planning loops
+# load through robot_agent.contract.load_adapter('kcare_robot'). The core names
+# no kcare skill: it finds them here. Keep in sync with:
+#   skill names / actions   grace_namemap.SKILL_MAP; the sensor that verifies
+#                           Pick is the core's "is something in the hand"
+#                           check, the one that verifies MoveTo its base-pose
+#                           reader, the Ask skill its question channel
+#   pre / effects           embodiplan.action_model (the one source of action
+#                           rules; post-step the core checks these effects
+#                           after applying the model's) and
 #                           grace_namemap.apply_skill_effect
-#   geometry                assist_loop cfg defaults (ROBOT_AGENT_ARRIVE_TOL,
-#                           ROBOT_AGENT_REACH_LATERAL, ROBOT_AGENT_REACH_FAR)
-#                           and robot_agent/skill_configs.py
+#   geometry                the core's ROBOT_AGENT_ARRIVE_TOL /
+#                           ROBOT_AGENT_REACH_LATERAL / ROBOT_AGENT_REACH_FAR
+#                           defaults come from here (the env vars still win)
 #   errors                  the failures each skill's code can produce,
 #                           as robot_agent.contract.FailureCode values
 #
@@ -30,6 +32,7 @@ capabilities:
   head: true
   drawer: true
   voice: true                 # reply / ask / announce (TTS + STT)
+  find_reaches: false         # find only looks: a found drawer still needs a MoveTo before Open
   # robot_agent/skill_configs.py STANDING_OBJ_NAMES / LYING_OBJ_NAMES:
   # detection names whose grasp approach is upright / lying
   standing_objects: [cup, can, bottle]
@@ -58,8 +61,9 @@ skills:
     pre: []
     hold: []
     # arrived is not written by apply_skill_effect: the core re-reads the base
-    # pose (mobile_pose) and compares it with the ENV loc (arrive_tol_m)
-    effects: ["arrived(?inputs)", "not found(*)"]
+    # pose (mobile_pose) and compares it with the ENV loc (arrive_tol_m). The
+    # action model clears found unless the destination is the found handle.
+    effects: ["arrived(?inputs)"]
     verify: [{kind: symbolic}, {kind: sensor, skill: mobile_pose}]
     interruptible: true
     errors: [unreachable, blocked, timeout, hw_fault, cancelled, software]
@@ -118,9 +122,9 @@ skills:
     hold: []
     effects: ["hand_empty()", "not holding(*)"]
     # sensor check passes when grasp_succeed is FALSE (gripper empty after the
-    # release, place._verify_placed); before the release the core uses the same
-    # skill to detect a drop on the way (FailureCode dropped)
-    verify: [{kind: symbolic}, {kind: sensor, skill: grasp_succeed}]
+    # release, place._verify_placed); before the release the core uses the Pick
+    # sensor (the same skill) to detect a drop on the way (FailureCode dropped)
+    verify: [{kind: symbolic}, {kind: sensor, skill: grasp_succeed, expect: false}]
     interruptible: false        # holding an object
     errors: [dropped, grasp_failed, unreachable, blocked, perception_unavailable, hw_fault, cancelled, software]
     version: "1.0"
