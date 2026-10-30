@@ -108,6 +108,34 @@ class KaairAdapter(NamemapAdapter):
                     setattr(world, k, None)
         return world
 
+    def pose(self, node=None) -> dict:
+        """The base pose for the core's reconcile (docs/guard.md in robot_agent): ``x``, ``y`` (``yaw``
+        in degrees when it is a list) from the ``mobile_pose`` agent's last message and ``ts``, when it was received
+        (TopicAgent ``rev_time``). Keys it cannot read are left out ({} outside a runtime): the core then
+        reads the pose through the manifest's pose sensor (the ``mobile_pose`` skill). Never raises.
+
+        KAAIR has no sensor for drawer states (``open_drawer`` / ``close_drawer`` only report their own
+        pull / push), so there is no ``container_states()``: ``opened`` stays a belief, shown unconfirmed."""
+        out = {}
+        try:
+            node = node if node is not None else _node()
+            agent = dict(getattr(node, 'agents', None) or {}).get(HEALTH_AGENTS['pose'])
+            if agent is None:
+                return out
+            t = getattr(agent, 'rev_time', None)
+            if isinstance(t, (int, float)):
+                out['ts'] = float(t)
+            data = getattr(agent, 'rev_data', None)
+            p = data.get('pose') if isinstance(data, dict) else None
+            pos = getattr(p, 'position', None)
+            if pos is not None:
+                out.update(x=float(pos.x), y=float(pos.y))
+            elif isinstance(p, (list, tuple)) and len(p) >= 2:
+                out.update(x=float(p[0]), y=float(p[1]), **({'yaw': float(p[2])} if len(p) > 2 else {}))
+        except Exception:
+            pass
+        return out
+
     def health(self, node=None) -> dict:
         """Head-camera frame age / fps / depth and base-pose age (seconds), from when the ROS agents
         last received a message; ``ok`` False when one is past the manifest's limits, None when
