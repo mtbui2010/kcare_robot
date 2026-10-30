@@ -8,13 +8,19 @@ language), and adds what the core used to hard-code for KAAIR:
 * ``i18n``: the Korean narration (the announcer's ``ko`` phrasebook and verbs), the
   task-understanding robot description and the post-check failure messages;
 * ``is_openable``: a KAAIR ENV marks no drawer, its key names it (``drawer@kitchen``);
-* ``quiet_skills``: skills that speak to the user themselves, so their steps are not narrated.
+* ``quiet_skills``: skills that speak to the user themselves, so their steps are not narrated;
+* ``health()``: head-camera frame age / fps / depth and base-pose age from the ROS agents
+  (``rev_time`` / ``rev_period``), against the manifest's ``frame_max_age_s`` / ``pose_max_age_s``;
+* ``vlm_ask()``: a yes / no question on the head camera frame for the manifest's vlm verify specs
+  (only asked when they are turned on: ``capabilities.vlm_verify`` / ``ROBOT_AGENT_VLM_VERIFY``).
 
 Only robot_agent's public contract is used (``robot_agent.contract``).
 """
 
 from __future__ import annotations
 
+import json
+import time
 from pathlib import Path
 
 from robot_agent.contract import Manifest, NamemapAdapter
@@ -63,10 +69,15 @@ PHRASES.update({
     'verify_failed.Pick': {'en': 'pick reported success but the gripper is empty'},
     'verify_failed.Place': {'en': 'place reported success but the object is still in the gripper'},
     'verify_failed.PutIn': {'en': 'place reported success but the object is still in the gripper'},
+    # the run used its LLM-call budget (robot_agent budget.budget_end)
+    'llm_budget': {'ko': '정해진 시도 횟수 안에 작업을 해결하지 못해서 작업을 중단합니다'},
     # an unclear answer to a yes / no question ("yet" for "yes", noise) is asked again with this
     'yes_or_no': {'en': "Sorry, I didn't catch that. Please answer yes or no.",
                   'ko': '잘 못 들었어요. 네 또는 아니요로 대답해 주세요.'},
 })
+
+# ROS agents the health report reads (TopicAgent rev_time / rev_period)
+HEALTH_AGENTS = {'frame': 'head_rgb', 'depth': 'head_depth', 'pose': 'mobile_pose'}
 
 # skills that speak for themselves (hri reply / ask, the emergency skills) or have nothing to tell
 QUIET_SKILLS = {'reply', 'ask', 'qa', 'announce', 'wait', 'check_fall', 'check_restroom', 'call_119',
@@ -97,6 +108,56 @@ class KaairAdapter(NamemapAdapter):
                     setattr(world, k, None)
         return world
 
+    def health(self, node=None) -> dict:
+        """Head-camera frame age / fps / depth and base-pose age (seconds), from when the ROS agents
+        last received a message; ``ok`` False when one is past the manifest's limits, None when
+        nothing could be read (no runtime, an agent that keeps no receive time). Never raises."""
+        try:
+            node = node if node is not None else _node()
+            agents = dict(getattr(node, 'agents', None) or {})
+            now = time.time()
+
+            def age(name):
+                t = getattr(agents.get(name), 'rev_time', None)
+                return round(now - t, 3) if isinstance(t, (int, float)) else None
+            period = getattr(agents.get(HEALTH_AGENTS['frame']), 'rev_period', None)
+            dep = agents.get(HEALTH_AGENTS['depth'])
+            h = {'frame_age_s': age(HEALTH_AGENTS['frame']),
+                 'fps': round(1.0 / period, 1) if isinstance(period, (int, float)) and period > 0 else None,
+                 'depth': (getattr(dep, 'rev_data', None) is not None) if dep is not None else None,
+                 'pose_age_s': age(HEALTH_AGENTS['pose'])}
+            lim = self.geometry.extra
+            bad = [f'{k} {h[k]:.1f} s > {lim[m]} s' for k, m in (('frame_age_s', 'frame_max_age_s'),
+                                                                  ('pose_age_s', 'pose_max_age_s'))
+                   if h[k] is not None and lim.get(m) is not None and h[k] > float(lim[m])]
+            known = any(v is not None for v in h.values())
+            h['ok'] = (not bad) if known else None
+            if bad:
+                h['error'] = '; '.join(bad)
+            return h
+        except Exception as e:
+            return {'ok': None, 'error': f'health not readable: {e}'}
+
+    def vlm_ask(self, prompt: str, step: dict | None = None, node=None):
+        """``prompt`` (a yes / no question) on the current head-camera frame, through the VLM
+        connection the qa skill uses: 'yes' / 'no' / 'unsure'. Raises when there is no runtime,
+        camera or VLM (the core then looks with find instead)."""
+        from kcare_robot.skills import hri as qa
+        from kcare_robot.skills._recognition_helpers import fetch_camera_data
+        node = node if node is not None else _node()
+        if node is None:
+            raise RuntimeError('no ROS node')
+        rgb = fetch_camera_data(node, 'head').rgb
+        cfg = qa._qa_config({})
+        body = {'model': cfg['model'], 'stream': False, 'think': False, 'keep_alive': cfg['keep_alive'],
+                'format': {'type': 'object', 'properties': {'answer': {'type': 'string',
+                                                                       'enum': ['yes', 'no', 'unsure']}},
+                           'required': ['answer']},
+                'options': {'temperature': 0.0, 'num_predict': 16},
+                'messages': [{'role': 'user', 'images': [qa._b64jpeg(rgb, 640)],
+                              'content': f'{prompt} Answer yes, no, or unsure if you cannot tell.'}]}
+        return json.loads(qa._post_chat(cfg, body).json()['message']['content']).get('answer', 'unsure')
+
     @staticmethod
     def is_openable(key: str, entry: dict | None = None) -> bool:
         """An ENV place opens when it says so, or when its key names a drawer."""
@@ -119,6 +180,15 @@ def _gripper_holds(node=None):
         if sr is None or node is None:
             return None
         return bool((sr.execute(HOLDING_SENSOR, {}, node) or {}).get('isdone'))
+    except Exception:
+        return None
+
+
+def _node():
+    """The running agent's ROS node, or None outside a runtime."""
+    try:
+        from robot_agent.state import current
+        return getattr(current().dm, '_ros_node', None)
     except Exception:
         return None
 

@@ -33,6 +33,10 @@ capabilities:
   drawer: true
   voice: true                 # reply / ask / announce (TTS + STT)
   find_reaches: false         # find only looks: a found drawer still needs a MoveTo before Open
+  # the vlm verify specs below (Place / Open / Close) are not run by default: the VLM's latency on
+  # the robot is not measured yet. ROBOT_AGENT_VLM_VERIFY=1 (or the run option vlm_verify) turns
+  # them on; robot_agent/docs/verify.md
+  vlm_verify: false
   # robot_agent/skill_configs.py STANDING_OBJ_NAMES / LYING_OBJ_NAMES:
   # detection names whose grasp approach is upright / lying
   standing_objects: [cup, can, bottle]
@@ -42,6 +46,12 @@ geometry:
   reach_m: 0.78               # Pick: a target more than this to the side is not retried (0/23 beyond 0.74 m)
   reach_far_m: 1.0            # Find: beyond this (base frame) a detection is "over there"
   max_reach_y_m: 0.8          # pick / place reach_problem(): ARM_CONFIGS.max_reach_y default (site-overridable)
+  # sensor health (KaairAdapter.health(), robot_agent/docs/verify.md): a head frame older than this
+  # before a Find = perception_unavailable (wait + retry); a base pose older than this after a
+  # MoveTo = the arrival is not trusted. ROBOT_AGENT_SENSOR_HEALTH=0 turns the checks off.
+  frame_max_age_s: 2.0
+  pose_max_age_s: 2.0
+  vlm_min_conf: 0.5           # a vlm verify answer below this confidence is "unsure" (then: Find)
 # Other KAAIR constants robot_agent/skill_configs.py hard-codes (not metres, so
 # not geometry). Kept with the robot so the core can drop them.
 defaults:
@@ -133,7 +143,10 @@ skills:
     # sensor check passes when grasp_succeed is FALSE (gripper empty after the
     # release, place._verify_placed); before the release the core uses the Pick
     # sensor (the same skill) to detect a drop on the way (FailureCode dropped)
-    verify: [{kind: symbolic}, {kind: sensor, skill: grasp_succeed, expect: false}]
+    # vlm (off unless capabilities.vlm_verify / ROBOT_AGENT_VLM_VERIFY): a "no" = not placed
+    # (replan); VLM down or unsure = the core looks for the object with find
+    verify: [{kind: symbolic}, {kind: sensor, skill: grasp_succeed, expect: false},
+             {kind: vlm, prompt: "Is the {object} on the {place}?"}]
     interruptible: false        # holding an object
     errors: [dropped, grasp_failed, unreachable, blocked, perception_unavailable, hw_fault, estop, cancelled, software]
     version: "1.0"
