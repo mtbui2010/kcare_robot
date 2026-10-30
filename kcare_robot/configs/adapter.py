@@ -71,6 +71,9 @@ PHRASES.update({
     'verify_failed.PutIn': {'en': 'place reported success but the object is still in the gripper'},
     # the run used its LLM-call budget (robot_agent budget.budget_end)
     'llm_budget': {'ko': '정해진 시도 횟수 안에 작업을 해결하지 못해서 작업을 중단합니다'},
+    # an unclear answer to a yes / no question ("yet" for "yes", noise) is asked again with this
+    'yes_or_no': {'en': "Sorry, I didn't catch that. Please answer yes or no.",
+                  'ko': '잘 못 들었어요. 네 또는 아니요로 대답해 주세요.'},
 })
 
 # ROS agents the health report reads (TopicAgent rev_time / rev_period)
