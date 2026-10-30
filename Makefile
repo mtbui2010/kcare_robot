@@ -211,7 +211,7 @@ export CHECK_EMBODIPLAN_PY
 
 .PHONY: install install-deps sys-libs switchbot check-deps env _env-current env-recreate env-info run cli terminate doctor \
         skill-generic skill-detect skill-external delete-skill rename-skill \
-        run-external test clean help _require-env _require-run-py \
+        run-external test smoke-live clean help _require-env _require-run-py \
         new-robot copy-skill
 
 help:
@@ -241,7 +241,8 @@ help:
 	@echo "                                              make cli ARGS=\"--list\""
 	@echo "  make terminate                        Stop the agent listening on PORT=$(PORT)"
 	@echo "  make run-external                     Start the example external-skill server (template_skills/grip_external.py)"
-	@echo "  make test                             Smoke test: list skills via curl"
+	@echo "  make test                             Offline pytest checks (configs, manifest, namemap; no ROS)"
+	@echo "  make smoke-live                       Smoke test a running agent: list skills via curl (PORT)"
 	@echo ""
 	@echo "Skills:"
 	@echo "  make skill-generic SKILL=<name> [FILE=<file>]"
@@ -653,7 +654,13 @@ terminate:
 doctor: _require-run-py
 	@$(ROS_ENV) $(RUN_PY) -m robot_agent.diagnose kcare_robot $(ARGS)
 
+# Pure-python checks (configs, manifest.yaml, grace_namemap): no ROS, no
+# network, no running agent. Imports resolve from this checkout.
 test:
+	@PYTHONPATH="$(ROOT)$${PYTHONPATH:+:$$PYTHONPATH}" $(RUN_PY) -m pytest -q $(ROOT)/tests $(ARGS)
+
+# Smoke test against a RUNNING agent (make run): list its skills.
+smoke-live:
 	@echo "[kcare_robot] Registered skills:"
 	@curl -s http://localhost:$(PORT)/skills | python3 -m json.tool | head -40
 
