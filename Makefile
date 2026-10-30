@@ -6,9 +6,21 @@ ROOT  := $(shell pwd)
 # Override on the command line if your layout differs:
 #   make install ROBOT_AGENT_DIR=/path/to/robot_agent
 # Set one to empty to skip it entirely:
-#   make install PYPLANNER_DIR=          # no GRACE planner
+#   make install EMBODIPLAN_DIR=         # no SAGE/GRACE planner
 ROBOT_AGENT_DIR ?= $(ROOT)/../robot_agent
-PYPLANNER_DIR   ?=
+# The planner (SAGE / GRACE). Installed by default; a missing checkout is a
+# hard error in check-deps, not a silent skip.
+EMBODIPLAN_DIR  ?= $(ROOT)/../embodiplan
+# Backwards-compatible alias: the planner used to be called pyplanner, and
+# `make install PYPLANNER_DIR=<dir>` (or empty, to skip) still works.
+ifneq ($(origin PYPLANNER_DIR),undefined)
+  EMBODIPLAN_DIR := $(PYPLANNER_DIR)
+endif
+PYPLANNER_DIR   := $(EMBODIPLAN_DIR)
+# Planner versions this package is tested against (embodiplan's public API is
+# versioned; 0.3 may change it). Checked after the editable install.
+EMBODIPLAN_MIN  := 0.2
+EMBODIPLAN_MAX  := 0.3
 
 # `visionserve` comes from PyPI (a normal dependency in pyproject.toml), NOT
 # from ../vision_serve/clients/python — that checkout gitignores the package
@@ -178,6 +190,25 @@ print('[kcare_robot] imports OK (numpy %s)' % numpy.__version__)
 endef
 export VERIFY_IMPORTS_PY
 
+# Planner pin check (argv: min max, "major.minor"). pip reports success for any
+# embodiplan version, so check the one that actually imports.
+define CHECK_EMBODIPLAN_PY
+import sys, importlib.metadata as md
+lo, hi = (tuple(int(x) for x in a.split('.')) for a in sys.argv[1:3])
+try:
+    import embodiplan
+    v = getattr(embodiplan, '__version__', None) or md.version('embodiplan')
+except Exception as e:
+    print('[kcare_robot] FAILED -- embodiplan not importable: %s: %s' % (type(e).__name__, e))
+    sys.exit(1)
+have = tuple(int(x) for x in v.split('.')[:2])
+if not (lo <= have < hi):
+    print('[kcare_robot] FAILED -- embodiplan %s installed, need >=%s,<%s' % (v, sys.argv[1], sys.argv[2]))
+    sys.exit(1)
+print('[kcare_robot] embodiplan %s OK (>=%s,<%s)' % (v, sys.argv[1], sys.argv[2]))
+endef
+export CHECK_EMBODIPLAN_PY
+
 .PHONY: install install-deps sys-libs switchbot check-deps env _env-current env-recreate env-info run cli terminate doctor \
         skill-generic skill-detect skill-external delete-skill rename-skill \
         run-external test clean help _require-env _require-run-py \
@@ -252,7 +283,7 @@ env-info:
 	@echo "ROS setup       : $(ROS_SETUP) $(if $(wildcard $(ROS_SETUP)),(exists),(MISSING))"
 	@echo "ROS overlays    : $(if $(ROS_WS_SETUP),$(ROS_WS_SETUP),(none found — rosinterfaces will be missing))"
 	@echo "robot_agent     : $(ROBOT_AGENT_DIR) $(if $(wildcard $(ROBOT_AGENT_DIR)),(exists),(MISSING))"
-	@echo "pyplanner       : $(PYPLANNER_DIR) $(if $(wildcard $(PYPLANNER_DIR)),(exists),(MISSING))"
+	@echo "embodiplan      : $(if $(EMBODIPLAN_DIR),$(EMBODIPLAN_DIR) $(if $(wildcard $(EMBODIPLAN_DIR)),(exists),(MISSING)),skipped (EMBODIPLAN_DIR empty)) [>=$(EMBODIPLAN_MIN),<$(EMBODIPLAN_MAX)]"
 	@echo "visionserve     : $(if $(VISIONSERVE_DIR),$(VISIONSERVE_DIR) $(if $(wildcard $(VISIONSERVE_DIR)),(exists),(MISSING)),from PyPI)"
 
 # Verify every sibling repo we editable-install is actually present AND is a
@@ -262,7 +293,7 @@ env-info:
 # silently disabled every vision skill once. Reports all problems at once.
 check-deps:
 	@missing=0; \
-	for spec in "robot_agent:$(ROBOT_AGENT_DIR)" "pyplanner:$(PYPLANNER_DIR)" "visionserve:$(VISIONSERVE_DIR)"; do \
+	for spec in "robot_agent:$(ROBOT_AGENT_DIR)" "embodiplan:$(EMBODIPLAN_DIR)" "visionserve:$(VISIONSERVE_DIR)"; do \
 		name=$${spec%%:*}; dir=$${spec#*:}; \
 		var=$$(echo "$$name" | tr 'a-z' 'A-Z')_DIR; \
 		if [ -z "$$dir" ]; then \
@@ -287,10 +318,10 @@ check-deps:
 		echo ""; \
 		echo "[kcare_robot] missing sibling repo(s). Expected them next to this one:"; \
 		echo "                 <workspace>/robot_agent"; \
-		echo "                 <workspace>/pyplanner"; \
+		echo "                 <workspace>/embodiplan"; \
 		echo "                 <workspace>/kcare_robot   <- you are here"; \
 		echo "               Point at yours:  make install ROBOT_AGENT_DIR=/path/to/robot_agent"; \
-		echo "               Or skip one:     make install PYPLANNER_DIR="; \
+		echo "               Or skip one:     make install EMBODIPLAN_DIR=   (no planner)"; \
 		exit 1; \
 	fi
 
@@ -495,7 +526,7 @@ _require-run-py:
 		echo "               Run 'make install' to build the env, or pass USE_CURRENT=1 to silence this."; \
 	fi
 
-# Editable-install the sibling repos. Order matters: pyplanner and robot_agent
+# Editable-install the sibling repos. Order matters: embodiplan and robot_agent
 # must be importable before kcare_robot's own dependency resolution runs.
 # check-deps has already proved each non-empty dir is a buildable project.
 # visionserve has no local checkout by default (VISIONSERVE_DIR empty) — it is
@@ -503,7 +534,7 @@ _require-run-py:
 # yields a working import (the later `pip install -e .[all]` keeps it satisfied).
 install-deps: check-deps _require-env
 	@$(ENV_PIP) install -q --upgrade pip setuptools wheel
-	@for d in "$(PYPLANNER_DIR)" "$(ROBOT_AGENT_DIR)" "$(VISIONSERVE_DIR)"; do \
+	@for d in "$(EMBODIPLAN_DIR)" "$(ROBOT_AGENT_DIR)" "$(VISIONSERVE_DIR)"; do \
 		if [ -z "$$d" ]; then continue; fi; \
 		echo "[kcare_robot] pip install -e $$d"; \
 		$(ENV_PIP) install -e "$$d" || exit 1; \
@@ -523,9 +554,16 @@ install: check-deps env
 	@echo "[kcare_robot] pip install -e . [all]"
 	@$(ENV_PIP) install -e "$(ROOT)[all]"
 	@echo ""
-	@if [ -d "$(PYPLANNER_DIR)" ]; then \
-		echo "[kcare_robot] enabling the GRACE planner extra"; \
-		$(ENV_PIP) install -e "$(ROBOT_AGENT_DIR)[grace]" >/dev/null 2>&1 || true; \
+	@if [ -n "$(EMBODIPLAN_DIR)" ]; then \
+		echo "[kcare_robot] enabling the planner extra (robot_agent[grace] -> embodiplan)"; \
+		$(ENV_PIP) install -q -e "$(ROBOT_AGENT_DIR)[grace]" || { \
+			echo "[kcare_robot] FAILED: pip install -e $(ROBOT_AGENT_DIR)[grace]"; \
+			echo "               The planner (SAGE/GRACE) would be missing. Fix the error above,"; \
+			echo "               or skip the planner explicitly: make install EMBODIPLAN_DIR="; \
+			exit 1; }; \
+		$(ENV_PY) -c "$$CHECK_EMBODIPLAN_PY" "$(EMBODIPLAN_MIN)" "$(EMBODIPLAN_MAX)" || exit 1; \
+	else \
+		echo "[kcare_robot] WARNING: EMBODIPLAN_DIR is empty -- planner (SAGE/GRACE) NOT installed"; \
 	fi
 	@echo "[kcare_robot] Installed into $(ENV_PREFIX) ($$($(ENV_PY) -V))."
 	@echo ""

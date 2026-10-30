@@ -174,7 +174,7 @@ before an env is created or anything is downloaded:
 
 ```
   [ OK ] robot_agent  ../robot_agent
-  [ OK ] pyplanner    ../pyplanner
+  [ OK ] embodiplan   ../embodiplan
   [ -- ] visionserve  from PyPI (no local checkout)
 ```
 
@@ -197,7 +197,7 @@ What it does and does not install:
 | | |
 |---|---|
 | conda env + native libs | python, `portaudio` (TTS playback), `ffmpeg` (mp3 decode) |
-| editable, from sibling repos | `robot_agent`, `pyplanner` (GRACE planner) |
+| editable, from sibling repos | `robot_agent`, `embodiplan` (SAGE / GRACE planner, pinned `>=0.2,<0.3`; a missing checkout or a failed install stops `make install`) |
 | from PyPI | `visionserve`, numpy, opencv, scipy + every `robot_agent` extra (transports, LLM backends, TTS) |
 | **not installed** — you provide | **ROS 2** (`rclpy`, `cv_bridge`, `sensor_msgs`) and the **`rosinterfaces`** ament package (`colcon build`, then source the workspace) |
 
@@ -279,7 +279,7 @@ the env is their job.
 ```bash
 make install PYTHON_VERSION=3.11        # force an interpreter for a new env
 make install ROBOT_AGENT_DIR=/path/to/robot_agent    # repos live elsewhere
-make install PYPLANNER_DIR=             # skip it (no GRACE planner)
+make install EMBODIPLAN_DIR=            # skip the planner (old name PYPLANNER_DIR= still works)
 make install VISIONSERVE_DIR=/path/to/src            # local instead of PyPI
 make run     ROS_DISTRO=jazzy           # different ROS distro
 make check-deps                         # just the sibling-repo preflight

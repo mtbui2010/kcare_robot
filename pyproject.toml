@@ -30,6 +30,9 @@ dependencies = [
 [project.optional-dependencies]
 # Pull in every robot_agent extra (transports + LLM backends + TTS).
 all = ["robot_agent[all]"]
+# The SAGE / GRACE planner. Not on PyPI: `make install` editable-installs
+# ../embodiplan (EMBODIPLAN_DIR) first and then checks this same pin.
+planner = ["robot_agent[grace]", "embodiplan>=0.2,<0.3"]
 
 [project.scripts]
 kcare_robot = "kcare_robot.__main__:cli"
