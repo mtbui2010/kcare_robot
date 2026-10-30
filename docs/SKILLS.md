@@ -185,8 +185,8 @@ remain the source of truth for manipulation.)
   verify); `find` falls back across all ENV locations before failing.
 - **`isdone` propagation** — every skill returns `isdone`; `UnifiedAgent` halts the
   plan on the first `False` (no automatic replan — that is the gap the GRACE
-  integration fills, see [`ACTION_MAPPER_SPEC.md`](ACTION_MAPPER_SPEC.md) and
-  [`CLOSED_LOOP_ARCHITECTURE.md`](CLOSED_LOOP_ARCHITECTURE.md)).
+  integration fills, see [`ACTION_MAPPER_SPEC.md`](../../robot_agent/docs/ACTION_MAPPER_SPEC.md) and
+  [`CLOSED_LOOP_ARCHITECTURE.md`](../../robot_agent/docs/CLOSED_LOOP_ARCHITECTURE.md)).
 
 ---
 
@@ -194,7 +194,7 @@ remain the source of truth for manipulation.)
 
 > Source of truth: [`kcare_robot/configs/grace_namemap.py`](../kcare_robot/configs/grace_namemap.py)
 > — the robot-side half of the ActionMapper (see
-> [`ACTION_MAPPER_SPEC.md`](ACTION_MAPPER_SPEC.md)). GRACE / pyplanner emit
+> [`ACTION_MAPPER_SPEC.md`](../../robot_agent/docs/ACTION_MAPPER_SPEC.md)). GRACE / pyplanner emit
 > *abstract* CamelCase symbolic actions over CamelCase locations/objects; this
 > module maps them onto the concrete skills cataloged above. Names go through an
 > explicit table first, then a CamelCase fallback, so unknown (open-vocabulary)
