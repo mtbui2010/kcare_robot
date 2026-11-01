@@ -331,7 +331,7 @@ kcare_robot/
     ├── configs/
     │   ├── skills_config.py  SKILL_CONFIGS (23 entries)
     │   ├── tasks.py          ARM_CONFIGS, ENV (locations)
-    │   └── guide.py          LLM planner guide
+    │   └── manifest.yaml     skills, capabilities, planner (seed_memory, notes): the planners' prompts
     ├── data/
     │   └── connections.json  device registrations (cameras, arms, base, TCP)
     ├── skills/               production implementations

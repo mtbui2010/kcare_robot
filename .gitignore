@@ -23,3 +23,5 @@ kcare_robot/configs/common/object_memory.*.json
 kcare_robot/configs/common/world_state.*.json
 kcare_robot/configs/common/logs/
 kcare_robot/data/logs/
+# the removed Planner Guide store (robot_agent builds the direct planner's prompt; an old file is never read)
+kcare_robot/configs/common/guides.json

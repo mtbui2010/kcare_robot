@@ -25,7 +25,7 @@ kcare_robot/kcare_robot/
 ├── configs/                          # ALL configs live here
 │   ├── skills_config.py              # SKILL_CONFIGS dict — the registry contract
 │   ├── tasks.py                      # ARM_CONFIGS / ENV / LIFT_CONFIGS overrides
-│   ├── guide*.py, word_mapping.py    # prompt/guide content (shared, code)
+│   ├── manifest.yaml, word_mapping.py # skills + planner data (the prompts are built from it)
 │   ├── common/                       # shared across all sites
 │   │   ├── skills.json               # skill registry
 │   │   └── buttons.json              # shortcut buttons

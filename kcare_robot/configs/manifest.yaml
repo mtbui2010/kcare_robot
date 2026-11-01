@@ -62,6 +62,9 @@ defaults:
 # that SAGE retrieves before the robot has a live memory of its own (SAGE_v2 G4).
 # Every plan passes the action model under the capabilities above
 # (tests/test_seed_memory.py). Edit it there, not in configs/.
+# notes (optional): short rules the direct planner's prompt shows, e.g.
+#   notes: ["close_drawer acts where the robot is: move to the drawer first."]
+# (robot_agent docs/direct_prompt.md; none today: on the T2 bench they did not change the success rate)
 planner:
   seed_memory: ../planner/seed_memory.jsonl
 skills:
